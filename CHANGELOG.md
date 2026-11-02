@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 — 2026-11-03
+
 ### Added
 - Connector obstacle avoidance with configurable clearance and a blocked-route fallback.
 - Editable connector bends (elbow segments, curve control points), keyboard bend editor and Reset to automatic.
