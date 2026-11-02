@@ -1,0 +1,290 @@
+{
+  "date": "2026-11-02",
+  "modelTests": 21,
+  "scenarios": [
+    {
+      "name": "sticky-tools-desktop",
+      "evidence_id": "ev_f60d722eb7ccdae11e3a3a35103841375919703565f5bb20c61e4a4ff4450deb",
+      "steps": [
+        {
+          "id": "scenario_start",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "note",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "source",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "finish",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "autofont",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "manualfont",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "fontcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "bottom",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "valigncommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "small",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "sizecommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "details",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "link",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "tags",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "apply",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "quickadd",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "emptyfinish",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "undoadd",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "redoadd",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "editnew",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "newtext",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "newfinish",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "save",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "reload",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "fit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "selectsource",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "reopen",
+          "status": "completed",
+          "error": null
+        }
+      ],
+      "events": []
+    },
+    {
+      "name": "sticky-tools-mobile",
+      "evidence_id": "ev_4ed8dc5ead818f0cb4da4aef3fde781c480613a72b7644543911993ac1dd63b9",
+      "steps": [
+        {
+          "id": "scenario_start",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "note",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "source",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "finish",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "autofont",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "manualfont",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "fontcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "bottom",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "valigncommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "small",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "sizecommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "details",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "link",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "tags",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "apply",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "quickadd",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "emptyfinish",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "undoadd",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "redoadd",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "editnew",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "newtext",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "newfinish",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "save",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "reload",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "fit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "selectsource",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "reopen",
+          "status": "completed",
+          "error": null
+        }
+      ],
+      "events": []
+    }
+  ]
+}

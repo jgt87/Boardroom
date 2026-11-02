@@ -1,0 +1,38 @@
+{
+  "name": "boardroom-prototype",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node node_modules/vite/bin/vite.js --host 0.0.0.0 --port 5173 --strictPort",
+    "build": "node node_modules/typescript/bin/tsc --noEmit && node node_modules/vite/bin/vite.js build",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"tests/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"tests/**/*.ts\"",
+    "check": "npm run format:check && npm test && npm run build"
+  },
+  "dependencies": {
+    "fflate": "0.8.3",
+    "jspdf": "4.2.1",
+    "lucide-react": "0.546.0",
+    "marked": "18.1.3",
+    "mermaid": "^12.2.0",
+    "pdfjs-dist": "6.5.438",
+    "prismjs": "^1.30.0",
+    "qrcode-generator": "2.0.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-simple-code-editor": "^0.14.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.15",
+    "@types/prismjs": "^1.26.6",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "axe-core": "4.14.0",
+    "jsqr": "1.4.0",
+    "prettier": "3.9.10",
+    "typescript": "5.8.3",
+    "vite": "6.4.3"
+  }
+}

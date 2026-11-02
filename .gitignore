@@ -1,0 +1,12 @@
+# Private evidence and captures: never commit
+*.private.json
+evidence-private/
+# Browser profiles used for analysis (contain live sessions and cookies)
+.chrome-rea/
+# Dependencies, caches and build output
+node_modules/
+.npm-cache/
+prototype/dist/
+*.log
+.DS_Store
+Thumbs.db

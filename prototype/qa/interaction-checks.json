@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-02",
+  "evidence_id": "ev_996ba645f985a98930e7413938cc00dc30be2e395fe1b9fee9e7daa88be834bf",
+  "steps": [
+    {
+      "id": "scenario_start",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "frame",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "note",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "text",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "finish",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "selectframe",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "nudgeframe",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "save",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "undo",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "undosave",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "redo",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "redosave",
+      "status": "completed",
+      "error": null
+    }
+  ],
+  "events": [],
+  "storage_history": [
+    {
+      "id": "save",
+      "hash": "a3f87f015d4d69a465378f0a4c46ae0217c1bdb7732c67ef7e21aa3c48e5c358"
+    },
+    {
+      "id": "undosave",
+      "hash": "fda8d29de7d219d0a30789b11cad5234bb2f30e308fc17112af4472d32e81b7a"
+    },
+    {
+      "id": "redosave",
+      "hash": "a3f87f015d4d69a465378f0a4c46ae0217c1bdb7732c67ef7e21aa3c48e5c358"
+    }
+  ],
+  "pointer_test": "incomplete: native Computer Use could not validate browser URL",
+  "model_tests": 18
+}

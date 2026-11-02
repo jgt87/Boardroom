@@ -1,0 +1,338 @@
+{
+  "date": "2026-11-02",
+  "modelTests": 28,
+  "nativePointerCoverage": "incomplete; prior Computer Use URL-validation blocker",
+  "scenarios": [
+    {
+      "name": "connectors-desktop",
+      "evidence_id": "ev_f7ee7ccc7955811f236771d9c89d815bd78163e0bdb1f71170a52a14ed12df11",
+      "steps": [
+        {
+          "id": "scenario_start",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "sample",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "select",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "elbow",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "curved",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "pathcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "thicker",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "widthcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "dashed",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "dashcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "startarrow",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "startcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "diamond",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "endcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "color",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "details",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "label",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "attachtitle",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "connectcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "apply",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "undo",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "redo",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "inline",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "inlineedit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "labelcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "save",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "reload",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "fit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "selectrestored",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "verify",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "close",
+          "status": "completed",
+          "error": null
+        }
+      ],
+      "events": [],
+      "restoredConnections": "- document:\n  - main:\n    - img \"Whiteboard canvas\":\n      - 'img \"note: A space to think together.\"': A space to think together.\n      - 'img \"note: Start with a question. Make the next move.\"': Start with a question. Make the next move.\n      - 'img \"Connector: Ready to build\"': Ready to build\n      - 'img \"text: Ideas start here\"': Ideas start here\n    - text: boardroom\n    - textbox \"Board name\": My first board\n    - text: Saving\n    - button \"Board contents\"\n    - button \"Export\"\n    - navigation \"Creation tools\":\n      - button \"Formats and Flows\"\n      - button \"Select\" [pressed]\n      - button \"Pan\"\n      - button \"Sticky note\"\n      - button \"Text\"\n      - button \"Shapes and lines\"\n      - button \"Pen\"\n      - button \"Frame\"\n      - button \"Tools, media and integrations\"\n    - button \"Undo\" [disabled]\n    - button \"Redo\" [disabled]\n    - text: arrow\n    - textbox \"Line color\": \"#334fd8\"\n    - combobox \"Connector path\":\n      - option \"Straight\"\n      - option \"Elbow\"\n      - option \"Curved\" [selected]\n    - combobox \"Line thickness\":\n      - option \"1 px\"\n      - option \"2 px\"\n      - option \"3 px\" [selected]\n      - option \"4 px\"\n      - option \"6 px\"\n      - option \"8 px\"\n      - option \"12 px\"\n    - combobox \"Line pattern\":\n      - option \"Solid\"\n      - option \"Dashed\" [selected]\n      - option \"Dotted\"\n    - combobox \"Start arrowhead\":\n      - 'option \"Start: None\"'\n      - 'option \"Start: Arrow\" [selected]'\n      - 'option \"Start: Open arrow\"'\n      - 'option \"Start: Circle\"'\n      - 'option \"Start: Diamond\"'\n    - combobox \"End arrowhead\":\n      - 'option \"End: None\"'\n      - 'option \"End: Arrow\"'\n      - 'option \"End: Open arrow\"'\n      - 'option \"End: Circle\"'\n      - 'option \"End: Diamond\" [selected]'\n    - button \"Connector details\"\n    - button \"Edit text\"\n    - button \"Duplicate\"\n    - button \"Bring to front\"\n    - button \"Send to back\"\n    - button \"Delete selection\"\n    - complementary \"Connector details\":\n      - heading \"Label and connections\" [level=2]\n      - button \"Close connector details\"\n      - text: Label\n      - textbox \"Connector label\": Ready to build\n      - text: Start connection\n      - combobox \"Start connection\":\n        - option \"Free endpoint\"\n        - option \"A space to think together. · 1\"\n        - option \"Start with a question. Make the next move. · 2\"\n        - option \"Ideas start here · 3\" [selected]\n      - text: End connection\n      - combobox \"End connection\":\n        - option \"Free endpoint\"\n        - option \"A space to think together. · 1\"\n        - option \"Start with a question. Make the next move. · 2\" [selected]\n        - option \"Ideas start here · 3\"\n      - paragraph: Drag either end to reconnect. Hold Alt to leave it free.\n      - button \"Cancel\"\n      - button \"Apply\"\n    - text: Independent prototype • Local to this browser\n    - button \"Snap to objects\" [pressed]\n    - button \"Fit to screen\"\n    - button \"Zoom out\"\n    - button \"Reset zoom to 100 percent\": 140%\n    - button \"Zoom in\"\n    - button \"Keyboard shortcuts\""
+    },
+    {
+      "name": "connectors-mobile",
+      "evidence_id": "ev_c8c0e05c3abd750b6314226efec707107e3f69854ca758a6ee496a73ea6d3b57",
+      "steps": [
+        {
+          "id": "scenario_start",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "sample",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "initialfit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "select",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "elbow",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "curved",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "pathcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "thicker",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "widthcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "dashed",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "dashcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "startarrow",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "startcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "diamond",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "endcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "color",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "details",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "label",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "attachtitle",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "connectcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "apply",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "undo",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "redo",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "inline",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "inlineedit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "labelcommit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "save",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "reload",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "fit",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "selectrestored",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "verify",
+          "status": "completed",
+          "error": null
+        },
+        {
+          "id": "close",
+          "status": "completed",
+          "error": null
+        }
+      ],
+      "events": [],
+      "restoredConnections": "- document:\n  - main:\n    - img \"Whiteboard canvas\":\n      - 'img \"note: A space to think together.\"': A space to think together.\n      - 'img \"note: Start with a question. Make the next move.\"': Start with a question. Make the next move.\n      - 'img \"Connector: Ready to build\"': Ready to build\n      - 'img \"text: Ideas start here\"': Ideas start here\n    - textbox \"Board name\": My first board\n    - button \"Board contents\"\n    - button\n    - navigation \"Creation tools\":\n      - button \"Formats and Flows\"\n      - button \"Select\" [pressed]\n      - button \"Pan\"\n      - button \"Sticky note\"\n      - button \"Text\"\n      - button \"Shapes and lines\"\n      - button \"Pen\"\n      - button \"Frame\"\n      - button \"Tools, media and integrations\"\n    - button \"Undo\" [disabled]\n    - button \"Redo\" [disabled]\n    - textbox \"Line color\": \"#334fd8\"\n    - combobox \"Connector path\":\n      - option \"Straight\"\n      - option \"Elbow\"\n      - option \"Curved\" [selected]\n    - combobox \"Line thickness\":\n      - option \"1 px\"\n      - option \"2 px\"\n      - option \"3 px\" [selected]\n      - option \"4 px\"\n      - option \"6 px\"\n      - option \"8 px\"\n      - option \"12 px\"\n    - combobox \"Line pattern\":\n      - option \"Solid\"\n      - option \"Dashed\" [selected]\n      - option \"Dotted\"\n    - combobox \"Start arrowhead\":\n      - 'option \"Start: None\"'\n      - 'option \"Start: Arrow\" [selected]'\n      - 'option \"Start: Open arrow\"'\n      - 'option \"Start: Circle\"'\n      - 'option \"Start: Diamond\"'\n    - combobox \"End arrowhead\":\n      - 'option \"End: None\"'\n      - 'option \"End: Arrow\"'\n      - 'option \"End: Open arrow\"'\n      - 'option \"End: Circle\"'\n      - 'option \"End: Diamond\" [selected]'\n    - button \"Connector details\"\n    - button \"Edit text\"\n    - button \"Duplicate\"\n    - button \"Bring to front\"\n    - button \"Send to back\"\n    - button \"Delete selection\"\n    - complementary \"Connector details\":\n      - heading \"Label and connections\" [level=2]\n      - button \"Close connector details\"\n      - text: Label\n      - textbox \"Connector label\": Ready to build\n      - text: Start connection\n      - combobox \"Start connection\":\n        - option \"Free endpoint\"\n        - option \"A space to think together. · 1\"\n        - option \"Start with a question. Make the next move. · 2\"\n        - option \"Ideas start here · 3\" [selected]\n      - text: End connection\n      - combobox \"End connection\":\n        - option \"Free endpoint\"\n        - option \"A space to think together. · 1\"\n        - option \"Start with a question. Make the next move. · 2\" [selected]\n        - option \"Ideas start here · 3\"\n      - paragraph: Drag either end to reconnect. Hold Alt to leave it free.\n      - button \"Cancel\"\n      - button \"Apply\"\n    - button \"Snap to objects\" [pressed]\n    - button \"Fit to screen\"\n    - button \"Zoom out\"\n    - button \"Reset zoom to 100 percent\": 56%\n    - button \"Zoom in\"\n    - button \"Keyboard shortcuts\""
+    }
+  ]
+}

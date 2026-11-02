@@ -1,0 +1,102 @@
+{
+  "date": "2026-11-02",
+  "evidence": "ev_2820651b75d6766f29276f499d3e48e7de9e3f0fd663978976c3e32c918cf73d",
+  "steps": [
+    {
+      "id": "scenario_start",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "tools",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "bulk",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "bulktext",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "bulkdone",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "tools2",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "mind",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "root",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "child",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "childtext",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "minddone",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "formats",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "table",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "record",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "kanban",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "timeline",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "recorddone",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "save",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "reload",
+      "status": "completed",
+      "error": null
+    }
+  ],
+  "events": []
+}

@@ -1,0 +1,578 @@
+/* Essential and facilitation widgets (items 21–23, 27–29, 43–44). */
+.widget-editor {
+  width: min(640px, 100%);
+}
+.widget-editor.wide {
+  width: min(940px, 100%);
+}
+.widget-editor-body {
+  padding: 18px 24px;
+  overflow: auto;
+}
+.w-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+.w-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #3f3f46;
+}
+.w-form .span2 {
+  grid-column: 1/-1;
+}
+.w-form input:not([type='color']):not([type='range']),
+.w-form select,
+.w-form textarea {
+  border: 1px solid #c5c5ce;
+  border-radius: 5px;
+  padding: 8px;
+  font: 13px Arial;
+  width: 100%;
+}
+.w-form textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+.w-form small {
+  color: #696973;
+  font-size: 11px;
+}
+.w-inline {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.w-row {
+  display: flex;
+  gap: 8px;
+}
+.w-row button,
+.w-grid-tools button {
+  border: 1px solid #e5e5eb;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+/* Card */
+.w-card {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #dcdce3;
+  border-left: 6px solid;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: Arial;
+  color: #25252c;
+  overflow: hidden;
+  box-shadow: 0 2px 6px #2424420d;
+}
+.w-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+.w-status {
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.w-estimate {
+  font-size: 10px;
+  background: #f0f0f4;
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: #3f3f46;
+}
+.w-card-title {
+  font-size: 15px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.w-card-desc {
+  font-size: 12px;
+  color: #52525b;
+  line-height: 1.4;
+  margin: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.w-card-meta {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  font-size: 11px;
+  color: #52525b;
+}
+.w-card-meta .overdue {
+  color: #ad2532;
+  font-weight: 600;
+}
+.w-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #4262ff;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+.w-tag {
+  background: #edf0ff;
+  color: #334fd8;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+/* Flip card */
+.w-flip {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 2px solid;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font: 16px/1.35 Arial;
+  color: #25252c;
+  overflow: hidden;
+  gap: 6px;
+}
+.w-flip small {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #52525b;
+}
+.w-flip {
+  position: relative;
+}
+.w-flip span {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* Grid */
+.w-grid-wrap {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+}
+.w-grid {
+  width: 100%;
+  height: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font: 13px/1.35 Arial;
+  color: #25252c;
+}
+.w-grid td {
+  border: 1px solid #b4b4bd;
+  padding: 6px 8px;
+  vertical-align: top;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.w-grid.align-center td {
+  text-align: center;
+}
+.w-grid.align-right td {
+  text-align: right;
+}
+.w-grid-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #52525b;
+}
+.w-grid-tools select {
+  border: 1px solid #c5c5ce;
+  border-radius: 5px;
+  padding: 5px;
+  font-size: 12px;
+}
+.w-grid-edit {
+  overflow: auto;
+  max-height: 52vh;
+}
+.w-grid-edit .w-grid {
+  height: auto;
+}
+.w-grid-edit td {
+  padding: 0;
+}
+.w-grid-edit textarea {
+  width: 100%;
+  min-height: 44px;
+  height: 100%;
+  border: 0;
+  padding: 6px 8px;
+  font: 13px Arial;
+  resize: vertical;
+  background: transparent;
+  box-sizing: border-box;
+  text-align: inherit;
+}
+.w-grid-edit textarea.current {
+  outline: 2px solid #4262ff;
+  outline-offset: -2px;
+}
+.w-grid-edit textarea.selected {
+  background: #4262ff1f;
+}
+
+/* Stamps, icons, QR */
+.w-stamp-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.w-stamp-grid button {
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  border: 1px solid #e5e5eb;
+}
+.w-stamp-grid button.active,
+.w-icon-grid button.active {
+  background: #edf0ff;
+  box-shadow: inset 0 0 0 2px #4262ff;
+}
+.w-icon-tools {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #52525b;
+}
+.w-icon-tools input:not([type='color']) {
+  flex: 1;
+  border: 1px solid #c5c5ce;
+  border-radius: 5px;
+  padding: 8px;
+  font-size: 13px;
+}
+.w-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  max-height: 48vh;
+  overflow: auto;
+}
+.w-icon-grid button {
+  height: 48px;
+  border-radius: 7px;
+}
+.w-qr-preview {
+  grid-column: 1/-1;
+  display: flex;
+  justify-content: center;
+  padding: 6px;
+}
+
+/* Matrix */
+.w-matrix {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  font-family: Arial;
+  color: #25252c;
+  background: #ffffffd9;
+  border: 1px solid #c5c5ce;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.w-matrix-title {
+  font-weight: 600;
+  font-size: 14px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e5eb;
+}
+.w-matrix-area {
+  position: relative;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  margin: 8px 8px 26px 30px;
+  border-left: 2px solid #52525b;
+  border-bottom: 2px solid #52525b;
+}
+.w-matrix .q {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  color: #3f3f46;
+}
+.w-matrix .q small {
+  font-size: 11px;
+  color: #8a8a94;
+}
+.w-matrix .q0 {
+  background: #a9e8bb26;
+  border-right: 1px dashed #c5c5ce;
+  border-bottom: 1px dashed #c5c5ce;
+}
+.w-matrix .q1 {
+  background: #a8cdff26;
+  border-bottom: 1px dashed #c5c5ce;
+  text-align: right;
+  align-items: flex-end;
+}
+.w-matrix .q2 {
+  background: #e4e4e740;
+  border-right: 1px dashed #c5c5ce;
+  justify-content: flex-end;
+}
+.w-matrix .q3 {
+  background: #ffb87926;
+  text-align: right;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+.w-matrix .axis-x {
+  position: absolute;
+  bottom: -22px;
+  right: 0;
+  font-size: 12px;
+  color: #52525b;
+}
+.w-matrix .axis-y {
+  position: absolute;
+  left: -26px;
+  top: 0;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 12px;
+  color: #52525b;
+}
+
+/* Poll */
+.w-poll {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #dcdce3;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: Arial;
+  color: #25252c;
+  overflow: hidden;
+}
+.w-poll strong {
+  font-size: 14px;
+}
+.w-poll ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+.w-poll li button {
+  position: relative;
+  width: 100%;
+  justify-content: space-between;
+  border: 1px solid #e5e5eb;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  overflow: hidden;
+  background: #fafafb;
+  cursor: pointer;
+}
+.w-poll .bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: #4262ff2e;
+  transition: width 0.25s;
+}
+.w-poll .label,
+.w-poll .count {
+  position: relative;
+}
+.w-poll .count {
+  font-weight: 700;
+}
+.w-poll small {
+  color: #8a8a94;
+  font-size: 11px;
+  margin-top: auto;
+}
+.w-options {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.w-options li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.w-options li input {
+  flex: 1;
+}
+.w-options .count {
+  min-width: 26px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+/* Spinner */
+.w-spinner {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #dcdce3;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: Arial;
+  overflow: hidden;
+}
+.w-wheel {
+  transform-origin: 0 0;
+  transform-box: view-box;
+}
+.w-spin-result {
+  font-size: 13px;
+  color: #3f3f46;
+}
+@media (prefers-reduced-motion: reduce) {
+  .w-wheel,
+  .w-poll .bar {
+    transition: none !important;
+  }
+}
+
+/* Scale */
+.w-scale {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #dcdce3;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: Arial;
+  color: #25252c;
+}
+.w-scale strong {
+  font-size: 14px;
+}
+.w-scale-track {
+  display: flex;
+  gap: 4px;
+  outline: none;
+  border-radius: 6px;
+}
+.w-scale-track:focus-visible {
+  outline: 2px solid #4262ff;
+  outline-offset: 3px;
+}
+.w-scale-track .w-scale-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 30px;
+  border-radius: 5px;
+  background: #f0f0f4;
+  font-size: 12px;
+  cursor: pointer;
+}
+.w-scale-track .w-scale-step.on {
+  background: #4262ff;
+  color: #fff;
+  font-weight: 700;
+}
+.w-scale-track input {
+  flex: 1;
+}
+.w-scale-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #696973;
+}
+.w-grid-styles {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  padding: 0 6px;
+  border-left: 1px solid #e5e5eb;
+  border-right: 1px solid #e5e5eb;
+}
+.w-grid-tools .w-grid-styles button {
+  padding: 5px 7px;
+}
+.w-grid-tools .w-grid-styles button.active {
+  background: #edf0ff;
+  color: #334fd8;
+  border-color: #c9d1ff;
+}
+.w-grid-edit textarea {
+  font-weight: inherit;
+  font-style: inherit;
+  color: inherit;
+}

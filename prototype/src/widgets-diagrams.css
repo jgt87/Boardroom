@@ -1,0 +1,334 @@
+/* Structured diagram widgets: org charts, story maps, auto-layout, mind-map canvas editing, estimates. */
+.diagram-editor.wide {
+  width: min(1180px, 100%);
+}
+.diagram-editor-body {
+  display: flex;
+  gap: 20px;
+  padding: 18px 24px;
+  overflow: auto;
+  flex: 1;
+  min-height: 320px;
+  flex-wrap: wrap;
+}
+.org-side {
+  width: 320px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.org-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 300px;
+  overflow: auto;
+}
+.org-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.org-list li:hover {
+  background: #f4f4f6;
+}
+.org-list li.active {
+  background: #edf0ff;
+}
+.org-list li.droppable {
+  outline: 1px dashed #a1a1aa;
+}
+.org-list li:focus-visible {
+  outline: 2px solid var(--blue);
+}
+.org-list small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.org-list em {
+  font-size: 10px;
+  color: var(--blue);
+  font-style: normal;
+}
+.org-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.org-fields input {
+  border: 1px solid #c5c5ce;
+  border-radius: 5px;
+  padding: 8px;
+  font-size: 13px;
+}
+.format-actions.wrap {
+  flex-wrap: wrap;
+}
+.format-actions.wrap button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 12px;
+}
+.org-live {
+  flex: 1;
+  min-width: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fafafb;
+  border-radius: 8px;
+}
+.org-preview .rich-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.story-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.story-toolbar > button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #25252c;
+}
+.story-selected {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: #25252c;
+}
+.story-selected input {
+  border: 1px solid #c5c5ce;
+  border-radius: 5px;
+  padding: 6px;
+  font-size: 12px;
+  width: 220px;
+}
+.story-grid {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  overflow: auto;
+  align-items: stretch;
+}
+.story-activity,
+.story-release {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #edf0ff;
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+.story-release {
+  background: #f4f4f6;
+  flex-wrap: wrap;
+}
+.story-activity input,
+.story-release input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: 600 12px Arial;
+  padding: 4px;
+}
+.story-activity small,
+.story-release small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.story-activity .icon-button,
+.story-release .icon-button {
+  width: 24px;
+  height: 24px;
+}
+.story-cell {
+  position: relative;
+  min-height: 84px;
+  border: 1px dashed #d4d4da;
+  border-radius: 6px;
+  padding: 6px 6px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.story-card {
+  background: #fff49b;
+  border-radius: 4px;
+  padding: 7px 8px;
+  font-size: 12px;
+  cursor: grab;
+  box-shadow: 0 1px 2px #0001;
+  overflow-wrap: anywhere;
+}
+.story-card.active {
+  box-shadow: 0 0 0 2px var(--blue);
+}
+.story-card.dragging {
+  opacity: 0.4;
+}
+.story-card:focus-visible {
+  outline: 2px solid var(--blue);
+}
+.story-placeholder {
+  font-size: 11px;
+  color: #6b6b76;
+  text-align: center;
+  padding: 10px 0;
+}
+.story-add {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  color: var(--muted);
+}
+.story-preview .story-mini {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  font-size: 11px;
+  overflow: hidden;
+  flex: 1;
+}
+.story-mini b {
+  background: #edf0ff;
+  border-radius: 4px;
+  padding: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.story-mini em {
+  font-style: normal;
+  color: var(--muted);
+  padding: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.story-mini div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.story-mini div span {
+  background: #fff49b;
+  border-radius: 3px;
+  padding: 3px 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.story-mini small {
+  color: var(--muted);
+}
+.gap-chip {
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 18px;
+  text-align: center;
+}
+.mind-style-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+.mind-style-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.mind-style-row select {
+  border: 1px solid #c5c5ce;
+  border-radius: 5px;
+  padding: 6px;
+  font-size: 12px;
+}
+.mind-style-row .check-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.mind-canvas-editor {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #ffffffee;
+  border-radius: 8px;
+  outline: 2px solid var(--blue);
+}
+.mind-canvas-editor svg {
+  display: block;
+}
+.mind-canvas-input {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #25252c;
+  border-radius: 9px;
+  padding: 0 10px;
+  font-family: Arial;
+  background: #fff;
+  color: #25252c;
+  outline: none;
+}
+.mind-canvas-hint {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  background: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.kanban-points {
+  margin-left: 6px;
+  background: #edf0ff;
+  color: #2a3fbf !important;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+}
+.records-preview tfoot td {
+  font-weight: 600;
+  background: #fafafb;
+}
+.points-input {
+  width: 70px !important;
+}
+@media (max-width: 600px) {
+  .diagram-editor-body {
+    padding: 12px;
+  }
+  .org-side {
+    width: 100%;
+  }
+}
