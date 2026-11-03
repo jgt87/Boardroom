@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
+import { mindViewport, type MindViewport } from './mindmap-bounds';
 import {
   X,
   Plus,
@@ -7,18 +8,9 @@ import {
   Table2,
   Columns3,
   CalendarRange,
-  Shapes,
   StickyNote,
   Search,
-  ImagePlus,
-  Code,
   Layers3,
-  Film,
-  GitFork,
-  ClipboardList,
-  Users,
-  LayoutTemplate,
-  MonitorSmartphone,
   SquareStack,
   FlipHorizontal2,
   Grid3x3,
@@ -43,8 +35,36 @@ import {
   Cloud,
   ListOrdered,
   CircleHelp,
+  Pencil,
+  Type,
+  Frame as FrameIcon,
+  MessageSquare,
+  LayoutTemplate,
+  Presentation,
+  Square,
+  Accessibility,
+  Upload,
+  Code,
+  ImagePlus,
 } from 'lucide-react';
 const kindIcons: Record<string, typeof Layers3> = {
+  drawio: Workflow,
+  mindmap: Network,
+  code: Code,
+  image: ImagePlus,
+  stack: Layers3,
+  pen: Pencil,
+  text: Type,
+  frame: FrameIcon,
+  comment: MessageSquare,
+  note: StickyNote,
+  templates: LayoutTemplate,
+  slides: Presentation,
+  rectangle: Square,
+  layers: Layers3,
+  a11y: Accessibility,
+  'submenu:engage': Vote,
+  'submenu:upload': Upload,
   card: SquareStack,
   flipcard: FlipHorizontal2,
   grid: Grid3x3,
@@ -71,13 +91,26 @@ const kindIcons: Record<string, typeof Layers3> = {
   ranking: ListOrdered,
   quiz: CircleHelp,
 };
-import { widgetSpecs } from './widget-specs';
+import { catalog, toolCategories } from './tool-catalog';
+import type { CatalogEntry } from './tool-catalog';
 import { wireframeComponents } from './specs-media';
 import { clone, removeBranch } from './model';
 import type { Board, Item, Kind, MindNode, RecordRow } from './model';
 import { KanbanView, TimelineView } from './record-views';
+import { schemaOf } from './record-schema';
 import { addDependency, removeDependency, deleteRecord, setMilestone, recordsError } from './records';
-import { mindLayout, mindBranchPath, mindBranchColor, mindStyleOf, MIND_NODE_W, MIND_NODE_H } from './mindmap-style';
+import {
+  mindLayout,
+  mindBranchPath,
+  mindBranchColor,
+  mindStyleOf,
+  mindLabelLines,
+  MIND_NODE_W,
+  MIND_COL,
+  MIND_ROW,
+  manualMindNodes,
+  MIND_NODE_H,
+} from './mindmap-style';
 import type { MindStyle } from './mindmap-style';
 import { mermaidToNative } from './mermaid-native';
 
@@ -136,17 +169,25 @@ export { mindLayout as layout } from './mindmap-style';
 export function MindPreview({
   nodes,
   style = { branchStyle: 'curved', colorful: false },
+  viewport,
 }: {
   nodes: MindNode[];
   style?: MindStyle;
+  viewport?: MindViewport;
 }) {
-  const positions = mindLayout(nodes),
+  const positions = mindLayout(nodes, style.autoLayout ?? true),
+    minX = Math.min(0, ...[...positions.values()].map(p => p.x)),
+    minY = Math.min(0, ...[...positions.values()].map(p => p.y)),
     maxX = Math.max(0, ...[...positions.values()].map(p => p.x)),
     maxY = Math.max(0, ...[...positions.values()].map(p => p.y));
   return (
     <svg
       className="mind-preview"
-      viewBox={`-8 -8 ${maxX + MIND_NODE_W + 16} ${maxY + MIND_NODE_H + 22}`}
+      viewBox={
+        viewport
+          ? `${viewport.x} ${viewport.y} ${viewport.w} ${viewport.h}`
+          : `${minX - 8} ${minY - 8} ${maxX - minX + MIND_NODE_W + 16} ${maxY - minY + MIND_NODE_H + 22}`
+      }
       aria-label="Mind map diagram"
     >
       {nodes.map(n => {
@@ -168,8 +209,17 @@ export function MindPreview({
                 fill={n.parent ? (style.colorful ? color + '22' : '#edf0ff') : '#4262ff'}
                 stroke={n.parent && style.colorful ? color : 'none'}
               />
-              <text x={p.x + 12} y={p.y + 29} fill={n.parent ? '#25252c' : '#ffffff'} fontSize="14">
-                {n.text.length > 22 ? n.text.slice(0, 21) + '…' : n.text || 'Untitled topic'}
+              <text
+                x={p.x + 12}
+                y={p.y + 29 - (mindLabelLines(n.text).length - 1) * 8}
+                fill={n.parent ? '#25252c' : '#ffffff'}
+                fontSize={mindLabelLines(n.text).length > 2 ? 11 : 14}
+              >
+                {mindLabelLines(n.text).map((line, k) => (
+                  <tspan key={k} x={p.x + 12} dy={k ? 16 : 0}>
+                    {line}
+                  </tspan>
+                ))}
               </text>
             </g>
           )
@@ -178,7 +228,6 @@ export function MindPreview({
     </svg>
   );
 }
-const statuses: RecordRow['status'][] = ['Not started', 'In progress', 'Complete'];
 export function RecordsPreview({ rows, view }: { rows: RecordRow[]; view: string }) {
   if (view === 'kanban') return <KanbanView rows={rows} limit={4} />;
   if (view === 'timeline') return <TimelineView rows={rows.slice(0, 8)} />;
@@ -219,7 +268,9 @@ export function RecordsPreview({ rows, view }: { rows: RecordRow[]; view: string
 }
 export function RichPreview({ item, board }: { item: Item; board: Board }) {
   return (
-    <div className="rich-object">
+    <div
+      className={`rich-object ${item.type === 'mindmap' && item.data?.autoLayout === false ? 'mind-manual-object' : ''}`}
+    >
       <div className="rich-title">
         {item.type === 'mermaid'
           ? 'Diagram'
@@ -232,7 +283,11 @@ export function RichPreview({ item, board }: { item: Item; board: Board }) {
         {item.type === 'mermaid' ? (
           <MermaidPreview code={item.text} />
         ) : item.type === 'mindmap' ? (
-          <MindPreview nodes={item.nodes ?? []} style={mindStyleOf(item)} />
+          <MindPreview
+            nodes={item.nodes ?? []}
+            style={mindStyleOf(item)}
+            viewport={item.data?.autoLayout === false ? mindViewport(item) : undefined}
+          />
         ) : (
           <RecordsPreview rows={board.datasets?.[item.datasetId!] ?? []} view={item.type} />
         )}
@@ -240,17 +295,6 @@ export function RichPreview({ item, board }: { item: Item; board: Board }) {
     </div>
   );
 }
-const galleryCategories = [
-  { id: 'Formats', icon: Shapes },
-  { id: 'Essentials', icon: StickyNote },
-  { id: 'Media', icon: Film },
-  { id: 'Diagramming', icon: GitFork },
-  { id: 'Planning', icon: ClipboardList },
-  { id: 'Collaboration', icon: Users },
-  { id: 'Wireframes', icon: LayoutTemplate },
-  { id: 'Prototyping', icon: MonitorSmartphone },
-] as const;
-type GalleryCategory = (typeof galleryCategories)[number]['id'];
 export function ToolGallery({
   initial,
   onClose,
@@ -262,125 +306,141 @@ export function ToolGallery({
   onChoose: (kind: string) => void;
   onPrimitive: (kind: Kind) => void;
 }) {
-  const [category, setCategory] = useState<GalleryCategory>(initial),
-    [query, setQuery] = useState('');
-  const fromSpecs = widgetSpecs
-    .filter(sp => !sp.hiddenInGallery && sp.category === category)
-    .map(sp => ({
-      label: sp.label,
-      description: sp.description,
-      kind: sp.kind as string,
-      icon: kindIcons[sp.kind] ?? Layers3,
-    }));
-  const wireframes =
-    category === 'Wireframes'
-      ? wireframeComponents.map(c => ({
-          label: c.label,
-          description: 'Wireframe component',
-          kind: `wf:${c.component}`,
-          icon: LayoutTemplate,
-        }))
-      : [];
-  const entries =
-    category !== 'Formats' && category !== 'Essentials'
-      ? [...fromSpecs, ...wireframes]
-      : category === 'Formats'
-        ? [
-            {
-              label: 'Diagram',
-              description: 'Build free-form diagrams or create with Mermaid code',
-              kind: 'mermaid',
-              icon: Network,
-            },
-            { label: 'Table', description: 'Structure your data using a table', kind: 'table', icon: Table2 },
-            {
-              label: 'Timeline',
-              description: 'Plan your work using a timeline',
-              kind: 'timeline',
-              icon: CalendarRange,
-            },
-            {
-              label: 'Kanban',
-              description: 'Visualize your workflows with multi-view options',
-              kind: 'kanban',
-              icon: Columns3,
-            },
-          ]
-        : [
-            { label: 'Sticky note', description: 'Capture an idea on canvas', kind: 'note', icon: StickyNote },
-            {
-              label: 'Bulk mode',
-              description: 'Create multiple sticky notes in one go',
-              kind: 'bulk',
-              icon: StickyNote,
-            },
-            { label: 'Mind map', description: 'Create mind maps on canvas', kind: 'mindmap', icon: Network },
-            {
-              label: 'Image',
-              description: 'Upload an image. You can also drop or paste one on the canvas',
-              kind: 'image',
-              icon: ImagePlus,
-            },
-            { label: 'Code', description: 'Add a code block with syntax highlighting', kind: 'code', icon: Code },
-            {
-              label: 'Sticky stack',
-              description: 'Click repeatedly to add notes in a tidy column',
-              kind: 'stack',
-              icon: StickyNote,
-            },
-            ...fromSpecs,
-          ];
+  const [category, setCategory] = useState<string>(initial),
+    [query, setQuery] = useState(''),
+    [sub, setSub] = useState<string | null>(null);
+  const isFormats = initial === 'Formats';
+  const submenus: Record<string, CatalogEntry[]> = {
+    diagram: [
+      { label: 'Shapes and lines', kind: 'rectangle', description: 'Build a diagram on the canvas' },
+      { label: 'Build with Mermaid code', kind: 'mermaid', description: 'Create a diagram from code' },
+      { label: 'Draw.io Diagrams', kind: 'drawio', description: 'Create or import an editable technical diagram' },
+      { label: 'Mind map', kind: 'mindmap', description: 'Organize connected ideas' },
+    ],
+    engage: catalog['Engage activities'],
+    images: [
+      { label: 'Upload image', kind: 'image', description: 'Choose an image from your device' },
+      { label: 'Icons', kind: 'icon', description: 'Search icons' },
+      { label: 'Emoji and stamps', kind: 'stamp', description: 'Choose an emoji or stamp' },
+    ],
+    upload: [
+      { label: 'Image', kind: 'image', description: '' },
+      { label: 'Video', kind: 'video', description: '' },
+      { label: 'PDF', kind: 'pdf', description: '' },
+    ],
+    wireframes: wireframeComponents.map(c => ({
+      label: c.label,
+      kind: 'wf:' + c.component,
+      description: 'Wireframe component',
+    })),
+  };
+  const available = sub
+    ? (submenus[sub] ?? [])
+    : query.trim()
+      ? Object.values(catalog)
+          .flat()
+          .filter((e, k, a) => a.findIndex(x => x.kind === e.kind) === k)
+      : (catalog[category] ?? []);
+  const entries = available.filter(e => (e.label + ' ' + e.description).toLowerCase().includes(query.toLowerCase()));
+  const pick = (entry: CatalogEntry) => {
+    if (entry.kind.startsWith('submenu:')) {
+      setSub(entry.kind.slice(8));
+      setQuery('');
+      return;
+    }
+    if (['note', 'text', 'pen', 'frame', 'rectangle'].includes(entry.kind)) onPrimitive(entry.kind as Kind);
+    else onChoose(entry.kind);
+  };
   return (
-    <aside className="tool-gallery floating" aria-label="Tools, media and integrations">
+    <aside
+      className={'tool-gallery floating ' + (isFormats ? 'formats-menu' : '')}
+      aria-label={isFormats ? 'Formats and Flows' : 'Tools, media and integrations'}
+    >
       <div className="panel-heading">
-        <h2>{category === 'Formats' ? 'Formats and Flows' : 'Tools'}</h2>
+        <h2>
+          {sub ? (
+            <button
+              onClick={() => {
+                setSub(null);
+                setQuery('');
+              }}
+            >
+              Back
+            </button>
+          ) : isFormats ? (
+            'Formats and Flows'
+          ) : (
+            'Tools, Media and Integrations'
+          )}
+        </h2>
         <button className="icon-button" aria-label="Close tools" onClick={onClose}>
           <X size={18} />
         </button>
       </div>
-      <label className="gallery-search">
-        <Search size={17} />
-        <input
-          aria-label="Search tools"
-          placeholder="Search tools"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-        />
-      </label>
+      {!isFormats && (
+        <label className="gallery-search">
+          <Search size={17} />
+          <input
+            aria-label="Search tools"
+            placeholder="Search tools"
+            value={query}
+            onChange={e => {
+              setQuery(e.target.value);
+              setSub(null);
+            }}
+          />
+        </label>
+      )}
       <div className="gallery-layout">
-        <nav aria-label="Tool categories">
-          {galleryCategories.map(c => (
-            <button
-              key={c.id}
-              className={category === c.id ? 'active' : ''}
-              aria-pressed={category === c.id}
-              onClick={() => {
-                setCategory(c.id);
-                setQuery('');
-              }}
-            >
-              <c.icon size={17} />
-              <span>{c.id}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="gallery-items">
-          <h3>{category}</h3>
-          {entries
-            .filter(e => (e.label + ' ' + e.description).toLowerCase().includes(query.toLowerCase()))
-            .map(e => (
-              <button key={e.kind} onClick={() => (e.kind === 'note' ? onPrimitive('note') : onChoose(e.kind))}>
-                <e.icon size={25} />
-                <span>
-                  <strong>{e.label}</strong>
-                  <small>{e.description}</small>
-                </span>
+        {!isFormats && (
+          <nav aria-label="Tool categories">
+            {toolCategories.map(c => (
+              <button
+                key={c}
+                className={category === c && !sub ? 'active' : ''}
+                aria-pressed={category === c && !sub}
+                onClick={() => {
+                  setCategory(c);
+                  setSub(null);
+                  setQuery('');
+                }}
+              >
+                <span>{c}</span>
               </button>
             ))}
-          {!entries.some(e => (e.label + ' ' + e.description).toLowerCase().includes(query.toLowerCase())) && (
-            <p>No matching tools.</p>
-          )}
-          <p className="gallery-footnote">Implemented tools in this local prototype.</p>
+          </nav>
+        )}
+        <div className="gallery-items">
+          {!isFormats && !sub && <h3>{category}</h3>}
+          {entries.map(entry => {
+            const Icon =
+              kindIcons[entry.kind] ??
+              (entry.kind === 'mermaid' || entry.kind === 'submenu:diagram'
+                ? Network
+                : entry.kind === 'table'
+                  ? Table2
+                  : entry.kind === 'timeline'
+                    ? CalendarRange
+                    : entry.kind === 'kanban'
+                      ? Columns3
+                      : entry.kind === 'note'
+                        ? StickyNote
+                        : Layers3);
+            return (
+              <button key={entry.kind} disabled={entry.unavailable} onClick={() => pick(entry)}>
+                <Icon size={22} />
+                <span>
+                  <strong>{entry.label}</strong>
+                  {!isFormats && (
+                    <small>{entry.description || (entry.unavailable ? 'Not available' : 'Click to choose')}</small>
+                  )}
+                  {isFormats && entry.unavailable && <small>Not available</small>}
+                </span>
+                {entry.kind.startsWith('submenu:') && <span aria-hidden="true">›</span>}
+              </button>
+            );
+          })}
+          {!entries.length && <p>No matching tools.</p>}
         </div>
       </div>
     </aside>
@@ -401,6 +461,7 @@ export function FormatEditor({
   onReplace?: (items: Item[], notes: string[]) => void;
 }) {
   const [convertError, setConvertError] = useState('');
+  const statuses = schemaOf(board, item.datasetId ?? '').statuses;
   const [draft, setDraft] = useState(() => clone(item)),
     [rows, setRows] = useState(() => clone(board.datasets?.[item.datasetId!] ?? [])),
     [rowError, setRowError] = useState(''),
@@ -420,10 +481,14 @@ export function FormatEditor({
     records = ['table', 'kanban', 'timeline'].includes(draft.type);
   const addNode = (sibling = false) => {
     if (nodes.length >= 200 || !chosen) return;
+    const p = mindLayout(nodes, mindStyleOf(draft).autoLayout ?? true).get(chosen.id)!;
     const n = {
       id: crypto.randomUUID(),
       parent: sibling && chosen.parent ? chosen.parent : chosen.id,
       text: 'New topic',
+      ...(mindStyleOf(draft).autoLayout === false
+        ? { position: { x: Math.min(100000, p.x + (sibling ? 0 : MIND_COL)), y: Math.min(100000, p.y + MIND_ROW) } }
+        : {}),
     };
     setDraft({ ...draft, nodes: [...nodes, n] });
     setActive(n.id);
@@ -557,6 +622,21 @@ export function FormatEditor({
                 to edit topics in place.
               </p>
               <div className="mind-style-row">
+                <label className="check-inline">
+                  <input
+                    type="checkbox"
+                    aria-label="Automatic topic layout"
+                    checked={mindStyleOf(draft).autoLayout !== false}
+                    onChange={e => {
+                      setDraft({
+                        ...draft,
+                        data: { ...draft.data, autoLayout: e.target.checked },
+                        ...(!e.target.checked ? { nodes: manualMindNodes(nodes) } : {}),
+                      });
+                    }}
+                  />
+                  Auto layout
+                </label>
                 <label>
                   Branches
                   <select
@@ -681,7 +761,7 @@ export function FormatEditor({
                     {
                       id: crypto.randomUUID(),
                       title: 'New task',
-                      status: 'Not started',
+                      status: statuses[0],
                       assignee: '',
                       start: '',
                       end: '',
@@ -695,6 +775,7 @@ export function FormatEditor({
             </div>
             {draft.type === 'kanban' && (
               <KanbanView
+                columns={statuses}
                 rows={visible}
                 allRows={rows}
                 onRows={next => {

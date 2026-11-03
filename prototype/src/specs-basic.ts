@@ -5,6 +5,7 @@ import { validateGrid, newGrid, gridText } from './grid.ts';
 import type { GridData } from './grid.ts';
 import { QR_MAX } from './qr.ts';
 import { cardStatuses, tshirtSizes, isIsoDate } from './facilitation-widgets.ts';
+import { isValidEmojiValue } from './emoji-data.ts';
 import type { PollData, SpinnerData, ScaleData, MatrixData } from './facilitation-widgets.ts';
 
 export const stampKinds = ['check', 'cross', 'star', 'thumbsup', 'question', 'heart', 'flag', 'warning'] as const;
@@ -40,10 +41,12 @@ export const basicSpecs: WidgetSpec[] = [
       const x = d(i);
       if (
         !str(x.description, 6000) ||
-        !str(x.assignee, 200) ||
+        !str(x.assignee, 6000) ||
         !str(x.due, 10) ||
         (x.due && !isIsoDate(x.due)) ||
-        !(cardStatuses as readonly string[]).includes(x.status)
+        !str(x.status, 80) ||
+        !x.status.trim() ||
+        (!i.recordRef && !(cardStatuses as readonly string[]).includes(x.status))
       )
         fail('Invalid card details.');
       if (x.points !== undefined && !num(x.points, 0, 1000)) fail('Story points must be between 0 and 1,000.');
@@ -99,7 +102,10 @@ export const basicSpecs: WidgetSpec[] = [
     size: [72, 72],
     init: i => withData(i, { stamp: 'check' }, { fill: '#2c9f5b' }),
     validate: i => {
-      if (!(stampKinds as readonly string[]).includes(d(i).stamp)) fail('Unknown stamp.');
+      const s = d(i);
+      if (s.stamp === 'emoji') {
+        if (!isValidEmojiValue(s.emoji)) fail('Invalid emoji stamp.');
+      } else if (!(stampKinds as readonly string[]).includes(s.stamp)) fail('Unknown stamp.');
     },
   },
   {

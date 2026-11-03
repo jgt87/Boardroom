@@ -64,7 +64,7 @@ export function snapMove(
   disabled = false,
   constrain = false,
 ): { delta: Point; guides: Guide[] } {
-  let next = { ...delta };
+  const next = { ...delta };
   const lock = constrain ? (Math.abs(next.x) >= Math.abs(next.y) ? 'y' : 'x') : null;
   if (lock) next[lock] = 0;
   const b = selectionBounds(board.items, ids),

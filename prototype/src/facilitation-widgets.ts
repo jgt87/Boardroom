@@ -4,7 +4,7 @@
 import type { Board, Item } from './model.ts';
 
 export const cardStatuses = ['Not started', 'In progress', 'Complete'] as const;
-export type CardStatus = (typeof cardStatuses)[number];
+export type CardStatus = string;
 export const tshirtSizes = ['XS', 'S', 'M', 'L', 'XL'] as const;
 export type CardData = {
   description: string;

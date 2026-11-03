@@ -3,6 +3,9 @@
 import type { Board, Item, RecordRow } from './model.ts';
 import { normalizeNoteLink } from './model.ts';
 import { recordsError } from './records.ts';
+import { schemaOf, validateRecordSchema, validateRecordValues } from './record-schema.ts';
+import type { GridData } from './grid.ts';
+import { validateRecordView } from './record-query.ts';
 import { framePresets } from './frame-presets.ts';
 import { codeLanguages } from './code-languages.ts';
 import { validateWidget } from './widget-specs.ts';
@@ -115,7 +118,42 @@ export function validateExtensions(b: Board): void {
     throw new Error('Invalid private mode.');
   const groups = new Set(b.groups?.map(g => g.id));
   for (const i of b.items) validateItem(i, groups);
-  for (const rows of Object.values(b.datasets ?? {})) validateRows(rows);
+  if (
+    b.recordSchemas !== undefined &&
+    (!b.recordSchemas ||
+      typeof b.recordSchemas !== 'object' ||
+      Array.isArray(b.recordSchemas) ||
+      Object.keys(b.recordSchemas).length > 2000 ||
+      Object.keys(b.recordSchemas).some(id => !Object.hasOwn(b.datasets ?? {}, id)))
+  )
+    throw new Error('Invalid record schemas.');
+  for (const [id, rows] of Object.entries(b.datasets ?? {})) {
+    validateRows(rows);
+    const schema = schemaOf(b, id);
+    validateRecordSchema(schema);
+    validateRecordValues(rows, schema);
+  }
+  const contained = new Set<string>();
+  for (const i of b.items)
+    if (i.recordView !== undefined) {
+      if (!['table', 'kanban', 'timeline'].includes(i.type) || !i.datasetId)
+        throw new Error('Invalid record view owner.');
+      validateRecordView(i.recordView, schemaOf(b, i.datasetId));
+    }
+  for (const grid of b.items.filter(i => i.type === 'grid'))
+    for (const o of (grid.data as GridData).objects ?? []) {
+      const child = b.items.find(i => i.id === o.id);
+      if (!child || child.type === 'grid' || child.locked || child.group || contained.has(o.id))
+        throw new Error('Invalid Grid content.');
+      contained.add(o.id);
+    }
+  for (const i of b.items)
+    if (
+      i.recordGroup !== undefined &&
+      (typeof i.recordGroup !== 'string' ||
+        !schemaOf(b, i.datasetId ?? '').fields.some(f => f.id === i.recordGroup && f.type === 'select'))
+    )
+      throw new Error('Invalid record grouping field.');
 }
 
 function validateItem(i: Item, groups: Set<string>): void {
@@ -163,7 +201,11 @@ function validateItem(i: Item, groups: Set<string>): void {
     throw new Error('Invalid image crop.');
   if (
     i.emoji !== undefined &&
-    (typeof i.emoji !== 'string' || !i.emoji || i.emoji.length > 16 || /[\u0000-\u001f<>]/.test(i.emoji))
+    (typeof i.emoji !== 'string' ||
+      !i.emoji ||
+      i.emoji.length > 32 ||
+      /[<>]/.test(i.emoji) ||
+      [...i.emoji].some(ch => ch.charCodeAt(0) < 32))
   )
     throw new Error('Invalid sticky note marker.');
   if (
@@ -210,6 +252,8 @@ function validateItem(i: Item, groups: Set<string>): void {
 
 function validateRows(rows: RecordRow[]): void {
   for (const r of rows) {
+    if (r.description !== undefined && (typeof r.description !== 'string' || r.description.length > 6000))
+      throw new Error('Invalid record description.');
     if (r.milestone !== undefined && typeof r.milestone !== 'boolean') throw new Error('Invalid milestone.');
     if (
       r.dependsOn !== undefined &&

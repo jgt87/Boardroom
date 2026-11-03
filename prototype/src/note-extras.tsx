@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Board, Item } from './model';
-import { noteEmojis, datasetChoices } from './notes';
+import { datasetChoices } from './notes';
 import type { ConversionTarget } from './notes';
 import { shapeKinds, shapeLabels } from './shapes';
 import type { ShapeKind } from './shapes';
@@ -21,70 +21,8 @@ export function EmojiBadge({ item }: { item: Item }) {
   );
 }
 
-/** Anchored emoji grid. Arrow keys move between emojis; Enter/Space chooses. */
-export function EmojiPicker({
-  current,
-  onChoose,
-  onClose,
-}: {
-  current?: string;
-  onChoose: (emoji: string | undefined) => void;
-  onClose: () => void;
-}) {
-  const grid = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const prior = document.activeElement as HTMLElement;
-    (
-      (grid.current?.querySelector('[aria-pressed=true]') as HTMLElement) ?? grid.current?.querySelector('button')
-    )?.focus();
-    return () => {
-      if (prior?.isConnected) prior.focus();
-    };
-  }, []);
-  const keys = (e: React.KeyboardEvent) => {
-    e.stopPropagation();
-    if (e.key === 'Escape') {
-      onClose();
-      return;
-    }
-    const buttons = [...(grid.current?.querySelectorAll<HTMLButtonElement>('button') ?? [])],
-      index = buttons.indexOf(document.activeElement as HTMLButtonElement),
-      step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 6, ArrowUp: -6 }[e.key];
-    if (step && index >= 0) {
-      e.preventDefault();
-      buttons[Math.max(0, Math.min(buttons.length - 1, index + step))].focus();
-    }
-  };
-  return (
-    <aside className="emoji-picker floating" aria-label="Note marker" onKeyDown={keys}>
-      <div className="panel-heading">
-        <h2>Marker</h2>
-        <button className="icon-button" aria-label="Close marker picker" onClick={onClose}>
-          <X size={17} />
-        </button>
-      </div>
-      <div ref={grid} className="emoji-grid" role="group" aria-label="Emoji">
-        {noteEmojis.map(e => (
-          <button
-            key={e}
-            aria-label={`Use ${e}`}
-            aria-pressed={current === e}
-            className={current === e ? 'active' : ''}
-            onClick={() => onChoose(e)}
-          >
-            {e}
-          </button>
-        ))}
-      </div>
-      <div className="note-details-actions">
-        <button disabled={!current} onClick={() => onChoose(undefined)}>
-          Remove marker
-        </button>
-      </div>
-      <p>Markers are saved with this note on this board. They are not shared reactions.</p>
-    </aside>
-  );
-}
+/** Full emoji picker (categories, search, skin tones, recent); see emoji-picker.tsx. */
+export { EmojiPicker } from './emoji-picker';
 
 /** Choose what a sticky note becomes. Conversion is a single undoable change. */
 export function ConvertPanel({

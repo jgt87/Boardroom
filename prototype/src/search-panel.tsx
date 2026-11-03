@@ -1,9 +1,23 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X, ChevronUp, ChevronDown } from 'lucide-react';
 import type { Board } from './model';
-import { searchBoard } from './navigation';
+import { searchBoard, isFuzzy } from './navigation';
+import { useLatest } from './use-latest';
 import type { SearchResult } from './navigation';
 
+/** Snippet text with the matched ranges wrapped in <mark>. */
+function Highlighted({ text, ranges }: { text: string; ranges: [number, number][] }) {
+  const parts: React.ReactNode[] = [];
+  let at = 0;
+  for (const [s, e] of [...ranges].sort((a, b) => a[0] - b[0])) {
+    if (s < at || e <= s) continue;
+    if (s > at) parts.push(text.slice(at, s));
+    parts.push(<mark key={s}>{text.slice(s, e)}</mark>);
+    at = e;
+  }
+  if (at < text.length) parts.push(text.slice(at));
+  return <>{parts}</>;
+}
 const fieldLabel: Record<SearchResult['field'], string> = {
   text: 'Text',
   label: 'Connector label',
@@ -30,19 +44,23 @@ export function SearchPanel({
     list = useRef<HTMLOListElement>(null);
   const results = useMemo(() => searchBoard(board, query, 500, exclude), [board, query, exclude]),
     current = results[Math.min(index, results.length - 1)];
+  const matchesRef = useLatest(onMatches),
+    currentId = current?.id ?? null;
   useEffect(() => {
     input.current?.focus();
-    return () => onMatches([], null);
-  }, []);
+    // The latest callback is wanted at unmount (it clears the canvas highlights).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => matchesRef.current([], null);
+  }, [matchesRef]);
   useEffect(() => {
-    onMatches(
+    matchesRef.current(
       results.map(r => r.id),
-      current?.id ?? null,
+      currentId,
     );
-  }, [results, current?.id]);
+  }, [results, currentId, matchesRef]);
   useEffect(() => {
     if (index >= results.length && results.length) setIndex(results.length - 1);
-  }, [results.length]);
+  }, [index, results.length]);
   useEffect(() => {
     list.current?.querySelector('[aria-selected=true]')?.scrollIntoView({ block: 'nearest' });
   }, [index]);
@@ -118,26 +136,33 @@ export function SearchPanel({
       </div>
       {query.trim() !== '' &&
         (results.length ? (
-          <ol ref={list} id="search-results" role="listbox" aria-label="Search results" className="search-results">
-            {results.slice(0, 200).map((r, i) => (
-              <li
-                key={r.id}
-                id={`result-${r.id}`}
-                role="option"
-                aria-selected={r === current}
-                className={r === current ? 'current' : ''}
-                onClick={() => go(i)}
-              >
-                <span>{r.snippet || 'Untitled'}</span>
-                <small>
-                  {fieldLabel[r.field]} · {r.type}
-                </small>
-              </li>
-            ))}
-            {results.length > 200 && (
-              <li className="search-more">Showing the first 200 results. Refine the search to narrow them down.</li>
+          <>
+            {isFuzzy(results[0]) && (
+              <p className="search-fuzzy" role="note">
+                Showing closest matches
+              </p>
             )}
-          </ol>
+            <ol ref={list} id="search-results" role="listbox" aria-label="Search results" className="search-results">
+              {results.slice(0, 200).map((r, i) => (
+                <li
+                  key={r.id}
+                  id={`result-${r.id}`}
+                  role="option"
+                  aria-selected={r === current}
+                  className={r === current ? 'current' : ''}
+                  onClick={() => go(i)}
+                >
+                  <span>{r.snippet ? <Highlighted text={r.snippet} ranges={r.ranges} /> : 'Untitled'}</span>
+                  <small>
+                    {fieldLabel[r.field]} · {r.type}
+                  </small>
+                </li>
+              ))}
+              {results.length > 200 && (
+                <li className="search-more">Showing the first 200 results. Refine the search to narrow them down.</li>
+              )}
+            </ol>
+          </>
         ) : (
           <p className="search-empty">Nothing on this board matches “{query.trim()}”.</p>
         ))}

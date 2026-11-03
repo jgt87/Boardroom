@@ -3,6 +3,7 @@ import { X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Play } from 'lucide-r
 import type { Board, Item, FrameFormat } from './model';
 import { framePresets, presetSize } from './frame-presets';
 import { presentationFrames, fitFrame } from './navigation';
+import { useLatest } from './use-latest';
 import type { Camera } from './navigation';
 
 /** Frame format controls in the selection bar: preset, orientation and custom size. */
@@ -199,13 +200,17 @@ export function PresentOverlay({
     [index, setIndex] = useState(start),
     exit = useRef<HTMLButtonElement>(null);
   const safe = Math.min(index, frames.length - 1),
-    frame = frames[safe];
+    frame = frames[safe],
+    exitRef = useLatest(onExit),
+    cameraRef = useLatest(onCamera),
+    frameRef = useLatest(frame),
+    frameKey = frame ? [frame.id, frame.x, frame.y, frame.w, frame.h].join('|') : '';
   useEffect(() => {
-    if (!frames.length) onExit();
-  }, [frames.length]);
+    if (!frames.length) exitRef.current();
+  }, [frames.length, exitRef]);
   useEffect(() => {
-    if (frame) onCamera(fitFrame(frame, size));
-  }, [frame?.id, frame?.x, frame?.y, frame?.w, frame?.h, size.w, size.h]);
+    if (frameRef.current) cameraRef.current(fitFrame(frameRef.current, { w: size.w, h: size.h }));
+  }, [frameKey, size.w, size.h, frameRef, cameraRef]);
   useEffect(() => {
     exit.current?.focus();
   }, []);
@@ -232,12 +237,12 @@ export function PresentOverlay({
       } else if (e.key === 'Escape') {
         e.preventDefault();
         e.stopImmediatePropagation();
-        onExit();
+        exitRef.current();
       } else e.stopImmediatePropagation();
     };
     addEventListener('keydown', key, true);
     return () => removeEventListener('keydown', key, true);
-  }, [frames.length]);
+  }, [frames.length, exitRef]);
   if (!frame) return null;
   return (
     <div

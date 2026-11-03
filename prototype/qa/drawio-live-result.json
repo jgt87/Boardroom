@@ -1,0 +1,20 @@
+{
+  "date": "2026-11-03T13:27:48.489Z",
+  "status": "limited",
+  "events": [],
+  "errors": [],
+  "failedRequests": [
+    {
+      "url": "https://embed.diagrams.net/",
+      "error": "net::ERR_NETWORK_ACCESS_DENIED"
+    }
+  ],
+  "error": "TimeoutError: page.waitForFunction: Timeout 45000ms exceeded.",
+  "alert": [
+    "The online editor could not connect. Retry, or import a .drawio file and save its source."
+  ],
+  "frames": [
+    "http://127.0.0.1:5173/",
+    "chrome-error://chromewebdata/"
+  ]
+}

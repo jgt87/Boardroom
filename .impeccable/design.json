@@ -325,6 +325,11 @@
         "name": "format-focus",
         "value": "0 20px 80px #0003",
         "purpose": "Focus editor above the dimmed canvas."
+      },
+      {
+        "name": "drawio-focus",
+        "value": "0 18px 60px #25252c26",
+        "purpose": "Draw.io focus editor above the dimmed canvas."
       }
     ],
     "breakpoints": [
@@ -410,9 +415,9 @@
       "css": ".ds-demo{font:14px Arial,Helvetica,sans-serif;color:#25252c;background:white;border:1px solid #e5e5eb;border-radius:12px;padding:16px;box-shadow:0 3px 12px #2424420b,0 1px 3px #24244206}.ds-demo button{font:13px Arial;border:0;border-radius:7px;background:white;padding:10px;cursor:pointer}.ds-demo button:hover{background:#f1f1f5}.ds-demo button:focus-visible,.ds-demo select:focus-visible{outline:2px solid #4262ff;outline-offset:2px}.ds-demo .ds-active{background:#edf0ff;color:#334fd8}.ds-format{display:flex;gap:2px;align-items:center;flex-wrap:wrap;padding:5px 9px}.ds-format select{font:12px Arial;border:0;background:transparent;padding:6px;max-width:100px}"
     },
     {
-      "name": "Rich record preview",
+      "name": "Shared record surface",
       "kind": "card",
-      "description": "Content-bearing canvas object with a compact title and edit hint.",
+      "description": "White bordered record surface with quiet separators; Table, Kanban and Timeline expose live canvas editing with draggable headers.",
       "html": "<section class=\"ds-rich\"><header>Table<small>Double-click to edit</small></header><table><thead><tr><th>Title</th><th>Status</th></tr></thead><tbody><tr><td>Explore ideas</td><td>In progress</td></tr></tbody></table></section>",
       "css": ".ds-rich{font:14px Arial;color:#25252c;background:white;border:1px solid #d7d7df;border-radius:8px;overflow:hidden;width:400px}.ds-rich header{padding:14px 18px;border-bottom:1px solid #e5e5eb;font-weight:bold;display:flex;justify-content:space-between}.ds-rich small{font-weight:normal;color:#696973;font-size:11px}.ds-rich table{width:calc(100% - 36px);margin:18px;border-collapse:collapse;font-size:12px}.ds-rich th,.ds-rich td{padding:12px 8px;text-align:left;border-bottom:1px solid #e5e5eb}.ds-rich th{background:#f4f4f6}"
     },
@@ -443,10 +448,24 @@
       "description": "Straight/default, Elbow, and Curved routes choose axes from object centers and attach to boundary anchors. Width presets 1/2/3/4/6/8/12px; Solid/Dashed/Dotted; independent None/Arrow/Open arrow/Circle/Diamond heads; native line color. Legacy default is solid straight 2px with no start head and arrow end. Selected color stays visible over a translucent blue underlay. White 14px Arial midpoint caption: double-click, Enter, or toolbar T edits; Enter commits, Shift+Enter adds a line, Escape cancels. Below-action details panel drafts label and Start/End selectors, applies atomically, rejects self-connections, and offers keyboard attachment access. Blue-filled endpoint circles mean attached, white means free. Drag within 12 screen pixels of eligible bounds to attach; Alt leaves free. Arrows, pens, frames excluded. One gesture is one undo step; cancellation discards preview. 28 model tests and build passed; desktop/mobile REA checked controls, style, labels, keyboard attachments, history, reload. Native drag remains unverified due to prior CUA URL blocker.",
       "html": "<div class=\"ds-connector\"><select aria-label=\"Connector path\"><option>Straight</option><option>Elbow</option><option>Curved</option></select><select aria-label=\"Line thickness\"><option>2 px</option><option>4 px</option></select><select aria-label=\"Line pattern\"><option>Solid</option><option>Dashed</option><option>Dotted</option></select><select aria-label=\"Start arrowhead\"><option>Start: None</option><option>Start: Arrow</option></select><select aria-label=\"End arrowhead\"><option>End: Arrow</option><option>End: None</option></select></div><svg class=\"ds-line\" viewBox=\"0 0 300 70\"><path d=\"M15 35H285\" stroke=\"#4262ff\" stroke-width=\"6\" opacity=\".35\"/><path d=\"M15 35H285\" stroke=\"#25252a\" stroke-width=\"2\"/><path d=\"M277 30L285 35L277 40Z\" fill=\"#25252a\"/><circle cx=\"15\" cy=\"35\" r=\"7\" fill=\"#4262ff\" stroke=\"#4262ff\" stroke-width=\"2\"/><circle cx=\"285\" cy=\"35\" r=\"7\" fill=\"white\" stroke=\"#4262ff\" stroke-width=\"2\"/><rect x=\"112\" y=\"20\" width=\"76\" height=\"30\" rx=\"4\" fill=\"white\"/><text x=\"150\" y=\"40\" text-anchor=\"middle\" font-family=\"Arial\" font-size=\"14\" fill=\"#25252c\">A label</text></svg>",
       "css": ".ds-connector{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:5px 9px;background:white;border:1px solid #e5e5eb;border-radius:12px;box-shadow:0 3px 12px #2424420b,0 1px 3px #24244206}.ds-connector select{border:0;background:transparent;padding:7px;font:12px Arial;max-width:115px}.ds-connector select:hover{background:#f1f1f5}.ds-connector select:focus-visible{outline:2px solid #4262ff;outline-offset:3px}.ds-line{display:block;width:300px;max-width:100%;height:70px}"
+    },
+    {
+      "name": "Canvas field",
+      "kind": "input",
+      "description": "Quiet inline text field; editing focus uses blue, Enter or blur commits and Escape discards a draft.",
+      "html": "<input class=\"ds-canvas-field\" aria-label=\"Record title\" value=\"Explore the problem\">",
+      "css": ".ds-canvas-field{font:14px Arial,Helvetica,sans-serif;color:#25252c;width:100%;min-width:30px;border:1px solid transparent;border-radius:3px;background:transparent;padding:3px}.ds-canvas-field:hover{border-color:#c5c5ce}.ds-canvas-field:focus-visible{outline:2px solid #4262ff;background:#fff;color:#25252c}"
+    },
+    {
+      "name": "Draw.io focus editor recovery",
+      "kind": "custom",
+      "description": "White protected-focus dialog: name/import controls above a large online iframe, status and Save/Cancel below. Maximum width 1400px, 20px viewport clearance; at 600px name spans a row, controls wrap, footer stacks, and clearance becomes 8px. Opens on close-control focus and restores prior connected focus; host Tab wraps through controls and iframe. Idle Escape/Cancel discards drafts; saving disables dismissal/editing. Failure hides the iframe and offers composed Retry editor / Import .drawio recovery with alert feedback and Save source only. Online save stores XML and local PNG; changed source-only save clears stale preview. Desktop/mobile protocol captures use a labelled UTF-8 synthetic fixture. Hosted editor blocked by ERR_NETWORK_ACCESS_DENIED; hosted fidelity and live-service success remain unverified.",
+      "html": "<section class=\"ds-drawio-recovery\" aria-label=\"Diagram editor unavailable\"><h3>Diagram editor unavailable</h3><p>Your diagram source is still here. Retry the online editor or import a local .drawio file.</p><div><button class=\"ds-drawio-primary\">Retry editor</button><button>Import .drawio</button></div></section>",
+      "css": ".ds-drawio-recovery{font:14px Arial,Helvetica,sans-serif;color:#25252c;background:#f4f4f6;padding:24px;text-align:center}.ds-drawio-recovery h3{font-size:18px;margin:0}.ds-drawio-recovery p{max-width:42ch;color:#696973;line-height:1.5;margin:12px auto}.ds-drawio-recovery>div{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}.ds-drawio-recovery button{font:12px Arial;padding:9px 12px;border:0;border-radius:7px;background:transparent;color:#25252c;cursor:pointer}.ds-drawio-recovery button:hover{background:#f1f1f5}.ds-drawio-recovery .ds-drawio-primary{background:#4262ff;color:#fff;font-weight:600}.ds-drawio-recovery .ds-drawio-primary:hover{background:#334fd8}.ds-drawio-recovery button:focus-visible{outline:2px solid #4262ff;outline-offset:3px}"
     }
   ],
   "schemaVersion": 2,
-  "generatedAt": "2026-11-02T19:39:33.2131121Z",
+  "generatedAt": "2026-11-03T08:53:59.5334427Z",
   "narrative": {
     "northStar": "The Open Whiteboard",
     "dos": [
@@ -482,7 +501,8 @@
       "White floating control groups with soft ambient depth.",
       "Blue tool states, selection outlines, and primary actions.",
       "Pastel note fills kept separate from interface state colors.",
-      "Eight-handle blue selections and dashed alignment guides, with tool submenus and sticky palettes anchored beside their originating controls."
+      "Eight-handle blue selections and dashed alignment guides, with tool submenus and sticky palettes anchored beside their originating controls.",
+      "Direct canvas controls for structured child content, with draggable widget headers and blue field focus."
     ]
   }
 }

@@ -5,8 +5,9 @@ import { basicSpecs } from './specs-basic.ts';
 import { mediaSpecs } from './specs-media.ts';
 import { diagramSpecs } from './specs-diagrams.ts';
 import { engageSpecs } from './specs-engage.ts';
+import { drawioSpec } from './drawio.ts';
 
-export const widgetSpecs: WidgetSpec[] = [...basicSpecs, ...mediaSpecs, ...diagramSpecs, ...engageSpecs];
+export const widgetSpecs: WidgetSpec[] = [...basicSpecs, ...mediaSpecs, ...diagramSpecs, ...engageSpecs, drawioSpec];
 const byKind = new Map(widgetSpecs.map(s => [s.kind, s]));
 export const specFor = (kind: string) => byKind.get(kind as WidgetKind);
 export const widgetSizes = Object.fromEntries(widgetSpecs.map(s => [s.kind, s.size])) as Record<

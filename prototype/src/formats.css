@@ -360,11 +360,11 @@
   border-radius: 6px;
   min-width: 0;
 }
-.kanban-preview h4 {
+.kanban-preview .kanban-col-title {
   font-size: 12px;
   margin: 4px 0 14px;
 }
-.kanban-preview h4 span {
+.kanban-preview .kanban-col-title span {
   color: #696973;
   margin-left: 4px;
 }
@@ -562,7 +562,7 @@ select:focus-visible {
   .kanban-preview section {
     padding: 5px;
   }
-  .kanban-preview h4 {
+  .kanban-preview .kanban-col-title {
     font-size: 10px;
   }
   .record-card {
@@ -789,4 +789,23 @@ select:focus-visible {
 }
 .connector-controls {
   max-width: 100%;
+}
+
+/* Manual maps share the editor's fixed coordinate space. */
+.mind-manual-object .rich-title {
+  display: none;
+}
+.mind-manual-object .rich-body {
+  padding: 0;
+  height: 100%;
+}
+.mind-manual-object .mind-preview {
+  width: 100%;
+  height: 100%;
+}
+.mind-canvas-editor {
+  overflow: visible;
+}
+.mindmap-canvas-editor {
+  overflow: visible;
 }

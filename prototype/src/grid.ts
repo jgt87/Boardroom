@@ -12,6 +12,10 @@ export type GridData = {
   align: GridAlign;
   colors?: Record<string, string>;
   styles?: Record<string, CellStyle>;
+  rowSizes?: number[];
+  colSizes?: number[];
+  resizeMode?: 'auto' | 'manual';
+  objects?: { id: string; r: number; c: number; manual?: boolean; offset?: { x: number; y: number } }[];
 };
 export const GRID_MAX = 30;
 
@@ -55,6 +59,38 @@ export function validateGrid(g: unknown): asserts g is GridData {
   )
     throw new Error('Grid cells do not match its size.');
   if (!['left', 'center', 'right'].includes(d.align)) throw new Error('Invalid grid alignment.');
+  if (d.resizeMode !== undefined && !['auto', 'manual'].includes(d.resizeMode))
+    throw new Error('Invalid Grid resize mode.');
+  for (const [sizes, length] of [
+    [d.rowSizes, d.rows],
+    [d.colSizes, d.cols],
+  ] as const)
+    if (
+      sizes !== undefined &&
+      (!Array.isArray(sizes) || sizes.length !== length || sizes.some(n => !Number.isFinite(n) || n < 40 || n > 1e7))
+    )
+      throw new Error('Invalid Grid row or column sizes.');
+  if (
+    d.objects !== undefined &&
+    (!Array.isArray(d.objects) ||
+      d.objects.length > 2000 ||
+      new Set(d.objects.map(o => o?.id)).size !== d.objects.length ||
+      d.objects.some(
+        o =>
+          !o ||
+          typeof o.id !== 'string' ||
+          !Number.isInteger(o.r) ||
+          !Number.isInteger(o.c) ||
+          o.r < 0 ||
+          o.c < 0 ||
+          o.r >= d.rows ||
+          o.c >= d.cols ||
+          (o.manual !== undefined && typeof o.manual !== 'boolean') ||
+          (o.offset !== undefined &&
+            (!o.offset || ![o.offset.x, o.offset.y].every(n => Number.isFinite(n) && Math.abs(n) <= 1e7))),
+      ))
+  )
+    throw new Error('Invalid Grid object membership.');
   if (!Array.isArray(d.merges) || d.merges.length > 500) throw new Error('Invalid merged cells.');
   const used = new Set<string>();
   for (const m of d.merges) {
@@ -153,6 +189,10 @@ export function mergeCells(g: GridData, r1: number, c1: number, r2: number, c2: 
     }
   n.cells[r][c] = texts.join('\n').slice(0, 2000);
   n.merges = [...n.merges.filter(m => !inside(m)), { r, c, rs, cs }];
+  if (g.objects)
+    n.objects = g.objects.map(o =>
+      o.r >= r && o.r < r + rs && o.c >= c && o.c < c + cs ? { ...o, r, c, offset: undefined } : o,
+    );
   // Covered cells keep no style of their own; the anchor's style applies to the merged cell.
   n.styles = shiftMap(n.styles, (y, x) =>
     y >= r && y < r + rs && x >= c && x < c + cs && (y !== r || x !== c) ? null : [y, x],
@@ -176,6 +216,11 @@ export function addRow(g: GridData, at = g.rows): GridData {
     Array.from({ length: g.cols }, () => ''),
   );
   n.rows++;
+  if (g.rowSizes) {
+    n.rowSizes = [...g.rowSizes];
+    n.rowSizes.splice(at, 0, 72);
+  }
+  if (g.objects) n.objects = g.objects.map(o => ({ ...o, r: o.r >= at ? o.r + 1 : o.r }));
   n.merges = n.merges.map(m => (m.r >= at ? { ...m, r: m.r + 1 } : m.r + m.rs > at ? { ...m, rs: m.rs + 1 } : m));
   n.colors = shiftMap(g.colors, (r, c) => [r >= at ? r + 1 : r, c]);
   n.styles = shiftMap(g.styles, (r, c) => [r >= at ? r + 1 : r, c]);
@@ -186,6 +231,11 @@ export function addColumn(g: GridData, at = g.cols): GridData {
   const n = clone(g);
   n.cells.forEach(row => row.splice(at, 0, ''));
   n.cols++;
+  if (g.colSizes) {
+    n.colSizes = [...g.colSizes];
+    n.colSizes.splice(at, 0, 140);
+  }
+  if (g.objects) n.objects = g.objects.map(o => ({ ...o, c: o.c >= at ? o.c + 1 : o.c }));
   n.merges = n.merges.map(m => (m.c >= at ? { ...m, c: m.c + 1 } : m.c + m.cs > at ? { ...m, cs: m.cs + 1 } : m));
   n.colors = shiftMap(g.colors, (r, c) => [r, c >= at ? c + 1 : c]);
   n.styles = shiftMap(g.styles, (r, c) => [r, c >= at ? c + 1 : c]);
@@ -199,6 +249,8 @@ export function removeRow(g: GridData, at: number): GridData {
   const carried = n.merges.map(m => [m, anchorText(m)] as const);
   n.cells.splice(at, 1);
   n.rows--;
+  if (g.rowSizes) n.rowSizes = g.rowSizes.filter((_, k) => k !== at);
+  if (g.objects) n.objects = g.objects.filter(o => o.r !== at).map(o => ({ ...o, r: o.r > at ? o.r - 1 : o.r }));
   n.merges = carried.flatMap(([m, text]) => {
     let next: Merge;
     if (m.r > at) next = { ...m, r: m.r - 1 };
@@ -218,6 +270,8 @@ export function removeColumn(g: GridData, at: number): GridData {
   const carried = n.merges.map(m => [m, m.c === at && m.cs > 1 ? n.cells[m.r][at] : null] as const);
   n.cells.forEach(row => row.splice(at, 1));
   n.cols--;
+  if (g.colSizes) n.colSizes = g.colSizes.filter((_, k) => k !== at);
+  if (g.objects) n.objects = g.objects.filter(o => o.c !== at).map(o => ({ ...o, c: o.c > at ? o.c - 1 : o.c }));
   n.merges = carried.flatMap(([m, text]) => {
     let next: Merge;
     if (m.c > at) next = { ...m, c: m.c - 1 };
@@ -271,3 +325,53 @@ export function setCellStyle(g: GridData, r1: number, c1: number, r2: number, c2
 }
 export const cellStyle = (g: GridData, r: number, c: number): CellStyle => g.styles?.[key(r, c)] ?? {};
 export const gridText = (g: GridData) => g.cells.flat().filter(Boolean).join(' ');
+
+export function reorderGrid(g: GridData, axis: 'row' | 'column', from: number, to: number): GridData {
+  const length = axis === 'row' ? g.rows : g.cols;
+  if (from === to) return g;
+  if (![from, to].every(n => Number.isInteger(n) && n >= 0 && n < length))
+    throw new Error('Choose an existing row or column.');
+  const block = (index: number) => {
+    let start = index,
+      end = index;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const m of g.merges) {
+        const a = axis === 'row' ? m.r : m.c,
+          b = a + (axis === 'row' ? m.rs : m.cs) - 1;
+        if (a <= end && b >= start && (a < start || b > end)) {
+          start = Math.min(start, a);
+          end = Math.max(end, b);
+          changed = true;
+        }
+      }
+    }
+    return [start, end];
+  };
+  const [start, end] = block(from),
+    [targetStart, targetEnd] = block(to);
+  if (to >= start && to <= end) return g;
+  const moved = Array.from({ length: end - start + 1 }, (_, k) => start + k);
+  const order = Array.from({ length }, (_, k) => k).filter(k => k < start || k > end);
+  const insertion = from < to ? order.indexOf(targetEnd) + 1 : order.indexOf(targetStart);
+  order.splice(insertion, 0, ...moved);
+  const remap = (r: number, c: number): [number, number] =>
+    axis === 'row' ? [order.indexOf(r), c] : [r, order.indexOf(c)];
+  const n = clone(g);
+  n.merges = g.merges.map(m => {
+    const [r, c] = remap(m.r, m.c);
+    return { ...m, r, c };
+  });
+  n.cells = axis === 'row' ? order.map(k => [...g.cells[k]]) : g.cells.map(row => order.map(k => row[k]));
+  n.colors = shiftMap(g.colors, remap);
+  n.styles = shiftMap(g.styles, remap);
+  if (axis === 'row' && g.rowSizes) n.rowSizes = order.map(k => g.rowSizes![k]);
+  if (axis === 'column' && g.colSizes) n.colSizes = order.map(k => g.colSizes![k]);
+  if (g.objects)
+    n.objects = g.objects.map(o => {
+      const [r, c] = remap(o.r, o.c);
+      return { ...o, r, c };
+    });
+  return tidy(n);
+}

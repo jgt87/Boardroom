@@ -1,0 +1,166 @@
+/* Properties inspector (item 5). */
+.inspector {
+  position: absolute;
+  right: 20px;
+  top: 86px;
+  width: 280px;
+  max-height: calc(100dvh - 180px);
+  overflow: auto;
+  padding: 14px 16px 16px;
+  z-index: 18;
+}
+.inspector-kind {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.inspector-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #f0f0f4;
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: #3f3f46;
+}
+.inspector-section {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 10px 0 0;
+  padding: 10px 0 0;
+  min-width: 0;
+}
+.inspector-section legend {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 0 6px 0 0;
+}
+.inspector-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+}
+.inspector-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  margin: 4px 0;
+}
+.inspector-field > span {
+  color: #3f3f46;
+  white-space: nowrap;
+}
+.inspector-field input[type='number'],
+.inspector-field input[type='text'],
+.inspector-field select {
+  width: 100%;
+  min-width: 0;
+  max-width: 150px;
+  border: 1px solid #c5c5ce;
+  border-radius: 5px;
+  padding: 5px 6px;
+  font-size: 12px;
+  background: #fff;
+}
+.inspector-grid .inspector-field input {
+  max-width: 90px;
+}
+.inspector-field input[type='color'] {
+  width: 34px;
+  height: 26px;
+  border: 1px solid #c5c5ce;
+  border-radius: 5px;
+  padding: 1px;
+  background: #fff;
+}
+.inspector-field small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.inspector-field input:disabled,
+.inspector-field select:disabled {
+  background: #f4f4f6;
+  color: #6b6b76;
+}
+.inspector-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+  margin: 6px 0;
+}
+.inspector-row > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inspector-row .icon-button {
+  width: 28px;
+  height: 28px;
+}
+.inspector-toggles {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.inspector-toggles button {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+  gap: 6px;
+}
+.inspector-toggles button.active {
+  color: var(--blue);
+  background: #edf0ff;
+  border-color: #c9d2ff;
+}
+.inspector-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  font-size: 12px;
+  margin: 10px 0 0;
+}
+.inspector-summary dt {
+  color: var(--muted);
+}
+.inspector-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.inspector-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin-top: 8px;
+}
+@media (max-width: 600px) {
+  .inspector {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    max-height: 60vh;
+    border-radius: 12px 12px 0 0;
+    z-index: 40;
+  }
+  .inspector-field input[type='number'],
+  .inspector-field input[type='text'],
+  .inspector-field select {
+    max-width: none;
+  }
+}

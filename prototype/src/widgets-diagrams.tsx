@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   X,
   Plus,
@@ -44,7 +44,9 @@ import type { AutoLayoutData } from './autolayout';
 // Custom drag types: during a native drag only the type list is readable in dragover.
 const STORY_MIME = 'application/x-boardroom-story',
   ORG_MIME = 'application/x-boardroom-person';
+import { useLatest } from './use-latest';
 import './widgets-diagrams.css';
+import { CanvasOrg, CanvasStory } from './canvas-diagrams';
 
 function useDialogFocus(ref: React.RefObject<HTMLElement | null>) {
   useEffect(() => {
@@ -53,7 +55,7 @@ function useDialogFocus(ref: React.RefObject<HTMLElement | null>) {
     return () => {
       if (prior?.isConnected) prior.focus();
     };
-  }, []);
+  }, [ref]);
 }
 /** Live editor shell: every change is already saved (one undo step each), so there is only Close. */
 function Dialog({
@@ -164,10 +166,12 @@ function CommitInput({
 }
 /** The current version of the item on the board; closes the editor when it was deleted or undone away. */
 function useLiveItem(item: Item, ctx: WidgetCtx, onClose: () => void) {
-  const live = ctx.board.items.find(i => i.id === item.id && i.type === item.type);
+  const live = ctx.board.items.find(i => i.id === item.id && i.type === item.type),
+    exists = !!live,
+    closeRef = useLatest(onClose);
   useEffect(() => {
-    if (!live) onClose();
-  }, [!!live]);
+    if (!exists) closeRef.current();
+  }, [exists, closeRef]);
   return live;
 }
 
@@ -276,7 +280,8 @@ function orgOrder(nodes: OrgNode[]): { node: OrgNode; depth: number }[] {
 }
 function OrgEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose: () => void }) {
   const live = useLiveItem(item, ctx, onClose),
-    nodes: OrgNode[] = live?.data?.nodes ?? [];
+    liveNodes: OrgNode[] | undefined = live?.data?.nodes,
+    nodes = useMemo(() => liveNodes ?? [], [liveNodes]);
   const [active, setActive] = useState(nodes[0]?.id ?? ''),
     [error, setError] = useState(''),
     [drag, setDrag] = useState<string | null>(null),
@@ -684,67 +689,16 @@ function StoryEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
     </Dialog>
   );
 }
-function StoryPreview({ item }: { item: Item }) {
-  const m = item.data as StoryMap | undefined;
-  if (!m) return null;
-  return (
-    <div className="rich-object story-preview">
-      <div className="rich-title">
-        {item.text || 'Story map'}
-        <small>{m.cards.length} stories · double-click to edit</small>
-      </div>
-      <div
-        className="story-mini"
-        style={{ gridTemplateColumns: `90px repeat(${m.activities.length}, minmax(0, 1fr))` }}
-      >
-        <span />
-        {m.activities.map(a => (
-          <b key={a.id}>{a.title}</b>
-        ))}
-        {m.releases.map(r => (
-          <React.Fragment key={r.id}>
-            <em>{r.title}</em>
-            {m.activities.map(a => {
-              const cards = cellCards(m, a.id, r.id);
-              return (
-                <div key={a.id}>
-                  {cards.slice(0, 3).map(c => (
-                    <span key={c.id}>{c.title}</span>
-                  ))}
-                  {cards.length > 3 && <small>+{cards.length - 3}</small>}
-                </div>
-              );
-            })}
-          </React.Fragment>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ---- Views -------------------------------------------------------------------------------------
 export const diagramViews: WidgetView[] = [
   {
     kind: 'orgchart',
+    interactive: true,
     mode: 'html',
     Editor: OrgEditor,
-    Render: ({ item }) => (
-      <div className="rich-object org-preview">
-        <div className="rich-title">
-          {item.text || 'Org chart'}
-          <small>{(item.data?.nodes ?? []).length} people · double-click to edit</small>
-        </div>
-        <div className="rich-body">
-          <OrgDiagram
-            nodes={item.data?.nodes ?? []}
-            width={Math.max(40, item.w - 2)}
-            height={Math.max(40, item.h - 48)}
-          />
-        </div>
-      </div>
-    ),
+    Render: ({ item, ctx }) => <CanvasOrg item={item} ctx={ctx} />,
   },
-  { kind: 'storymap', mode: 'html', Editor: StoryEditor, Render: ({ item }) => <StoryPreview item={item} /> },
+  { kind: 'storymap', mode: 'html', interactive: true, Editor: StoryEditor, Render: CanvasStory },
   {
     kind: 'autolayout',
     mode: 'svg',

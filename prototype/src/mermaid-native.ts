@@ -87,7 +87,6 @@ export function parseFlowchart(code: string): ParsedFlowchart {
       node(id, label, shape);
       if (previous && pending) edges.push({ from: previous, to: id, ...pending });
       previous = id;
-      pending = null;
       rest = rest.trimStart();
       if (!rest) break;
       const texted = /^(--|==|-\.)\s+(.+?)\s+(-->|---|==>|===|\.->|\.-)\s*/.exec(rest);

@@ -40,7 +40,6 @@ import {
   addTeam,
   removeAxis,
   renameAxis,
-  plannerLayout,
   plannerDependencyError,
   wordFrequencies,
   layoutWordCloud,
@@ -61,6 +60,7 @@ import {
 } from './engage';
 import type { JourneyData, PlannerData, WordCloudData, RankingData, QuizData, QuizQuestion } from './engage';
 import './widgets-engage.css';
+import { CanvasJourney, CanvasPlanner, CanvasRanking } from './canvas-engage';
 
 const data = <T,>(i: Item) => (i.data ?? {}) as T;
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
@@ -114,8 +114,9 @@ function InlineText({
     <textarea
       {...common}
       onKeyDown={e => {
-        if (e.key === 'Escape') {
+        if (e.key === 'Escape' && draft !== value) {
           setDraft(value);
+          e.stopPropagation();
         }
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
@@ -131,7 +132,10 @@ function InlineText({
           e.preventDefault();
           e.currentTarget.blur();
         }
-        if (e.key === 'Escape') setDraft(value);
+        if (e.key === 'Escape' && draft !== value) {
+          setDraft(value);
+          e.stopPropagation();
+        }
       }}
     />
   );
@@ -167,7 +171,7 @@ function LiveDialog({
       className="format-overlay"
       onKeyDown={e => {
         e.stopPropagation();
-        if (e.key === 'Escape' && !(e.target as HTMLElement).closest('input,textarea')) onClose();
+        if (e.key === 'Escape') onClose();
       }}
       onPointerDown={stop}
     >
@@ -202,74 +206,8 @@ function LiveDialog({
 // ---- Journey map -----------------------------------------------------------------------------------
 const emotionLabel = ['Very negative', 'Negative', 'Neutral', 'Positive', 'Very positive'],
   emotionFace = ['😣', '🙁', '😐', '🙂', '😄'];
-function JourneyRender({ item }: { item: Item }) {
-  const d = data<JourneyData>(item),
-    cols = `minmax(70px,.7fr) repeat(${d.stages.length}, minmax(0,1fr))`;
-  return (
-    <div className="eg-journey">
-      <div className="eg-title">{item.text || 'Journey map'}</div>
-      <div className="eg-journey-grid" style={{ gridTemplateColumns: cols }}>
-        <span className="eg-corner" />
-        {d.stages.map(s => (
-          <strong key={s.id} className="eg-stage">
-            {s.title || 'Untitled stage'}
-          </strong>
-        ))}
-        {d.lanes.map(l => (
-          <React.Fragment key={l.id}>
-            <span className="eg-lane">{l.title || 'Untitled lane'}</span>
-            {l.kind === 'emotion' ? (
-              <div className="eg-emotion" style={{ gridColumn: `span ${d.stages.length}` }}>
-                <svg viewBox={`0 0 ${d.stages.length * 100} 100`} preserveAspectRatio="none" aria-label="Emotion curve">
-                  <line
-                    x1="0"
-                    x2={d.stages.length * 100}
-                    y1="50"
-                    y2="50"
-                    stroke="#d4d4da"
-                    strokeDasharray="4 4"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                  <polyline
-                    fill="none"
-                    stroke="#4262ff"
-                    strokeWidth="2.5"
-                    vectorEffect="non-scaling-stroke"
-                    points={d.stages.map((s, k) => `${k * 100 + 50},${50 - (d.emotions[s.id] ?? 0) * 20}`).join(' ')}
-                  />
-                  {d.stages.map((s, k) => (
-                    <circle
-                      key={s.id}
-                      cx={k * 100 + 50}
-                      cy={50 - (d.emotions[s.id] ?? 0) * 20}
-                      r="4"
-                      fill={
-                        (d.emotions[s.id] ?? 0) < 0 ? '#e5484d' : (d.emotions[s.id] ?? 0) > 0 ? '#2f9e44' : '#8a8a94'
-                      }
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  ))}
-                </svg>
-                <div className="eg-faces" style={{ gridTemplateColumns: `repeat(${d.stages.length},1fr)` }}>
-                  {d.stages.map(s => (
-                    <span key={s.id} title={emotionLabel[(d.emotions[s.id] ?? 0) + 2]}>
-                      {emotionFace[(d.emotions[s.id] ?? 0) + 2]}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              d.stages.map(s => (
-                <span key={s.id} className="eg-cell">
-                  {d.cells[cellKey(s.id, l.id)] ?? ''}
-                </span>
-              ))
-            )}
-          </React.Fragment>
-        ))}
-      </div>
-    </div>
-  );
+function JourneyRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
+  return <CanvasJourney item={item} ctx={ctx} />;
 }
 function JourneyEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose: () => void }) {
   const d = data<JourneyData>(item),
@@ -391,96 +329,8 @@ function JourneyEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onC
 }
 
 // ---- Planner (program board) -------------------------------------------------------------------------
-function PlannerRender({ item }: { item: Item }) {
-  const d = data<PlannerData>(item),
-    L = plannerLayout(d, item.w, item.h),
-    late = new Set(lateDependencies(d).map(x => `${x.from}>${x.to}`));
-  return (
-    <div className="eg-planner">
-      {d.iterations.map((it, k) => (
-        <strong
-          key={it.id}
-          className="eg-pl-head"
-          style={{ left: L.side + k * L.cellW, width: L.cellW, height: L.header }}
-        >
-          {it.title || 'Untitled iteration'}
-        </strong>
-      ))}
-      {d.teams.map((t, k) => (
-        <span key={t.id} className="eg-pl-team" style={{ top: L.header + k * L.cellH, width: L.side, height: L.cellH }}>
-          {t.title || 'Untitled team'}
-        </span>
-      ))}
-      {d.teams.map((t, ti) =>
-        d.iterations.map((it, ii) => {
-          const pts = cellPoints(d, t.id, it.id);
-          return (
-            <div
-              key={`${t.id}${it.id}`}
-              className="eg-pl-cell"
-              style={{ left: L.side + ii * L.cellW, top: L.header + ti * L.cellH, width: L.cellW, height: L.cellH }}
-            >
-              {pts > 0 && <small>{pts} pt</small>}
-            </div>
-          );
-        }),
-      )}
-      {d.cards.map(c => {
-        const r = L.cards.get(c.id);
-        return r && r.y + r.h <= item.h ? (
-          <div
-            key={c.id}
-            className="eg-pl-card"
-            style={{ left: r.x, top: r.y, width: r.w, height: r.h }}
-            title={c.title}
-          >
-            {c.title || 'Untitled'}
-            {c.points !== undefined && <b>{c.points}</b>}
-          </div>
-        ) : null;
-      })}
-      <svg className="eg-pl-links" width={item.w} height={item.h} aria-hidden="true">
-        <defs>
-          <marker
-            id={`pl-head-${item.id}`}
-            viewBox="0 0 10 10"
-            refX="9"
-            refY="5"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto"
-          >
-            <path d="M0 0 L10 5 L0 10Z" fill="context-stroke" />
-          </marker>
-        </defs>
-        {d.dependencies.map(x => {
-          const a = L.cards.get(x.from),
-            b = L.cards.get(x.to);
-          if (!a || !b) return null;
-          const bad = late.has(`${x.from}>${x.to}`),
-            x1 = a.x + a.w,
-            y1 = a.y + a.h / 2,
-            x2 = b.x,
-            y2 = b.y + b.h / 2;
-          return (
-            <path
-              key={`${x.from}${x.to}`}
-              d={
-                bad
-                  ? `M${a.x},${y1} C${a.x - 40},${y1} ${x2 + b.w + 40},${y2} ${x2 + b.w},${y2}`
-                  : `M${x1},${y1} C${x1 + 30},${y1} ${x2 - 30},${y2} ${x2},${y2}`
-              }
-              fill="none"
-              stroke={bad ? '#e5484d' : '#5a5a66'}
-              strokeWidth="1.5"
-              strokeDasharray={bad ? '4 3' : undefined}
-              markerEnd={`url(#pl-head-${item.id})`}
-            />
-          );
-        })}
-      </svg>
-    </div>
-  );
+function PlannerRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
+  return <CanvasPlanner item={item} ctx={ctx} />;
 }
 function PlannerEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose: () => void }) {
   const d = data<PlannerData>(item),
@@ -863,21 +713,8 @@ function WordCloudEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; o
 }
 
 // ---- Ranking ---------------------------------------------------------------------------------------
-function RankingRender({ item }: { item: Item }) {
-  const d = data<RankingData>(item),
-    byId = new Map(d.items.map(i => [i.id, i]));
-  return (
-    <div className="eg-ranking">
-      <div className="eg-title">{d.question || 'Ranking'}</div>
-      <ol>
-        {rankedIds(d).map(id => (
-          <li key={id}>
-            <span>{byId.get(id)?.label || 'Untitled'}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
+function RankingRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
+  return <CanvasRanking item={item} ctx={ctx} />;
 }
 function RankingEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose: () => void }) {
   const d = data<RankingData>(item),
@@ -1121,12 +958,14 @@ function QuizEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClos
 export const engageViews: WidgetView[] = [
   {
     kind: 'journey' as WidgetKind,
+    interactive: true,
     mode: 'html',
     Render: p => <JourneyRender {...p} />,
     Editor: p => <JourneyEditor {...p} />,
   },
   {
     kind: 'planner' as WidgetKind,
+    interactive: true,
     mode: 'html',
     Render: p => <PlannerRender {...p} />,
     Editor: p => <PlannerEditor {...p} />,
@@ -1139,6 +978,7 @@ export const engageViews: WidgetView[] = [
   },
   {
     kind: 'ranking' as WidgetKind,
+    interactive: true,
     mode: 'html',
     Render: p => <RankingRender {...p} />,
     Editor: p => <RankingEditor {...p} />,

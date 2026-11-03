@@ -1,18 +1,5 @@
 import React from 'react';
-import {
-  StickyNote,
-  Minus,
-  Plus,
-  Maximize,
-  Upload,
-  X,
-  Keyboard,
-  PanelRightClose,
-  Magnet,
-  LockOpen,
-  Map as MapIcon,
-} from 'lucide-react';
-import { isShapeKind, shapeLabels } from './shapes';
+import { StickyNote, Minus, Plus, Maximize, X, Keyboard, Magnet, Map as MapIcon } from 'lucide-react';
 import { setLocked } from './arrange';
 import { Minimap } from './minimap';
 import { reorderLayer, setHidden, renameItem } from './board-tools';
@@ -27,8 +14,6 @@ export function BoardChrome() {
     board,
     boardRef,
     camera,
-    file,
-    fill,
     fit,
     help,
     minimap,

@@ -1,4 +1,4 @@
-import { Undo2, Redo2, LayoutTemplate, Ellipsis } from 'lucide-react';
+import { Undo2, Redo2, LayoutTemplate, Shapes, Ellipsis, MousePointer2 } from 'lucide-react';
 import { colors, undo, redo, bulkNotes } from './model';
 import type { Kind } from './model';
 import { ToolGallery, FormatEditor, BulkPanel } from './formats';
@@ -9,8 +9,10 @@ import { penPresets } from './board-tools';
 import { PenOptions } from './board-panels';
 import { useApp } from './board-app';
 import { tools } from './board-app';
+import { useState } from 'react';
 
 export function ToolRail() {
+  const [navigationMenu, setNavigationMenu] = useState(false);
   const {
     addCentered,
     board,
@@ -46,14 +48,40 @@ export function ToolRail() {
     toWorld,
     tool,
     update,
+    pendingPlacement,
+    setPendingPlacement,
+    setFacil,
   } = useApp();
   return (
     <>
-      <nav className="tools floating" aria-label="Creation tools">
+      <nav
+        className="tools floating"
+        aria-label="Creation tools"
+        onClickCapture={e => {
+          if ((e.target as Element).closest('button')?.getAttribute('aria-label') !== 'Select')
+            setNavigationMenu(false);
+        }}
+      >
+        <button
+          data-tool-anchor="select"
+          aria-label="Select"
+          title="Select (V) · Pan (H)"
+          aria-pressed={tool === 'select'}
+          className={tool === 'select' ? 'active' : ''}
+          onClick={() => {
+            setNavigationMenu(v => (tool === 'select' ? !v : false));
+            setTool('select');
+            setEditing(null);
+            setPendingPlacement(null);
+            setGallery(null);
+            setShapes(false);
+          }}
+        >
+          <MousePointer2 size={21} />
+        </button>
         <button
           data-tool-anchor="formats"
           aria-label="Formats and Flows"
-          title="Formats and Flows"
           aria-expanded={gallery === 'Formats'}
           onClick={() => {
             setGallery(gallery === 'Formats' ? null : 'Formats');
@@ -61,20 +89,31 @@ export function ToolRail() {
             setBulk(false);
           }}
         >
-          <LayoutTemplate size={21} />
+          <Shapes size={21} />
           <span className="tool-tip">Formats and Flows</span>
         </button>
+        <button
+          aria-label="Templates"
+          onClick={() => {
+            setFacil('templates');
+            setGallery(null);
+            setShapes(false);
+          }}
+        >
+          <LayoutTemplate size={21} />
+          <span className="tool-tip">Templates</span>
+        </button>
         {tools
-          .filter(t => !['ellipse', 'diamond', 'arrow'].includes(t.id))
+          .filter(t => !['select', 'hand', 'ellipse', 'diamond', 'arrow'].includes(t.id))
           .map(t => (
             <button
               key={t.id}
               data-tool-anchor={t.id}
               aria-label={t.id === 'rectangle' ? 'Shapes and lines' : t.label}
-              title={t.id === 'rectangle' ? 'Shapes and lines' : t.label + ' (' + t.key + ')'}
               aria-pressed={tool === t.id}
               className={tool === t.id ? 'active' : ''}
               onClick={() => {
+                setPendingPlacement(null);
                 if (t.id === 'rectangle') {
                   setShapes(!shapes);
                   setGallery(null);
@@ -99,7 +138,6 @@ export function ToolRail() {
         <button
           data-tool-anchor="essentials"
           aria-label="Tools, media and integrations"
-          title="Tools, media and integrations"
           aria-expanded={gallery === 'Essentials'}
           onClick={() => {
             setGallery(gallery === 'Essentials' ? null : 'Essentials');
@@ -111,6 +149,30 @@ export function ToolRail() {
           <span className="tool-tip">Tools, media and integrations</span>
         </button>
       </nav>
+      {navigationMenu && (
+        <AnchoredPanel anchor="select">
+          <aside className="shape-menu floating" aria-label="Selection tools">
+            <h2>Selection tools</h2>
+            <button
+              onClick={() => {
+                setTool('select');
+                setNavigationMenu(false);
+              }}
+            >
+              Select
+            </button>
+            <button
+              aria-label="Pan"
+              onClick={() => {
+                setTool('hand');
+                setNavigationMenu(false);
+              }}
+            >
+              Hand tool
+            </button>
+          </aside>
+        </AnchoredPanel>
+      )}
       {shapes && (
         <AnchoredPanel anchor="rectangle">
           <aside className="shape-menu floating" aria-label="Shapes and lines">
@@ -148,6 +210,7 @@ export function ToolRail() {
             onClose={() => setGallery(null)}
             onChoose={chooseFormat}
             onPrimitive={kind => {
+              setPendingPlacement(null);
               setGallery(null);
               setTool(kind);
             }}
@@ -220,7 +283,9 @@ export function ToolRail() {
         </button>
       </div>
       {tool !== 'select' && tool !== 'hand' && (
-        <AnchoredPanel anchor={isShapeKind(tool) || tool === 'arrow' ? 'rectangle' : tool}>
+        <AnchoredPanel
+          anchor={isShapeKind(tool) || tool === 'arrow' ? 'rectangle' : pendingPlacement ? 'formats' : tool}
+        >
           <div className="tool-options floating">
             <strong>
               {isShapeKind(tool)
@@ -229,7 +294,7 @@ export function ToolRail() {
                   ? 'Sticky stack'
                   : tool === 'comment'
                     ? 'Comment'
-                    : tools.find(t => t.id === tool)?.label}
+                    : tools.find(t => t.id === tool)?.label || tool[0].toUpperCase() + tool.slice(1)}
             </strong>
             {tool === 'pen' && (
               <PenOptions

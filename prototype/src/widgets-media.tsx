@@ -17,6 +17,7 @@ import {
 } from './specs-media';
 import type { ScreenDevice, EmbedProvider } from './specs-media';
 import { renderMarkdown, docOutline } from './markdown';
+import { CanvasDoc } from './canvas-doc';
 import { applyDocFormat } from './engage';
 import type { DocFormat } from './engage';
 import { PREVIEW_EVENT } from './prototype-preview';
@@ -208,7 +209,7 @@ function PdfEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose
     return () => {
       live = false;
     };
-  }, [page, asset]);
+  }, [page, asset, item.assetId]);
   const go = (n: number) => setPage(Math.max(1, Math.min(pages, n)));
   const done = async () => {
     if (!asset) return onClose();
@@ -379,11 +380,21 @@ async function loadVideo(file: File) {
       duration = Number.isFinite(video.duration) ? video.duration : 0;
     let poster: string | undefined;
     try {
-      video.currentTime = Math.min(1, duration / 10 || 0);
-      await new Promise<void>((resolve, reject) => {
-        video.onseeked = () => resolve();
-        setTimeout(() => reject(new Error('seek')), 8000);
-      });
+      // Wait for the first frame. Recorded WebM files often report an unknown duration; then the
+      // poster is the first frame, because seeking to 0 may never fire 'seeked'.
+      if (video.readyState < 2)
+        await new Promise<void>((resolve, reject) => {
+          video.onloadeddata = () => resolve();
+          setTimeout(() => reject(new Error('frame')), 5000);
+        });
+      const at = Math.min(1, duration / 10 || 0);
+      if (at > 0) {
+        video.currentTime = at;
+        await new Promise<void>(resolve => {
+          video.onseeked = () => resolve();
+          setTimeout(resolve, 3000);
+        });
+      }
       const scale = Math.min(1, 640 / vw),
         canvas = document.createElement('canvas');
       canvas.width = Math.round(vw * scale);
@@ -660,7 +671,7 @@ function EmbedEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
 }
 
 // ---- Doc (item 33) -----------------------------------------------------------------------------------
-function DocView({ item }: { item: Item; ctx: WidgetCtx }) {
+export function DocView({ item }: { item: Item; ctx: WidgetCtx }) {
   const md: string = item.data?.markdown ?? '',
     html = useMemo(() => renderMarkdown(md.slice(0, 20000)), [md]);
   return (
@@ -1318,7 +1329,7 @@ export const mediaViews: WidgetView[] = [
     Render: p => <EmbedView {...p} />,
     Editor: p => <EmbedEditor {...p} />,
   },
-  { kind: 'doc', mode: 'html', Render: p => <DocView {...p} />, Editor: p => <DocEditor {...p} /> },
+  { kind: 'doc', mode: 'html', interactive: true, Render: CanvasDoc, Editor: p => <DocEditor {...p} /> },
   {
     kind: 'wireframe',
     mode: 'html',

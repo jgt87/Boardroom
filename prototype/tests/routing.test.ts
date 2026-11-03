@@ -11,14 +11,12 @@ import {
   setBendPoint,
   bendHandles,
   setConnectorConnections,
-  moveConnectorEndpoint,
 } from '../src/connector-geometry.ts';
 import { routeOrthogonal, segmentHitsRect, polylineHits, bendsToPoints, pointsToBends } from '../src/routing.ts';
 import { translate } from '../src/interactions.ts';
 
 const box = (type: Item['type'], x: number, y: number, w = 100, h = 100): Item => ({ ...createItem(type, x, y), w, h });
 const finite = (s: string) => !/NaN|Infinity/.test(s);
-const numbers = (path: string) => [...path.matchAll(/-?\d+(\.\d+)?/g)].map(m => Number(m[0]));
 
 // Item 1 — obstacle avoidance
 test('elbow route avoids an intervening object with the configured clearance', () => {

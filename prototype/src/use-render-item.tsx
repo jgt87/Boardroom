@@ -18,16 +18,19 @@ import type { PenStyle } from './board-tools';
 import { viewFor } from './widgets';
 import type { WidgetCtx } from './widget-types';
 import { useApp } from './board-app';
+import { CanvasRecords } from './canvas-records';
+import { gridOwner } from './grid-canvas';
+import './canvas-workflows.css';
 
 /** Renders one board object (shape, note, connector, widget, media) with its overlays. */
 export function useRenderItem() {
   const {
+    previewState,
     assets,
-    board,
     boardRef,
     camera,
     editing,
-    fill,
+    editSeed,
     geometries,
     jumps,
     matches,
@@ -43,6 +46,7 @@ export function useRenderItem() {
     widgetCtx,
   } = useApp();
   function renderItem(i: Item) {
+    if (gridOwner(shown, i.id)?.locked) i = { ...i, locked: true };
     const isSelected = selected.includes(i.id),
       frame = i.type === 'frame',
       shape = isShapeKind(i.type),
@@ -127,7 +131,6 @@ export function useRenderItem() {
         </g>
       );
     }
-    const base = { fill: i.fill, stroke: i.type === 'note' ? 'none' : '#2d2d34', strokeWidth: 1.5 };
     return (
       <g
         key={i.id}
@@ -140,7 +143,7 @@ export function useRenderItem() {
             setSelected([i.id]);
           }
         }}
-        role={viewFor(i.type)?.interactive ? 'group' : 'img'}
+        role={viewFor(i.type)?.interactive || ['table', 'kanban', 'timeline'].includes(i.type) ? 'group' : 'img'}
         aria-label={`${i.type}: ${i.text || 'Untitled'}`}
       >
         <rect className="object-hit-area" width={i.w} height={i.h} fill="transparent" pointerEvents="all" />
@@ -151,8 +154,16 @@ export function useRenderItem() {
           </>
         )}
         {richKinds.includes(i.type) && mindEditId !== i.id && (
-          <foreignObject width={i.w} height={i.h} pointerEvents="none">
-            <RichPreview item={i} board={shown} />
+          <foreignObject
+            width={i.w}
+            height={i.h}
+            pointerEvents={['table', 'kanban', 'timeline'].includes(i.type) ? 'all' : 'none'}
+          >
+            {['table', 'kanban', 'timeline'].includes(i.type) ? (
+              <CanvasRecords item={i} ctx={widgetCtx(i)} />
+            ) : (
+              <RichPreview item={i} board={shown} />
+            )}
           </foreignObject>
         )}
         {i.type === 'mindmap' && mindEditId === i.id && (
@@ -264,7 +275,9 @@ export function useRenderItem() {
           >
             <CanvasTextEditor
               item={i}
+              initialText={editSeed.current?.id === i.id ? editSeed.current.text : undefined}
               onCommit={text => {
+                editSeed.current = null;
                 update({
                   ...boardRef.current,
                   items: boardRef.current.items.map(n => (n.id === i.id ? { ...n, text } : n)),
@@ -321,14 +334,17 @@ export function useRenderItem() {
   const cache = React.useRef(new WeakMap<Item, { sig: string; deps: unknown[]; el: React.ReactNode }>());
   const zoomDependent = (i: Item) =>
     i.type === 'frame' ||
+    !!gridOwner(shown, i.id)?.locked ||
     i.type === 'arrow' ||
     !!i.locked ||
     !!i.linkTo ||
     selected.includes(i.id) ||
-    matches.ids.has(i.id);
+    matches.ids.has(i.id) ||
+    !!viewFor(i.type);
   function renderCached(i: Item): React.ReactNode {
     const sig = [
       selected.includes(i.id),
+      !!gridOwner(shown, i.id)?.locked,
       editing === i.id,
       matches.ids.has(i.id),
       matches.current === i.id,
@@ -341,6 +357,8 @@ export function useRenderItem() {
       i.type === 'arrow' ? jumps.get(i.id) : null,
       viewFor(i.type) || richKinds.includes(i.type) ? shown : null,
       i.assetId ? assets[i.assetId] : null,
+      // Widgets read the prototype preview state and selection through their context.
+      viewFor(i.type) ? previewState : null,
     ];
     const hit = cache.current.get(i);
     if (hit && hit.sig === sig && hit.deps.every((d, k) => d === deps[k])) return hit.el;

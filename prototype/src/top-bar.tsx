@@ -1,3 +1,4 @@
+import { SlidersHorizontal } from 'lucide-react';
 import { Download, Layers, Check, ChevronDown, CloudOff, Search as SearchIcon, MonitorPlay, Users } from 'lucide-react';
 import { IMAGE_ACCEPT, withAssets } from './images';
 import { setPrivate } from './board-tools';
@@ -38,17 +39,25 @@ export function TopBar() {
     setSearchOpen,
     setTimerOn,
     update,
+    setDashboard,
+    inspector,
+    setInspector,
   } = useApp();
   const { exportCsv, exportPdf, exportRaster, exportSvg, exportBundle } = useExporters();
   return (
     <>
       <header className="board-header floating">
-        <div className="wordmark">
+        <button
+          className="wordmark"
+          aria-label="boardroom: all boards"
+          title="All boards"
+          onClick={() => setDashboard(true)}
+        >
           <span className="brand-mark">
             <Layers size={20} />
           </span>
           <span>boardroom</span>
-        </div>
+        </button>
         <span className="divider" />
         <input
           aria-label="Board name"
@@ -151,6 +160,15 @@ export function TopBar() {
             </div>
           )}
         </div>
+        <button
+          className={`floating icon-button ${inspector ? 'active' : ''}`}
+          title="Properties"
+          aria-label="Properties"
+          aria-pressed={inspector}
+          onClick={() => setInspector(v => !v)}
+        >
+          <SlidersHorizontal size={19} />
+        </button>
         <button
           className={`floating icon-button ${outline ? 'active' : ''}`}
           title="Layers"

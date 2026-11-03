@@ -88,6 +88,32 @@ export const setEmotion = (d: JourneyData, stageId: string, value: number): Jour
   emotions: { ...d.emotions, [stageId]: Math.max(-2, Math.min(2, Math.round(value))) },
 });
 
+/** Move cell content, appending to an occupied destination without silently truncating either cell. */
+export function moveJourneyContent(
+  d: JourneyData,
+  stage: string,
+  lane: string,
+  toStage: string,
+  toLane: string,
+): JourneyData {
+  const from = cellKey(stage, lane),
+    to = cellKey(toStage, toLane);
+  if (from === to || !d.cells[from]) return d;
+  if (
+    !d.stages.some(s => s.id === stage) ||
+    !d.stages.some(s => s.id === toStage) ||
+    !d.lanes.some(l => l.id === lane && l.kind === 'text') ||
+    !d.lanes.some(l => l.id === toLane && l.kind === 'text')
+  )
+    throw new Error('Move content between text cells in this journey.');
+  const text = [d.cells[to], d.cells[from]].filter(Boolean).join('\n');
+  if (text.length > 2000)
+    throw new Error('The destination would exceed 2,000 characters. Move the text into an empty cell.');
+  const cells = { ...d.cells, [to]: text };
+  delete cells[from];
+  return { ...d, cells };
+}
+
 // ---- Planner (program board) --------------------------------------------------------------------
 export type PlannerCard = { id: string; title: string; team: string; iteration: string; points?: number };
 export type PlannerData = {
@@ -150,6 +176,7 @@ export function movePlannerCard(
 ): PlannerData {
   const card = d.cards.find(c => c.id === id);
   if (!card) throw new Error('That card no longer exists.');
+  if (beforeId === id && card.team === team && card.iteration === iteration) return d;
   if (!d.teams.some(t => t.id === team) || !d.iterations.some(i => i.id === iteration))
     throw new Error('Choose an existing team and iteration.');
   const rest = d.cards.filter(c => c.id !== id),
@@ -371,6 +398,7 @@ export function moveRank(d: RankingData, id: string, delta: number): RankingData
   return { ...d, order };
 }
 export function moveRankBefore(d: RankingData, id: string, beforeId: string | null): RankingData {
+  if (id === beforeId) return d;
   const order = rankedIds(d).filter(x => x !== id);
   if (!d.items.some(i => i.id === id)) return d;
   const at = beforeId ? order.indexOf(beforeId) : -1;

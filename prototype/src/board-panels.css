@@ -349,3 +349,17 @@
     display: none;
   }
 }
+
+/* Phones: header menus are pinned to the screen edge so they never extend past the left side. */
+@media (max-width: 600px) {
+  .document-actions .facilitate-menu,
+  .document-actions .dropdown {
+    position: fixed;
+    right: 10px;
+    left: auto;
+    top: 66px;
+    max-width: calc(100vw - 20px);
+    max-height: calc(100dvh - 90px);
+    overflow: auto;
+  }
+}

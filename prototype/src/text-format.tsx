@@ -64,8 +64,16 @@ export function formatStyle(item: Item): React.CSSProperties {
           : 'center',
   };
 }
-export function CanvasTextEditor({ item, onCommit }: { item: Item; onCommit: (text: string) => void }) {
-  const [text, setText] = useState(item.text),
+export function CanvasTextEditor({
+  item,
+  initialText,
+  onCommit,
+}: {
+  item: Item;
+  initialText?: string;
+  onCommit: (text: string) => void;
+}) {
+  const [text, setText] = useState(initialText ?? item.text),
     live = { ...item, text },
     layout = textLayout(live),
     sticky = item.type === 'note';
@@ -109,7 +117,11 @@ export function CanvasTextEditor({ item, onCommit }: { item: Item; onCommit: (te
       value={text}
       autoFocus
       maxLength={6000}
-      onFocus={e => e.currentTarget.select()}
+      onFocus={e =>
+        initialText === undefined
+          ? e.currentTarget.select()
+          : e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)
+      }
       onPointerDown={e => e.stopPropagation()}
       onChange={e => setText(e.target.value)}
       onBlur={() => onCommit(text)}

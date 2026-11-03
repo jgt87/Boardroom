@@ -7,6 +7,7 @@
 // FORM: Reference reconstruction; no seed. new-work.md §3 says a user- or brief-pinned
 // direction beats the roll. No new visual-world or alternate-composition selection.
 // FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+import './polyfills';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
@@ -20,6 +21,8 @@ import { ToolRail } from './tool-rail';
 import { SelectionBars } from './selection-bars';
 import { FloatingPanels } from './floating-panels';
 import { BoardChrome } from './board-chrome';
+import { BoardOverlays } from './board-overlays';
+import './dashboard.css';
 
 function App() {
   const app = useBoardApp();
@@ -33,6 +36,7 @@ function App() {
         <SelectionBars />
         <FloatingPanels />
         <BoardChrome />
+        <BoardOverlays />
       </main>
     </AppContext.Provider>
   );

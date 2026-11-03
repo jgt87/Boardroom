@@ -1,3 +1,4 @@
+import { expandGroups } from './arrange';
 import React from 'react';
 import { selectionBounds, handles, handlePoint } from './interactions';
 import { connectorGeometry, ConnectorMarkers } from './connectors';
@@ -7,9 +8,14 @@ import { VoteBadge } from './board-panels';
 import { EyeOff } from 'lucide-react';
 import { useApp } from './board-app';
 import { useRenderItem } from './use-render-item';
+import { RECORD_CARD_MIME } from './record-card-handle';
+import { syncedCard } from './record-canvas';
+import { createItem } from './model';
 
 export function CanvasSurface() {
   const {
+    insertDrawio,
+    update,
     size,
     geometries,
     dropLine,
@@ -40,6 +46,8 @@ export function CanvasSurface() {
     thread,
     toWorld,
     tool,
+    lastPointer,
+    setContextMenu,
   } = useApp();
   const { renderItem } = useRenderItem();
   // Large boards: only render objects near the visible area (selected and edited objects always render).
@@ -71,13 +79,37 @@ export function CanvasSurface() {
       <svg
         ref={svg}
         onDragOver={e => {
-          if ([...e.dataTransfer.types].includes('Files')) e.preventDefault();
+          if ([...e.dataTransfer.types].some(t => t === 'Files' || t === RECORD_CARD_MIME)) e.preventDefault();
         }}
         onDrop={e => {
+          const record = e.dataTransfer.getData(RECORD_CARD_MIME);
+          if (record) {
+            e.preventDefault();
+            if ((e.target as Element).closest('[data-record-format]')) return;
+            try {
+              if (record.length > 1000) return;
+              const { sourceId, recordId } = JSON.parse(record);
+              const current = boardRef.current;
+              const source = current.items.find(i => i.id === sourceId);
+              if (!source || source.locked || !source.datasetId || current.items.length >= 2000) return;
+              const p = toWorld(e.clientX, e.clientY);
+              const card = syncedCard(current, source.datasetId, recordId, createItem('card', p.x, p.y));
+              if (card) {
+                update({ ...current, items: [...current.items, card] });
+                setSelected([card.id]);
+              }
+            } catch {
+              /* Foreign or malformed drag data does not change the board. */
+            }
+            return;
+          }
           const files = [...e.dataTransfer.files];
           if (!files.length) return;
           e.preventDefault();
-          insertImages(files, toWorld(e.clientX, e.clientY));
+          const diagrams = files.filter(f => /\.(drawio|xml)$/i.test(f.name));
+          const images = files.filter(f => !diagrams.includes(f));
+          if (diagrams.length) void insertDrawio(diagrams, toWorld(e.clientX, e.clientY));
+          if (images.length) void insertImages(images, toWorld(e.clientX, e.clientY));
         }}
         className={`canvas tool-${tool}`}
         width="100%"
@@ -119,7 +151,19 @@ export function CanvasSurface() {
           }
         }}
         onPointerDown={pointerDown}
-        onPointerMove={pointerMove}
+        onPointerMove={e => {
+          lastPointer.current = toWorld(e.clientX, e.clientY);
+          pointerMove(e);
+        }}
+        onContextMenu={e => {
+          e.preventDefault();
+          cancelGesture();
+          const world = toWorld(e.clientX, e.clientY),
+            id = (e.target as Element).closest<SVGGElement>('[data-item]')?.dataset.item;
+          if (id && !selected.includes(id)) setSelected(expandGroups(board, [id]));
+          if (!id && selected.length) setSelected([]);
+          setContextMenu({ x: e.clientX, y: e.clientY, world, onItem: !!id });
+        }}
         onPointerUp={pointerUp}
         onPointerCancel={cancelGesture}
         onLostPointerCapture={() => {

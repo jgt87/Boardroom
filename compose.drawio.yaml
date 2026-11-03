@@ -1,0 +1,7 @@
+# Optional official editor service. Not started by Boardroom.
+services:
+  drawio:
+    image: jgraph/drawio:latest
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped

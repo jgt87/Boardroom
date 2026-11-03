@@ -5,7 +5,7 @@ import { useApp } from './board-app';
 
 /** SVG, PNG/JPG, PDF and CSV export of the board or selection. */
 export function useExporters() {
-  const { assets, boardRef, display, download, selected, selectedItem, setMenu, size, svg } = useApp();
+  const { assets, boardRef, display, download, selected, selectedItem, setMenu, svg } = useApp();
   const exportSvg = () => {
     const built = buildSvg();
     download(built.svg, 'boardroom.svg', 'image/svg+xml');

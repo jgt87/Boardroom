@@ -3,20 +3,6 @@
 <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="theme-color" content="#f4f4f5"/><link rel="icon" href="/favicon.svg"/><title>Boardroom · Local whiteboard</title></head>
 <body>
   <div id="root"><div id="startup" style="font:16px/1.6 Arial,sans-serif;color:#25252c;max-width:520px;margin:15vh auto;padding:28px"><h1 style="font-size:26px">Opening Boardroom…</h1><p id="startup-message">Loading the local whiteboard.</p><a id="startup-link" hidden href="http://127.0.0.1:5173/" style="color:#4262ff">Open the local whiteboard</a></div></div>
-  <script>
-    if (location.protocol === 'file:') {
-      document.querySelector('#startup h1').textContent = 'Open Boardroom through its local server';
-      document.getElementById('startup-message').textContent = 'This React project cannot run by opening its HTML file directly. The development server is at the link below. If it is not running, open a terminal in the prototype folder and run npm run dev.';
-      document.getElementById('startup-link').hidden = false;
-    } else {
-      setTimeout(function () {
-        var message = document.getElementById('startup-message');
-        if (message) {
-          document.querySelector('#startup h1').textContent = 'The editor could not finish loading';
-          message.textContent = 'Reload this page with Ctrl+Shift+R. If this message remains, the application scripts failed to load.';
-        }
-      }, 10000);
-    }
-  </script>
+  <script src="/startup.js"></script>
   <script type="module" src="/src/main.tsx"></script>
 </body></html>

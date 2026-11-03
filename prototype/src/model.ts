@@ -3,6 +3,7 @@ import type { ShapeKind } from './shapes.ts';
 import { validateExtensions } from './model-ext.ts';
 import { widgetSizes, specFor } from './widget-specs.ts';
 export type WidgetKind =
+  | 'drawio'
   | 'card'
   | 'flipcard'
   | 'grid'
@@ -30,6 +31,7 @@ export type WidgetKind =
   | 'ranking'
   | 'quiz';
 export const widgetKinds: WidgetKind[] = [
+  'drawio',
   'card',
   'flipcard',
   'grid',
@@ -100,7 +102,7 @@ export const allKinds: Kind[] = [
 export type RecordRow = {
   id: string;
   title: string;
-  status: 'Not started' | 'In progress' | 'Complete';
+  status: string;
   assignee: string;
   start: string;
   end: string;
@@ -109,8 +111,10 @@ export type RecordRow = {
   tags?: string[];
   link?: string;
   points?: number;
+  description?: string;
+  values?: import('./record-schema.ts').RecordValues;
 };
-export type MindNode = { id: string; parent: string | null; text: string };
+export type MindNode = { id: string; parent: string | null; text: string; position?: Point };
 export type TextFormat = {
   background?: string;
   highlight?: string;
@@ -168,6 +172,9 @@ export type Item = {
   to?: string;
   nodes?: MindNode[];
   datasetId?: string;
+  recordRef?: { datasetId: string; recordId: string };
+  recordGroup?: string;
+  recordView?: import('./record-query.ts').RecordViewConfig;
   format?: TextFormat;
   link?: string;
   tags?: string[];
@@ -211,6 +218,7 @@ export type Board = {
   title: string;
   items: Item[];
   datasets?: Record<string, RecordRow[]>;
+  recordSchemas?: Record<string, import('./record-schema.ts').RecordSchema>;
   groups?: GroupDef[];
   presentation?: string[];
   assets?: Record<string, ImageAsset>;
@@ -314,6 +322,22 @@ export function pruneReferences(board: Board): Board {
     next.presentation = board.presentation.filter(id => frames.has(id));
   }
   const alive = new Set((next.items ?? board.items).map(i => i.id));
+  if (
+    (next.items ?? board.items).some(
+      i => i.type === 'grid' && (i.data as import('./grid.ts').GridData).objects?.some(o => !alive.has(o.id)),
+    )
+  )
+    next.items = (next.items ?? board.items).map(i =>
+      i.type === 'grid'
+        ? {
+            ...i,
+            data: {
+              ...i.data,
+              objects: (i.data as import('./grid.ts').GridData).objects?.filter(o => alive.has(o.id)),
+            },
+          }
+        : i,
+    );
   if ((next.items ?? board.items).some(i => i.linkTo && !alive.has(i.linkTo)))
     next.items = (next.items ?? board.items).map(i => {
       if (!i.linkTo || alive.has(i.linkTo)) return i;
@@ -418,7 +442,9 @@ export function parseBoard(raw: unknown): Board {
             !r ||
             typeof r.id !== 'string' ||
             !r.id ||
-            !['Not started', 'In progress', 'Complete'].includes(r.status) ||
+            typeof r.status !== 'string' ||
+            !r.status.trim() ||
+            r.status.length > 80 ||
             ![r.title, r.assignee, r.start, r.end].every(s => typeof s === 'string' && s.length <= 6000) ||
             ![r.start, r.end].every(s => s === '' || (/^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(s)))),
         )
@@ -509,6 +535,18 @@ export function parseBoard(raw: unknown): Board {
       (typeof i.datasetId !== 'string' || !Object.hasOwn(b.datasets ?? {}, i.datasetId))
     )
       throw new Error('Missing record dataset.');
+    if (
+      i.recordRef !== undefined &&
+      (i.type !== 'card' ||
+        !i.recordRef ||
+        typeof i.recordRef.datasetId !== 'string' ||
+        !i.recordRef.datasetId ||
+        i.recordRef.datasetId.length > 200 ||
+        typeof i.recordRef.recordId !== 'string' ||
+        !i.recordRef.recordId ||
+        i.recordRef.recordId.length > 200)
+    )
+      throw new Error('Invalid synced card reference.');
     if (i.type === 'mindmap') validateMindNodes(i.nodes);
   }
   validateExtensions(b);
@@ -527,6 +565,11 @@ export function validateMindNodes(nodes: unknown): asserts nodes is MindNode[] {
         !n.id ||
         typeof n.text !== 'string' ||
         n.text.length > 6000 ||
+        (n.position !== undefined &&
+          (!n.position ||
+            ![n.position.x, n.position.y].every(
+              v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 100000,
+            ))) ||
         (n.parent !== null && typeof n.parent !== 'string'),
     ) ||
     new Set(nodes.map(n => n.id)).size !== nodes.length ||

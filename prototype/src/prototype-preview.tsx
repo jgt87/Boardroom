@@ -6,11 +6,12 @@
 //  3. Pass `preview` as ctx.preview to widget renders (or provide it via <PreviewContext.Provider>), and block
 //     canvas editing gestures while preview is set; interactive wireframes stop pointerdown themselves.
 //  4. Render <PrototypePreview board state={preview} size onCamera onExit/> while preview is set.
-import React, { createContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, ChevronLeft } from 'lucide-react';
 import type { Board } from './model';
 import type { PreviewState } from './widget-types';
 import { fitFrame } from './navigation';
+import { useLatest } from './use-latest';
 import type { Camera } from './navigation';
 
 export const PREVIEW_EVENT = 'boardroom:prototype-preview';
@@ -27,7 +28,7 @@ export function usePreviewState(board: Board, startScreenId: string | null): Pre
     setValues({});
     setHistory([]);
   }, [startScreenId]);
-  const exists = (id: string) => board.items.some(i => i.id === id && i.type === 'screen');
+  const exists = useCallback((id: string) => board.items.some(i => i.id === id && i.type === 'screen'), [board]);
   return useMemo(() => {
     if (!startScreenId || !screenId) return undefined;
     return {
@@ -47,7 +48,7 @@ export function usePreviewState(board: Board, startScreenId: string | null): Pre
           return prev ? h.slice(0, h.lastIndexOf(prev)) : [];
         }),
     };
-  }, [startScreenId, screenId, values, history, board]);
+  }, [startScreenId, screenId, values, history, exists]);
 }
 
 /** Preview chrome: fits the camera to the current screen, shows navigation, Esc exits. */
@@ -66,13 +67,18 @@ export function PrototypePreview({
 }) {
   const screens = board.items.filter(i => i.type === 'screen'),
     screen = screens.find(s => s.id === state.screenId),
-    exit = useRef<HTMLButtonElement>(null);
+    exit = useRef<HTMLButtonElement>(null),
+    exitRef = useLatest(onExit),
+    cameraRef = useLatest(onCamera),
+    screenRef = useLatest(screen),
+    stateRef = useLatest(state),
+    screenKey = screen ? [screen.id, screen.x, screen.y, screen.w, screen.h].join('|') : '';
   useEffect(() => {
-    if (!screen) onExit();
-  }, [screen]);
+    if (!screenKey) exitRef.current();
+  }, [screenKey, exitRef]);
   useEffect(() => {
-    if (screen) onCamera(fitFrame(screen, size, 40));
-  }, [screen?.id, screen?.x, screen?.y, screen?.w, screen?.h, size.w, size.h]);
+    if (screenRef.current) cameraRef.current(fitFrame(screenRef.current, { w: size.w, h: size.h }, 40));
+  }, [screenKey, size.w, size.h, screenRef, cameraRef]);
   useEffect(() => {
     exit.current?.focus();
   }, []);
@@ -82,19 +88,19 @@ export function PrototypePreview({
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopImmediatePropagation();
-        onExit();
+        exitRef.current();
         return;
       }
-      if (!typing && e.key === 'Backspace' && state.history.length) {
+      if (!typing && e.key === 'Backspace' && stateRef.current.history.length) {
         e.preventDefault();
-        state.back();
+        stateRef.current.back();
       }
       // Keep whiteboard shortcuts (delete, tools, undo) from editing the board during preview.
       if (!typing) e.stopImmediatePropagation();
     };
     addEventListener('keydown', key, true);
     return () => removeEventListener('keydown', key, true);
-  }, [state.history.length]);
+  }, [exitRef, stateRef]);
   if (!screen) return null;
   return (
     <div className="proto-preview" aria-label="Prototype preview">

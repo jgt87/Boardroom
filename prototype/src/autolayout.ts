@@ -3,6 +3,7 @@
 // MOVE_COLUMN, MOVE_BETWEEN_ROWS) and the flex-layout geometry chunk.
 // Containers are distinct from groups (explicit transform units) and frames (spatial backdrops).
 import type { Board, Item } from './model.ts';
+import { gridOwner } from './grid-canvas.ts';
 
 export type AutoLayoutData = {
   direction: 'row' | 'column';
@@ -54,8 +55,7 @@ export function layoutContainer(
   const boxes = new Map<string, { x: number; y: number }>(),
     left = container.x + d.padding,
     top = container.y + AUTOLAYOUT_HEADER + d.padding;
-  let w = container.w,
-    h: number;
+  let w: number, h: number;
   if (d.direction === 'column') {
     let y = top,
       widest = 0;
@@ -149,7 +149,7 @@ export function adoptIntoContainers(board: Board, movedIds: string[]): Board {
   for (const id of movedIds) {
     const map = new Map(next.items.map(i => [i.id, i])),
       item = map.get(id);
-    if (!item || !canAdopt(item)) continue;
+    if (!item || !canAdopt(item) || gridOwner(next, id)) continue;
     const cx = item.x + item.w / 2,
       cy = item.y + item.h / 2;
     const target = [...next.items]

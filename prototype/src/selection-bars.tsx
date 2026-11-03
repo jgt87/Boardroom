@@ -32,6 +32,7 @@ import { applyFrameFormat } from './frame-presets';
 import { urlsIn, setPrivate, setFrameContentHidden, frameContentHidden } from './board-tools';
 import { viewFor } from './widgets';
 import { useApp } from './board-app';
+import { manualMindNodes, mindStyleOf } from './mindmap-style';
 
 export function SelectionBars() {
   const {
@@ -42,7 +43,6 @@ export function SelectionBars() {
     deleteSelection,
     detailsId,
     duplicate,
-    fill,
     firstShape,
     mixedBorders,
     openEditor,
@@ -83,14 +83,16 @@ export function SelectionBars() {
       )}
       {selected.length > 0 && !selectionLocked && (
         <div className="selection-bar floating">
-          <span>
+          <span style={selectedItem?.type === 'drawio' ? { textTransform: 'none' } : undefined}>
             {selected.length === 1
               ? selectedItem && isShapeKind(selectedItem.type)
                 ? shapeLabels[selectedItem.type]
-                : selectedItem?.type
+                : selectedItem?.type === 'drawio'
+                  ? 'Draw.io diagram'
+                  : selectedItem?.type
               : `${selected.length} objects`}
           </span>
-          {selectedItem && (
+          {selectedItem && selectedItem.type !== 'drawio' && (
             <input
               type="color"
               aria-label={selectedItem.type === 'arrow' ? 'Line color' : 'Object color'}
@@ -173,6 +175,22 @@ export function SelectionBars() {
           {selectedItem?.type === 'note' && selected.length === 1 && (
             <NoteSizeControl item={selectedItem} onChange={patch} />
           )}
+          {selectedItem?.type === 'mindmap' && selected.length === 1 && (
+            <button
+              className="widget-action"
+              aria-pressed={mindStyleOf(selectedItem).autoLayout}
+              aria-label="Mind map auto layout"
+              onClick={() => {
+                const autoLayout = mindStyleOf(selectedItem).autoLayout === false;
+                patch({
+                  data: { ...selectedItem.data, autoLayout },
+                  ...(!autoLayout ? { nodes: manualMindNodes(selectedItem.nodes ?? []) } : {}),
+                });
+              }}
+            >
+              Auto layout {mindStyleOf(selectedItem).autoLayout ? 'on' : 'off'}
+            </button>
+          )}
           {selectedItem?.type === 'note' && selected.length === 1 && (
             <button
               data-tool-anchor="note-details"
@@ -217,8 +235,20 @@ export function SelectionBars() {
           )}
           <button
             className="icon-button"
-            aria-label={selectedItem?.type === 'code' ? 'Edit code' : 'Edit text'}
-            title={selectedItem?.type === 'code' ? 'Edit code (Enter)' : 'Edit text (Enter)'}
+            aria-label={
+              selectedItem?.type === 'drawio'
+                ? 'Edit diagram'
+                : selectedItem?.type === 'code'
+                  ? 'Edit code'
+                  : 'Edit text'
+            }
+            title={
+              selectedItem?.type === 'drawio'
+                ? 'Edit diagram (Enter)'
+                : selectedItem?.type === 'code'
+                  ? 'Edit code (Enter)'
+                  : 'Edit text (Enter)'
+            }
             disabled={!selectedItem || ['pen', 'image'].includes(selectedItem.type) || selected.length !== 1}
             onClick={() => openEditor(selected[0])}
           >

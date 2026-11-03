@@ -43,7 +43,7 @@ import {
   updateQuestion,
   applyDocFormat,
 } from '../src/engage.ts';
-import type { JourneyData, PlannerData, RankingData, QuizData } from '../src/engage.ts';
+import type { PlannerData, RankingData, QuizData } from '../src/engage.ts';
 
 const spec = (k: string) => engageSpecs.find(s => s.kind === k)!;
 const fresh = (k: string): Item => spec(k).init!({ ...createItem('note', 0, 0), type: k as WidgetKind });

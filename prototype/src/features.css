@@ -828,9 +828,13 @@
 
 @media (max-width: 600px) {
   .board-header {
-    max-width: calc(100vw - 266px);
+    max-width: calc(100vw - 300px);
     gap: 8px;
-    padding: 0 10px;
+    padding: 0 8px;
+  }
+  /* Phones: the board name is edited from the Boards dashboard (logo button). */
+  .board-header input {
+    display: none;
   }
   .board-header .save-state,
   .board-header .divider {
@@ -908,4 +912,20 @@
   .gallery-layout nav button span {
     white-space: nowrap;
   }
+}
+
+/* ---- Fuzzy search highlights (item 59) ---------------------------------------------------- */
+.search-results mark {
+  background: #fff0c2;
+  color: #3d2c00;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.search-results li.current mark {
+  background: #ffd98a;
+}
+.search-fuzzy {
+  font-size: 11px;
+  color: #5c5c66;
+  padding: 6px 10px 0;
 }

@@ -34,6 +34,8 @@ export type PreviewState = {
 export type WidgetCtx = {
   board: Board;
   assets: Record<string, ImageAsset>;
+  /** Store a new immutable media asset; callers commit the returned id with their change. */
+  storeAsset: (asset: ImageAsset) => Promise<string>;
   zoom: number;
   selected: boolean;
   /** Apply a board change as one undo step. */

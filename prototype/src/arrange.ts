@@ -3,6 +3,8 @@
 // unlockAll identifiers. Groups here are explicit membership; frames remain spatial containment.
 import type { Board, Item, GroupDef, Point } from './model.ts';
 import { clone, pruneReferences } from './model.ts';
+import { gridOwner } from './grid-canvas.ts';
+import type { GridData } from './grid.ts';
 import { frameMoveIds, selectionBounds, translate } from './interactions.ts';
 import type { Bounds } from './interactions.ts';
 
@@ -63,6 +65,7 @@ function units(board: Board, ids: string[]): string[][] {
 }
 
 export function groupSelection(board: Board, ids: string[]): { board: Board; groupId: string } {
+  if (ids.some(id => gridOwner(board, id))) throw new Error('Move objects out of the Grid before grouping them.');
   const parts = units(board, ids);
   if (parts.length < 2) throw new Error('Select at least two objects or groups to group.');
   if (parts.flat().some(id => board.items.find(i => i.id === id)?.locked))
@@ -106,6 +109,8 @@ export const canGroup = (board: Board, ids: string[]) => units(board, ids).lengt
 export const isLocked = (board: Board, id: string) => !!board.items.find(i => i.id === id)?.locked;
 /** Lock or unlock items (whole groups are affected together). One board change = one undo step. */
 export function setLocked(board: Board, ids: string[], locked: boolean): Board {
+  if (locked && ids.some(id => gridOwner(board, id)))
+    throw new Error('Move objects out of the Grid before locking them.');
   const target = new Set(expandGroups(board, ids));
   return {
     ...board,
@@ -125,12 +130,23 @@ export function setLocked(board: Board, ids: string[], locked: boolean): Board {
 export function editableIds(board: Board, ids: string[]): string[] {
   const byId = new Map(board.items.map(i => [i.id, i]));
   return units(board, ids)
-    .filter(u => !u.some(id => byId.get(id)?.locked))
+    .filter(u => !u.some(id => byId.get(id)?.locked || gridOwner(board, id)?.locked))
     .flat();
 }
 export function moveIds(board: Board, ids: string[]): string[] {
   const byId = new Map(board.items.map(i => [i.id, i]));
-  return frameMoveIds(board.items, editableIds(board, ids)).filter(id => !byId.get(id)?.locked);
+  const expanded = [
+    ...new Set([
+      ...ids,
+      ...ids.flatMap(id => {
+        const i = byId.get(id);
+        return i?.type === 'grid' ? ((i.data as GridData).objects ?? []).map(o => o.id) : [];
+      }),
+    ]),
+  ];
+  return frameMoveIds(board.items, editableIds(board, expanded)).filter(
+    id => !byId.get(id)?.locked && !gridOwner(board, id)?.locked,
+  );
 }
 
 // ---- Alignment and distribution --------------------------------------------------------------
@@ -139,6 +155,7 @@ type Unit = { ids: string[]; moves: string[]; bounds: Bounds };
 function arrangeUnits(board: Board, ids: string[]): Unit[] {
   const byId = new Map(board.items.map(i => [i.id, i]));
   const list = units(board, ids)
+    .filter(u => !u.some(id => gridOwner(board, id)))
     .filter(u => !u.some(id => byId.get(id)?.locked))
     .map(u =>
       u.filter(id => {
@@ -223,7 +240,14 @@ export function distributeSelection(board: Board, ids: string[], axis: 'horizont
 
 /** Duplicate a selection, remapping connectors and copying group structure. Copies are unlocked. */
 export function duplicateItems(board: Board, ids: string[], offset = 32): { board: Board; ids: string[] } {
-  const source = board.items.filter(i => ids.includes(i.id)),
+  const included = new Set([
+    ...ids,
+    ...ids.flatMap(id => {
+      const i = board.items.find(i => i.id === id);
+      return i?.type === 'grid' ? ((i.data as GridData).objects ?? []).map(o => o.id) : [];
+    }),
+  ]);
+  const source = board.items.filter(i => included.has(i.id)),
     map = new Map(source.map(i => [i.id, crypto.randomUUID()]));
   const groupIds = new Set<string>(),
     gmap = groupMap(board);
@@ -239,6 +263,11 @@ export function duplicateItems(board: Board, ids: string[], offset = 32): { boar
     if (i.to) copy.to = map.get(i.to) ?? i.to;
     if (i.linkTo && map.has(i.linkTo)) copy.linkTo = map.get(i.linkTo);
     if (i.group) copy.group = newGroup.get(i.group);
+    if (i.type === 'grid')
+      copy.data = {
+        ...copy.data,
+        objects: (i.data as GridData).objects?.filter(o => map.has(o.id)).map(o => ({ ...o, id: map.get(o.id)! })),
+      };
     delete copy.locked;
     return copy;
   });
