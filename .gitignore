@@ -16,3 +16,20 @@ playwright-report/
 prototype/test-results/
 prototype/playwright-report/
 prototype/e2e/.tmp/
+# Internal working notes: reference analysis, parity/integration status reports and plans.
+# They stay on disk for local work but are not published.
+/ADVANCED-CANVAS-INTEGRATION.md
+/CONNECTOR-IMPLEMENTATION.md
+/DRAWIO-INTEGRATION.md
+/IMPLEMENTATION-PLAN.md
+/MINDMAP-WORKFLOW-INTEGRATION.md
+/FEATURE-MAP.md
+/NEXT-20-ITEMS-PLAN.md
+/PARITY-NEXT-SIX.md
+/RECONSTRUCTION.md
+/RECORD-WORKFLOW-INTEGRATION.md
+/SCHEMA-GRID-INTEGRATION.md
+/TOOL-WORKFLOW-AUDIT.md
+/WORKFLOW-IMPLEMENTATION.md
+/WORKFLOW-VERIFICATION.md
+/analysis/*.md

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Faster loading — 2026-11-03
+- Added `npm run serve`: an optimized production build on port 4173 (LAN-reachable). It loads in 8 compressed requests (0.26 MB) instead of the dev server's ~150 source files, which could leave other devices, or a busy browser, on "Opening Boardroom…".
+- The dev server now compiles every source module at startup instead of on first request.
+
 ### Analysis re-scan: items 78–85 — 2026-11-03
 - **Slides decks:** a new Slides object with seven layouts, six templates and poll activity slides. Edit on the canvas; add, duplicate, delete and reorder slides (Alt + arrows on thumbnails); present full screen with arrow keys and Escape. The Slides format now places a deck; frame presentation remains on the Presentation button.
 - **Docs:** Note/Tip/Important/Warning callouts (stored as `> [!NOTE]` Markdown), a `/` slash menu on empty lines, four starter templates, Export as Markdown, and Markdown upload (Upload menu or canvas drop) as a new Doc.

@@ -58,8 +58,9 @@ export default defineConfig(({ mode }) => {
       watch: {
         ignored: ['**/e2e/.tmp/**', '**/playwright-report/**', '**/test-results/**', '**/dist/**', '**/qa/**'],
       },
-      // Transform the app's modules when the server starts, so the first visit is fast.
-      warmup: { clientFiles: ['./src/main.tsx'] },
+      // Transform every app module when the server starts, so a first visit (including lazily loaded
+      // tools) never waits for on-demand compilation.
+      warmup: { clientFiles: ['./src/main.tsx', './src/**/*.{ts,tsx}'] },
     },
     // Pre-bundle lazily imported packages at start-up so the dev server never re-optimises and
     // reloads the page the first time a tool (PDF, emoji, backups, Mermaid…) is used.

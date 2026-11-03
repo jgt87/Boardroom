@@ -11,6 +11,7 @@ Work is planned in `NEXT-20-ITEMS-PLAN.md` (items 1–85, each with linked imple
 ## Commands (run from `prototype/`)
 
 - `npm run dev`: Vite dev server on port 5173, bound to all interfaces (reachable on the LAN, e.g. http://192.168.1.52:5173/). It serves source directly, so it needs no rebuild.
+- `npm run serve`: production build served on port 4173 (also on the LAN, e.g. http://192.168.1.52:4173/). About 8 compressed requests instead of ~150 source files, so use it for everyday use and other devices. It does not pick up code changes: run it again after editing.
 - `npm test`: Node's built-in test runner with `--experimental-strip-types` over `tests/*.test.ts`. Run one file with `node --experimental-strip-types --test tests/routing.test.ts`, and one test with `--test-name-pattern "self-loops"`.
 - `npm run build`: `tsc --noEmit`, then a Vite production build to `dist/`.
 - `npm run format` / `npm run format:check`: Prettier (`.prettierrc.json`, width 120, single quotes).
