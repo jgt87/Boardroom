@@ -46,6 +46,9 @@ import {
   Upload,
   Code,
   ImagePlus,
+  MessageSquareText,
+  PartyPopper,
+  FileDown,
 } from 'lucide-react';
 const kindIcons: Record<string, typeof Layers3> = {
   drawio: Workflow,
@@ -90,6 +93,10 @@ const kindIcons: Record<string, typeof Layers3> = {
   wordcloud: Cloud,
   ranking: ListOrdered,
   quiz: CircleHelp,
+  openended: MessageSquareText,
+  reactions: PartyPopper,
+  'import:markdown': FileDown,
+  'import:pptx': Presentation,
 };
 import { catalog, toolCategories } from './tool-catalog';
 import type { CatalogEntry } from './tool-catalog';
@@ -327,10 +334,12 @@ export function ToolGallery({
       { label: 'Image', kind: 'image', description: '' },
       { label: 'Video', kind: 'video', description: '' },
       { label: 'PDF', kind: 'pdf', description: '' },
+      { label: 'Markdown as Doc', kind: 'import:markdown', description: 'A .md file becomes an editable Doc' },
+      { label: 'PowerPoint as Slides', kind: 'import:pptx', description: 'Slide titles and text from a .pptx file' },
     ],
     wireframes: wireframeComponents.map(c => ({
       label: c.label,
-      kind: 'wf:' + c.component,
+      kind: 'wf:' + c.id,
       description: 'Wireframe component',
     })),
   };

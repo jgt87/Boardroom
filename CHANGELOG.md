@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Analysis re-scan: items 78–85 — 2026-11-03
+- **Slides decks:** a new Slides object with seven layouts, six templates and poll activity slides. Edit on the canvas; add, duplicate, delete and reorder slides (Alt + arrows on thumbnails); present full screen with arrow keys and Escape. The Slides format now places a deck; frame presentation remains on the Presentation button.
+- **Docs:** Note/Tip/Important/Warning callouts (stored as `> [!NOTE]` Markdown), a `/` slash menu on empty lines, four starter templates, Export as Markdown, and Markdown upload (Upload menu or canvas drop) as a new Doc.
+- **Shape packs:** 43 new shapes in Basic, Flowchart, Callouts, UML, BPMN and ERD packs, chosen from pack tabs in Shapes and lines. They attach connectors, hold text, convert, join Grids and get contrast checks like the original shapes.
+- **Wireframe buttons:** Solid, Outline, Rounded and Link styles with optional icons, in the library and the properties editor.
+- **Open-ended activity:** collect free-text responses on the canvas and convert them into sticky notes in one undo step.
+- **Reactions:** six emoji reactions float across the screen and are announced to screen readers; they are not saved. Reduced motion shows a static burst.
+- **PowerPoint import:** `.pptx` files become Slides decks with titles and text in slide order (no images or layouts).
+- **Note authors:** a display name stored on this device is recorded on new sticky notes; a board setting shows author labels.
+- Fixed: the Grid object filter named a non-existent `process` shape, so predefined-process shapes could not join a Grid.
+- Verified: 179 unit tests, 7 new browser scenarios with axe checks, formatting, lint, TypeScript and production build.
+
 ### Record layout menu — 2026-11-03
 - Replaced permanent Table/Kanban/Timeline tabs with a compact current-layout menu, icons and checked choice. Added keyboard navigation, dismissal and lock enforcement; independent tool creation and dataset identity are preserved.
 - Rebuilt on port 5173. Formatting, lint, 159 unit tests, TypeScript/build and 11 targeted browser scenarios passed.

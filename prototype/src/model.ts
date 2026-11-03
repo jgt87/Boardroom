@@ -1,4 +1,4 @@
-import { shapeEdge, shapeSizes, isShapeKind } from './shapes.ts';
+import { shapeEdge, shapeSizes, isShapeKind, shapeKinds } from './shapes.ts';
 import type { ShapeKind } from './shapes.ts';
 import { validateExtensions } from './model-ext.ts';
 import { widgetSizes, specFor } from './widget-specs.ts';
@@ -29,7 +29,9 @@ export type WidgetKind =
   | 'planner'
   | 'wordcloud'
   | 'ranking'
-  | 'quiz';
+  | 'quiz'
+  | 'slides'
+  | 'openended';
 export const widgetKinds: WidgetKind[] = [
   'drawio',
   'card',
@@ -58,6 +60,8 @@ export const widgetKinds: WidgetKind[] = [
   'wordcloud',
   'ranking',
   'quiz',
+  'slides',
+  'openended',
 ];
 export type Kind =
   | 'note'
@@ -77,16 +81,7 @@ export type Kind =
 export const allKinds: Kind[] = [
   'note',
   'text',
-  'rectangle',
-  'ellipse',
-  'diamond',
-  'roundrect',
-  'triangle',
-  'cylinder',
-  'parallelogram',
-  'hexagon',
-  'predefined',
-  'terminator',
+  ...shapeKinds,
   'frame',
   'pen',
   'arrow',
@@ -185,6 +180,8 @@ export type Item = {
   assetId?: string;
   crop?: Crop;
   emoji?: string;
+  /** Display name of whoever created a sticky note on this device (item 85). */
+  author?: string;
   frame?: FrameFormat;
   language?: string;
   /** Per-widget payload; shape is defined and validated by the widget registry (widget-types.ts). */
@@ -226,6 +223,8 @@ export type Board = {
   voting?: VotingSession;
   votingResults?: VotingResult[];
   privateMode?: { all: boolean; frames: string[] };
+  /** Show sticky note authors (item 85). */
+  showAuthors?: boolean;
 };
 export type History = { past: Board[]; current: Board; future: Board[] };
 export const colors = [

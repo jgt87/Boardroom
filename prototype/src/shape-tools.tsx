@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Item, ShapeStyle } from './model';
-import { shapeKinds, shapeLabels, shapePath, shapeDetail, textBox } from './shapes';
+import { shapePacks, shapeLabels, shapePath, shapeDetail, shapeSizes, textBox } from './shapes';
 import type { ShapeKind } from './shapes';
 
 export const DEFAULT_BORDER = {
@@ -19,13 +19,15 @@ const dash = (style: ShapeStyle['borderStyle'], width: number) =>
 
 /** Small outline glyph used in the Shapes and lines menu. */
 export function ShapeGlyph({ kind, size = 20 }: { kind: ShapeKind; size?: number }) {
-  const w = 22,
-    h = kind === 'terminator' ? 12 : kind === 'cylinder' ? 20 : 16,
+  const [sw, sh] = shapeSizes[kind],
+    box = 22,
+    w = sh > sw ? Math.max(10, (box * sw) / sh) : box,
+    h = kind === 'terminator' ? 12 : kind === 'cylinder' ? 20 : sh > sw ? box : Math.max(14, (box * sh) / sw),
     detail = shapeDetail(kind, w, h);
   return (
-    <svg width={size} height={size} viewBox={`-2 -2 ${w + 4} ${w + 4}`} aria-hidden="true">
+    <svg width={size} height={size} viewBox={`-2 -2 ${box + 4} ${box + 4}`} aria-hidden="true">
       <g
-        transform={`translate(0 ${(w - h) / 2})`}
+        transform={`translate(${(box - w) / 2} ${(box - h) / 2})`}
         fill="none"
         stroke="currentColor"
         strokeWidth="1.7"
@@ -69,14 +71,25 @@ export function ShapeBody({ item }: { item: Item & { type: ShapeKind } }) {
 export const shapeTextBox = (item: Item) => textBox(item.type as ShapeKind, item.w, item.h);
 
 export function ShapeMenuItems({ onChoose }: { onChoose: (kind: ShapeKind) => void }) {
+  const [pack, setPack] = useState(shapePacks[0].name),
+    current = shapePacks.find(p => p.name === pack) ?? shapePacks[0];
   return (
     <>
-      {shapeKinds.map(kind => (
-        <button key={kind} onClick={() => onChoose(kind)}>
-          <ShapeGlyph kind={kind} />
-          {shapeLabels[kind]}
-        </button>
-      ))}
+      <div className="shape-pack-tabs" role="group" aria-label="Shape packs">
+        {shapePacks.map(p => (
+          <button key={p.name} aria-pressed={p.name === pack} onClick={() => setPack(p.name)}>
+            {p.name}
+          </button>
+        ))}
+      </div>
+      <div className="shape-pack-grid" role="group" aria-label={`${current.name} shapes`}>
+        {current.kinds.map(kind => (
+          <button key={kind} title={shapeLabels[kind]} onClick={() => onChoose(kind)}>
+            <ShapeGlyph kind={kind} size={26} />
+            <span>{shapeLabels[kind]}</span>
+          </button>
+        ))}
+      </div>
     </>
   );
 }

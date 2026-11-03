@@ -26,6 +26,7 @@ import { PreviewContext, PrototypePreview } from './prototype-preview';
 import { MarkdownPastePanel } from './markdown-paste';
 import { markdownToItems } from './markdown';
 import { CodeEditorDialog } from './code-block';
+import { ReactionsPanel, AuthorsPanel } from './collab-extras';
 import {
   startVoting,
   endVoting,
@@ -55,6 +56,8 @@ import { useApp } from './board-app';
 
 export function FloatingPanels() {
   const {
+    authorName,
+    setAuthorName,
     assets,
     board,
     boardRef,
@@ -260,6 +263,29 @@ export function FloatingPanels() {
                 fit([item]);
               }
             }}
+            onClose={() => setFacil(null)}
+          />
+        </AnchoredPanel>
+      )}
+      {facil === 'reactions' && (
+        <AnchoredPanel anchor="facilitate" placement="below">
+          <ReactionsPanel onClose={() => setFacil(null)} />
+        </AnchoredPanel>
+      )}
+      {facil === 'authors' && (
+        <AnchoredPanel anchor="facilitate" placement="below">
+          <AuthorsPanel
+            name={authorName}
+            show={!!board.showAuthors}
+            onName={setAuthorName}
+            onShow={show =>
+              run(b => {
+                const next: typeof b = { ...b };
+                if (show) next.showAuthors = true;
+                else delete next.showAuthors;
+                return next;
+              })
+            }
             onClose={() => setFacil(null)}
           />
         </AnchoredPanel>

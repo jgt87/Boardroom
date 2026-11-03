@@ -3,6 +3,7 @@
 // BOARD_TIMER, PRIVATE_MODE, COMMENT/ADD_COMMENT; FrameWidget setContentHidden/hyperlinkService;
 // NavigatSidebar; ComputeLineWidget LINE_JUMP/relativePosition; BoardExport PDF/PNG/JPG/CSV.
 import type { Board, Item, Point, RecordRow, CommentThread, VotingResult } from './model.ts';
+import { isShapeKind } from './shapes.ts';
 
 const uid = () => crypto.randomUUID();
 
@@ -511,19 +512,7 @@ export function checkAccessibility(board: Board): A11yIssue[] {
     const label = i.name || i.text.trim().slice(0, 40) || `Untitled ${i.type}`;
     if (['image', 'video', 'pdf', 'icon', 'qr'].includes(i.type) && !(i.alt ?? '').trim())
       issues.push({ id: i.id, kind: 'alt', message: `${label}: add a text description.` });
-    const textOn = [
-      'note',
-      'rectangle',
-      'roundrect',
-      'ellipse',
-      'diamond',
-      'triangle',
-      'cylinder',
-      'parallelogram',
-      'hexagon',
-      'predefined',
-      'terminator',
-    ].includes(i.type);
+    const textOn = i.type === 'note' || isShapeKind(i.type);
     if (textOn && i.text.trim() && /^#[0-9a-f]{6}$/i.test(i.fill)) {
       const r = contrastRatio('#22232b', i.fill);
       if (r < 4.5)

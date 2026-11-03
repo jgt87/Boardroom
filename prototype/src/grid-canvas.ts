@@ -1,6 +1,7 @@
 import type { Board, Item } from './model.ts';
 import type { GridData } from './grid.ts';
 import { mergeAt } from './grid.ts';
+import { isShapeKind } from './shapes.ts';
 import type { AutoLayoutData } from './autolayout.ts';
 
 export const GRID_HEADER = 42;
@@ -60,25 +61,7 @@ export function adoptGridObjects(
     ids.includes(grid.id) ||
     !objects.length ||
     objects.some(
-      i =>
-        i.locked ||
-        i.group ||
-        ![
-          'note',
-          'text',
-          'card',
-          'image',
-          'rectangle',
-          'ellipse',
-          'diamond',
-          'roundrect',
-          'triangle',
-          'hexagon',
-          'cylinder',
-          'parallelogram',
-          'process',
-          'terminator',
-        ].includes(i.type),
+      i => i.locked || i.group || !(['note', 'text', 'card', 'image'].includes(i.type) || isShapeKind(i.type)),
     )
   )
     return board;

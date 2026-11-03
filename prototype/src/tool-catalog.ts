@@ -29,7 +29,7 @@ export const formatTools: CatalogEntry[] = [
   e('Kanban', 'kanban', 'Visualize your workflows with multi-view options'),
   e('Matrix', 'matrix', 'Plot ideas in a 2×2 matrix'),
   e('Doc', 'doc', 'Organize your thoughts in a document'),
-  e('Slides', 'slides', 'Present frames as slides'),
+  e('Slides', 'slides', 'Build and present a slide deck'),
   e('Engage activities', 'submenu:engage', 'Run interactive activities'),
   e('Journey Map', 'journey', 'Visualize end-to-end experiences'),
   unavailable('Talktrack'),
@@ -79,7 +79,7 @@ export const catalog: Record<string, CatalogEntry[]> = {
   'Engage activities': [
     unavailable('Joining code'),
     e('Multiple choice', 'poll'),
-    unavailable('Open-ended'),
+    e('Open-ended', 'openended', 'Collect free-text responses'),
     e('Scales', 'scale'),
     e('Ranking', 'ranking'),
     e('Word cloud', 'wordcloud'),
@@ -92,6 +92,7 @@ export const catalog: Record<string, CatalogEntry[]> = {
     e('Poll', 'poll'),
     e('Private mode', 'private'),
     e('Spinner wheel', 'spinner'),
+    e('Reactions', 'reactions', 'Send a quick emoji reaction'),
   ],
   Media: [
     e('Images and icons', 'submenu:images'),

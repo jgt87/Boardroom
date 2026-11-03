@@ -8,6 +8,8 @@ import { BoardsDashboard } from './dashboard';
 import { ContextMenu } from './context-menu';
 import type { MenuEntry } from './context-menu';
 import { PropertiesInspector } from './inspector';
+import { DeckPresenter } from './widgets-activities';
+import { ReactionLayer } from './collab-extras';
 
 export function BoardOverlays() {
   const app = useApp();
@@ -156,6 +158,8 @@ export function BoardOverlays() {
           onClose={() => setInspector(false)}
         />
       )}
+      <DeckPresenter board={board} update={update} boardRef={boardRef} />
+      <ReactionLayer />
     </>
   );
 }

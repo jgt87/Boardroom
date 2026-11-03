@@ -15,6 +15,7 @@ import { createItem } from './model';
 export function CanvasSurface() {
   const {
     insertDrawio,
+    importDocument,
     update,
     size,
     geometries,
@@ -107,7 +108,12 @@ export function CanvasSurface() {
           if (!files.length) return;
           e.preventDefault();
           const diagrams = files.filter(f => /\.(drawio|xml)$/i.test(f.name));
-          const images = files.filter(f => !diagrams.includes(f));
+          const documents = files.filter(f => /\.(md|markdown|pptx)$/i.test(f.name));
+          const images = files.filter(f => !diagrams.includes(f) && !documents.includes(f));
+          for (const [k, f] of documents.slice(0, 5).entries()) {
+            const p = toWorld(e.clientX, e.clientY);
+            void importDocument(f, { x: p.x + k * 40, y: p.y + k * 40 });
+          }
           if (diagrams.length) void insertDrawio(diagrams, toWorld(e.clientX, e.clientY));
           if (images.length) void insertImages(images, toWorld(e.clientX, e.clientY));
         }}

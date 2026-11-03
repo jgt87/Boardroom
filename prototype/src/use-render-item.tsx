@@ -10,7 +10,7 @@ import { isShapeKind } from './shapes';
 import type { ShapeKind } from './shapes';
 import { ShapeBody, shapeTextBox } from './shape-tools';
 import { ImageBody } from './image-tools';
-import { EmojiBadge } from './note-extras';
+import { EmojiBadge, AuthorTag } from './note-extras';
 import { MindmapCanvasEditor } from './mindmap-canvas';
 import { CodePreview } from './code-block';
 import { strokePath, penPresets, jumpPath, pointAlong } from './board-tools';
@@ -266,6 +266,7 @@ export function useRenderItem() {
           </foreignObject>
         )}
         {i.type === 'note' && <EmojiBadge item={i} />}
+        {i.type === 'note' && shown.showAuthors && <AuthorTag item={i} />}
         {editing === i.id && (
           <foreignObject
             x={frame ? 0 : shape ? tb.x - 4 : 8}
@@ -351,6 +352,7 @@ export function useRenderItem() {
       privateSet.has(i.id),
       mindEditId === i.id,
       zoomDependent(i) ? camera.z : 0,
+      i.type === 'note' && !!shown.showAuthors,
     ].join('|');
     const deps: unknown[] = [
       i.type === 'arrow' ? geometries.get(i.id) : null,

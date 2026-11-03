@@ -21,6 +21,30 @@ export function EmojiBadge({ item }: { item: Item }) {
   );
 }
 
+/** Author name at the bottom of a sticky note (item 85), shown when the board setting is on. */
+export function AuthorTag({ item }: { item: Item }) {
+  if (!item.author) return null;
+  const size = Math.max(9, Math.min(14, item.w * 0.055)),
+    max = Math.max(4, Math.floor((item.w - 20) / (size * 0.6)));
+  const label = item.author.length > max ? item.author.slice(0, max - 1) + '…' : item.author;
+  return (
+    <text
+      x={item.w - 8}
+      y={item.h - 8}
+      textAnchor="end"
+      fontSize={size}
+      fontFamily="Arial"
+      fill="#22232b"
+      fillOpacity={0.65}
+      pointerEvents="none"
+      className="note-author"
+    >
+      <title>{`Created by ${item.author}`}</title>
+      {label}
+    </text>
+  );
+}
+
 /** Full emoji picker (categories, search, skin tones, recent); see emoji-picker.tsx. */
 export { EmojiPicker } from './emoji-picker';
 

@@ -5,6 +5,7 @@ import { Marked } from 'marked';
 import type { Token, Tokens } from 'marked';
 import type { Item, Point } from './model.ts';
 import { createItem } from './model.ts';
+import { calloutOf, calloutLabels } from './doc-tools.ts';
 
 export const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -28,6 +29,16 @@ export function renderMarkdown(md: string): string {
         return href
           ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer nofollow">${inner}</a>`
           : inner;
+      },
+      // Callouts (item 79): GitHub-style `> [!NOTE]` blocks become labelled note regions.
+      blockquote(this: any, token: Tokens.Blockquote) {
+        const callout = calloutOf(token.text);
+        if (!callout) return false;
+        const inner = (this.parser.parse(token.tokens) as string)
+          .replace(/^\s*<p>\s*\[!(NOTE|TIP|IMPORTANT|WARNING)\]\s*/i, '<p>')
+          .replace(/<p>\s*<\/p>\s*/g, '');
+        const label = calloutLabels[callout.kind];
+        return `<div class="doc-callout doc-callout-${callout.kind}" role="note" aria-label="${label}" data-callout="${callout.kind}"><p class="doc-callout-title" contenteditable="false">${label}</p>${inner}</div>\n`;
       },
       // No network loads from documents: images show their description only.
       image(token: Tokens.Image) {

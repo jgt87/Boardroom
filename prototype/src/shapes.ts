@@ -2,8 +2,10 @@
 // Evidence: ComputeShapeWidget registers ShapeTriangle, ShapeRounder, ShapeBarrel,
 // ShapeParallelogram, ShapePredefinedProcess, ShapePill and ShapeHexagon geometries.
 import type { Point } from './model.ts';
+import { packKinds, packDef, packOrder } from './shape-packs.ts';
+import type { PackName } from './shape-packs.ts';
 
-export const shapeKinds = [
+const basicKinds = [
   'rectangle',
   'roundrect',
   'ellipse',
@@ -15,9 +17,10 @@ export const shapeKinds = [
   'predefined',
   'terminator',
 ] as const;
+export const shapeKinds = [...basicKinds, ...packKinds] as const;
 export type ShapeKind = (typeof shapeKinds)[number];
 export const isShapeKind = (kind: string): kind is ShapeKind => (shapeKinds as readonly string[]).includes(kind);
-export const shapeLabels: Record<ShapeKind, string> = {
+const basicLabels: Record<(typeof basicKinds)[number], string> = {
   rectangle: 'Rectangle',
   roundrect: 'Rounded rectangle',
   ellipse: 'Ellipse',
@@ -29,7 +32,7 @@ export const shapeLabels: Record<ShapeKind, string> = {
   predefined: 'Predefined process',
   terminator: 'Terminator (start/end)',
 };
-export const shapeSizes: Record<ShapeKind, [number, number]> = {
+const basicSizes: Record<(typeof basicKinds)[number], [number, number]> = {
   rectangle: [230, 130],
   roundrect: [230, 130],
   ellipse: [220, 150],
@@ -41,6 +44,19 @@ export const shapeSizes: Record<ShapeKind, [number, number]> = {
   predefined: [240, 130],
   terminator: [230, 90],
 };
+export const shapeLabels = {
+  ...basicLabels,
+  ...Object.fromEntries(packKinds.map(k => [k, packDef(k)!.label])),
+} as Record<ShapeKind, string>;
+export const shapeSizes = {
+  ...basicSizes,
+  ...Object.fromEntries(packKinds.map(k => [k, packDef(k)!.size])),
+} as Record<ShapeKind, [number, number]>;
+/** Shapes grouped for the Shapes and lines menu. */
+export const shapePacks: { name: PackName; kinds: ShapeKind[] }[] = packOrder.map(name => ({
+  name,
+  kinds: [...(name === 'Basic' ? basicKinds : []), ...packKinds.filter(k => packDef(k)!.pack === name)] as ShapeKind[],
+}));
 export type Box = { x: number; y: number; w: number; h: number };
 
 const slant = (w: number, h: number) => Math.min(w * 0.2, h * 0.6);
@@ -48,6 +64,8 @@ const capHeight = (w: number, h: number) => Math.min(h * 0.12, w * 0.2, 30);
 
 /** Polygon outline for polygonal shapes, in local coordinates. */
 export function polygon(kind: ShapeKind, w: number, h: number): Point[] | null {
+  const pack = packDef(kind);
+  if (pack) return pack.outline(w, h);
   const s = slant(w, h),
     hx = Math.min(w * 0.2, h / 2);
   switch (kind) {
@@ -87,6 +105,8 @@ export function polygon(kind: ShapeKind, w: number, h: number): Point[] | null {
 
 /** SVG path data for the filled outline. */
 export function shapePath(kind: ShapeKind, w: number, h: number): string {
+  const custom = packDef(kind)?.path;
+  if (custom) return custom(w, h);
   const poly = polygon(kind, w, h);
   if (poly) return `M${poly.map(p => `${p.x},${p.y}`).join(' L')} Z`;
   if (kind === 'ellipse')
@@ -106,6 +126,8 @@ export function shapePath(kind: ShapeKind, w: number, h: number): string {
 
 /** Interior detail strokes (cylinder lid, predefined-process bars). */
 export function shapeDetail(kind: ShapeKind, w: number, h: number): string | undefined {
+  const pack = packDef(kind);
+  if (pack) return pack.detail?.(w, h);
   if (kind === 'cylinder') {
     const ry = capHeight(w, h);
     return `M0,${ry} A${w / 2},${ry} 0 0 0 ${w},${ry}`;
@@ -125,6 +147,8 @@ export function textBox(kind: ShapeKind, w: number, h: number): Box {
     w: Math.max(20, w - l - r),
     h: Math.max(20, h - t - b),
   });
+  const pack = packDef(kind);
+  if (pack) return pack.text ? pack.text(w, h) : inset(12, 12);
   switch (kind) {
     case 'triangle':
       return { x: w * 0.25, y: h * 0.45, w: Math.max(20, w * 0.5), h: Math.max(20, h * 0.5) };

@@ -466,7 +466,7 @@ export function updateQuestion(d: QuizData, q: QuizQuestion): QuizData {
 
 // ---- Doc formatting (markdown source edits) -----------------------------------------------------------
 export type DocFormat =
-  'bold' | 'italic' | 'code' | 'link' | 'h1' | 'h2' | 'h3' | 'bullet' | 'number' | 'check' | 'quote';
+  'bold' | 'italic' | 'code' | 'link' | 'h1' | 'h2' | 'h3' | 'bullet' | 'number' | 'check' | 'quote' | 'callout';
 const linePrefixes: Partial<Record<DocFormat, string>> = {
   h1: '# ',
   h2: '## ',
@@ -512,6 +512,18 @@ export function applyDocFormat(
       next = text.slice(0, s) + `[${label}](${url})` + text.slice(e),
       at = s + label.length + 3;
     return { text: next, start: at, end: at + url.length };
+  }
+  if (kind === 'callout') {
+    // Item 79: a Note callout around the selected lines (or placeholder text).
+    const body = sel || 'Note text',
+      lead = s > 0 && text[s - 1] !== '\n' ? '\n\n' : '',
+      head = lead + '> [!NOTE]\n> ',
+      quoted = body.split('\n').join('\n> ');
+    return {
+      text: text.slice(0, s) + head + quoted + '\n' + text.slice(e),
+      start: s + head.length,
+      end: s + head.length + quoted.length,
+    };
   }
   const lineStart = text.lastIndexOf('\n', s - 1) + 1,
     nl = text.indexOf('\n', e > s && text[e - 1] === '\n' ? e - 1 : e),

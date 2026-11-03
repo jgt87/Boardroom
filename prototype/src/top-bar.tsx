@@ -21,6 +21,8 @@ export function TopBar() {
     insertImages,
     insertMedia,
     mediaFile,
+    docImportFile,
+    importDocument,
     menu,
     outline,
     presentPanel,
@@ -157,6 +159,22 @@ export function TopBar() {
               >
                 Accessibility check<span>Contrast, descriptions, text size</span>
               </button>
+              <button
+                onClick={() => {
+                  setFacil('reactions');
+                  setFacilitate(false);
+                }}
+              >
+                Reactions<span>Send a quick emoji reaction</span>
+              </button>
+              <button
+                onClick={() => {
+                  setFacil('authors');
+                  setFacilitate(false);
+                }}
+              >
+                Note authors<span>{board.showAuthors ? 'Shown on sticky notes' : 'Your name on new notes'}</span>
+              </button>
             </div>
           )}
         </div>
@@ -240,6 +258,17 @@ export function TopBar() {
           const files = [...(e.target.files ?? [])];
           e.target.value = '';
           insertImages(files, insertAt.current ?? undefined);
+        }}
+      />
+      <input
+        type="file"
+        ref={docImportFile}
+        hidden
+        aria-label="Choose a document to import"
+        onChange={e => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) void importDocument(f);
         }}
       />
       <input

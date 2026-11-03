@@ -61,6 +61,9 @@ import { useCanvasGestures } from './use-canvas-gestures';
 import { useKeyboardShortcuts } from './use-keyboard-shortcuts';
 import type { WidgetCtx } from './widget-types';
 import { readDrawioFile } from './drawio-files';
+import { docFromMarkdown, DOC_FILE_MAX } from './doc-tools';
+import { validateWidget } from './widget-specs';
+import { stampAuthors, cleanAuthor, AUTHOR_KEY } from './authors';
 
 export const KEY = LEGACY_KEY;
 /** Open the local board library (migrating a legacy single board on first run). */
@@ -167,7 +170,7 @@ function useBoardCore() {
   const stackLast = useRef<string | null>(null);
   const eraseLast = useRef<Point | null>(null);
   const [facilitate, setFacilitate] = useState(false),
-    [facil, setFacil] = useState<'voting' | 'comments' | 'templates' | 'a11y' | null>(null),
+    [facil, setFacil] = useState<'voting' | 'comments' | 'templates' | 'a11y' | 'reactions' | 'authors' | null>(null),
     [timerOn, setTimerOn] = useState(false);
   const [thread, setThread] = useState<{ id: string } | { x: number; y: number; itemId?: string } | null>(null);
   const [widgetEditId, setWidgetEditId] = useState<string | null>(null);
@@ -189,6 +192,25 @@ function useBoardCore() {
     [codeId, setCodeId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false),
     [matches, setMatches] = useState<{ ids: Set<string>; current: string | null }>({ ids: new Set(), current: null });
+  const [authorName, setAuthorNameState] = useState(() => {
+      try {
+        return cleanAuthor(localStorage.getItem(AUTHOR_KEY) ?? '');
+      } catch {
+        return '';
+      }
+    }),
+    authorRef = useRef(authorName);
+  authorRef.current = authorName;
+  const setAuthorName = (name: string) => {
+    const clean = cleanAuthor(name);
+    setAuthorNameState(clean);
+    try {
+      if (clean) localStorage.setItem(AUTHOR_KEY, clean);
+      else localStorage.removeItem(AUTHOR_KEY);
+    } catch {
+      /* The name still applies for this session when storage is unavailable. */
+    }
+  };
   const [minimap, setMinimap] = useState(() => innerWidth > 600),
     [presentPanel, setPresentPanel] = useState(false);
   const [presenting, setPresenting] = useState<{ start: number; camera: Camera; selected: string[] } | null>(null);
@@ -228,7 +250,7 @@ function useBoardCore() {
     if (input.items.length > 2000) return display('This prototype supports up to 2,000 objects per board.');
     let next: Board;
     try {
-      next = normalize(input);
+      next = normalize(stampAuthors(boardRef.current, input, authorRef.current));
     } catch (error) {
       display((error as Error).message);
       return;
@@ -552,7 +574,42 @@ function useBoardCore() {
     if (!['arrow', 'pen', 'frame'].includes(kind)) setEditing(i.id);
   };
   const mediaFile = useRef<HTMLInputElement>(null),
-    mediaKind = useRef<string | null>(null);
+    mediaKind = useRef<string | null>(null),
+    docImportFile = useRef<HTMLInputElement>(null),
+    docImportKind = useRef<'markdown' | 'pptx'>('markdown');
+  /** Markdown files become Docs and PowerPoint files become Slides decks (items 79 and 84). */
+  async function importDocument(file: File, at?: Point) {
+    const center = at ?? toWorld(size.w / 2, size.h / 2);
+    try {
+      let item: Item,
+        note = '';
+      if (/.pptx$/i.test(file.name)) {
+        const { parsePptx, PPTX_MAX_BYTES } = await import('./pptx');
+        if (file.size > PPTX_MAX_BYTES) throw new Error('PowerPoint files up to 50 MB can be imported.');
+        const slides = parsePptx(new Uint8Array(await file.arrayBuffer()));
+        item = createItem('slides', center.x, center.y);
+        item.data = { slides, current: 0 };
+        item.text = file.name.replace(/.pptx$/i, '').slice(0, 200) || 'Imported deck';
+        note = `${slides.length} ${slides.length === 1 ? 'slide' : 'slides'} imported. Images and layouts are not imported.`;
+      } else {
+        if (file.size > DOC_FILE_MAX) throw new Error('Markdown files up to 1 MB can be imported.');
+        const doc = docFromMarkdown(await file.text(), file.name);
+        item = createItem('doc', center.x, center.y, '#ffffff');
+        item.data = { ...item.data, markdown: doc.markdown };
+        item.text = doc.title;
+        note = doc.truncated ? 'The document was shortened to 60,000 characters.' : `Imported ${file.name}.`;
+      }
+      validateWidget(item);
+      item.x -= item.w / 2;
+      item.y -= item.h / 2;
+      update({ ...boardRef.current, items: [...boardRef.current.items, item] });
+      setSelected([item.id]);
+      setTool('select');
+      display(note);
+    } catch (error) {
+      display((error as Error).message || 'The file could not be imported.');
+    }
+  }
   const makePlacedItem = (kind: Kind, point: Point): Item => {
     const item = pendingPlacement?.startsWith('wf:')
       ? wireframeItem(pendingPlacement.slice(3) as never, point, (t: Kind, x: number, y: number) => createItem(t, x, y))
@@ -595,9 +652,21 @@ function useBoardCore() {
       setOutline(true);
       return;
     }
-    if (choice === 'slides') {
+    if (choice === 'import:markdown' || choice === 'import:pptx') {
       setTool('select');
-      setPresentPanel(true);
+      docImportKind.current = choice === 'import:pptx' ? 'pptx' : 'markdown';
+      if (docImportFile.current) {
+        docImportFile.current.accept =
+          choice === 'import:pptx'
+            ? '.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation'
+            : '.md,.markdown,text/markdown,text/plain';
+        docImportFile.current.click();
+      }
+      return;
+    }
+    if (choice === 'reactions') {
+      setTool('select');
+      setFacil('reactions');
       return;
     }
     if (choice === 'voting' || choice === 'a11y') {
@@ -993,6 +1062,10 @@ function useBoardCore() {
     history,
     imageFile,
     importFile,
+    importDocument,
+    docImportFile,
+    authorName,
+    setAuthorName,
     insertAt,
     insertImages,
     insertMedia,

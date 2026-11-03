@@ -10,6 +10,7 @@ import { canCopyToRecords, copyToRecords, recordDropAt } from './record-canvas';
 import { adoptGridObjects, detachGridObjects, gridDropAt } from './grid-canvas';
 import { stackNext, simplify, strokeFromPoints, eraseAt, eraseAlong, nearestAlong } from './board-tools';
 import type { BoardCore, Gesture } from './board-app';
+import { isShapeKind } from './shapes';
 
 /** Pointer gestures on the canvas: select, move, resize, pan, draw, erase, connect, bend and label drags. */
 export function useCanvasGestures(core: BoardCore) {
@@ -339,22 +340,7 @@ export function useCanvasGestures(core: BoardCore) {
         setTool('select');
         if (g.item.type === 'mindmap') setMindEditId(g.item.id);
         else if (g.item.type === 'code') setCodeId(g.item.id);
-        else if (
-          ['note', 'text', 'frame'].includes(g.item.type) ||
-          [
-            'rectangle',
-            'ellipse',
-            'diamond',
-            'roundrect',
-            'triangle',
-            'hexagon',
-            'cylinder',
-            'parallelogram',
-            'process',
-            'terminator',
-          ].includes(g.item.type)
-        )
-          setEditing(g.item.id);
+        else if (['note', 'text', 'frame'].includes(g.item.type) || isShapeKind(g.item.type)) setEditing(g.item.id);
       }
     } else if (g.mode === 'endpoint') {
       if (moved) update(moveConnectorEndpoint(g.board, g.ids[0], g.endpoint!, final, 12 / g.camera.z, !e.altKey));

@@ -1,5 +1,6 @@
 // Validation for optional document fields added by the next-20 integration.
 // Every field is optional; boards written before these features load unchanged.
+import { isValidAuthor } from './authors.ts';
 import type { Board, Item, RecordRow } from './model.ts';
 import { normalizeNoteLink } from './model.ts';
 import { recordsError } from './records.ts';
@@ -116,6 +117,7 @@ export function validateExtensions(b: Board): void {
       b.privateMode.frames.some(f => typeof f !== 'string'))
   )
     throw new Error('Invalid private mode.');
+  if (b.showAuthors !== undefined && typeof b.showAuthors !== 'boolean') throw new Error('Invalid author setting.');
   const groups = new Set(b.groups?.map(g => g.id));
   for (const i of b.items) validateItem(i, groups);
   if (
@@ -208,6 +210,7 @@ function validateItem(i: Item, groups: Set<string>): void {
       [...i.emoji].some(ch => ch.charCodeAt(0) < 32))
   )
     throw new Error('Invalid sticky note marker.');
+  if (i.author !== undefined && !isValidAuthor(i.author)) throw new Error('Invalid author name.');
   if (
     i.frame !== undefined &&
     (!i.frame ||

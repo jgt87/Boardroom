@@ -1,7 +1,22 @@
 // Views for video, PDF, bookmark, embed, doc, wireframe and prototype-screen widgets (items 30–33, 37, 38).
 // Public libraries only: pdfjs-dist (lazy) for PDFs and marked (via markdown.ts) for docs.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Play, Square, ExternalLink, Monitor, ChevronLeft, ChevronRight, Settings2 } from 'lucide-react';
+import {
+  X,
+  Play,
+  Square,
+  ExternalLink,
+  Monitor,
+  ChevronLeft,
+  ChevronRight,
+  Settings2,
+  ArrowRight,
+  Plus,
+  Check,
+  Search,
+  Download,
+  Heart,
+} from 'lucide-react';
 import type { Item, ImageAsset } from './model';
 import type { WidgetView, WidgetCtx } from './widget-types';
 import {
@@ -11,13 +26,16 @@ import {
   providerLabels,
   isVideoProvider,
   wireframeComponents,
+  buttonVariants,
+  buttonIcons,
   screenDevices,
   applyScreenFormat,
   linkTarget,
 } from './specs-media';
-import type { ScreenDevice, EmbedProvider } from './specs-media';
+import type { ScreenDevice, EmbedProvider, ButtonVariant, ButtonIcon } from './specs-media';
 import { renderMarkdown, docOutline } from './markdown';
 import { CanvasDoc } from './canvas-doc';
+import { exportMarkdown, markdownFileName, docTitle } from './doc-tools';
 import { applyDocFormat } from './engage';
 import type { DocFormat } from './engage';
 import { PREVIEW_EVENT } from './prototype-preview';
@@ -693,6 +711,7 @@ const docTools: { kind: DocFormat; label: string; text: string; key?: string }[]
   { kind: 'link', label: 'Link (Ctrl+K)', text: 'Link', key: 'k' },
   { kind: 'code', label: 'Code', text: '</>' },
   { kind: 'quote', label: 'Quote', text: '❝' },
+  { kind: 'callout', label: 'Callout', text: 'ⓘ' },
 ];
 function DocEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose: () => void }) {
   const [md, setMd] = useState<string>(item.data?.markdown ?? ''),
@@ -842,12 +861,13 @@ function WireframeView({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     case 'button':
       return (
         <div
-          className={`wf wf-button ${live && target ? 'linked' : ''}`}
+          className={`wf wf-button wf-button-${d.variant ?? 'solid'} ${live && target ? 'linked' : ''}`}
           style={{ fontSize: fs }}
           role={live ? 'button' : undefined}
           {...press(follow)}
         >
           {label}
+          {d.icon && <ButtonIconGlyph icon={d.icon} size={Math.round(fs * 1.1)} />}
         </div>
       );
     case 'input':
@@ -1065,13 +1085,35 @@ function WireframeView({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       return missing('Unknown component');
   }
 }
+const buttonIconGlyphs: Record<ButtonIcon, typeof ArrowRight> = {
+  arrow: ArrowRight,
+  plus: Plus,
+  check: Check,
+  search: Search,
+  download: Download,
+  heart: Heart,
+};
+const buttonIconLabels: Record<ButtonIcon, string> = {
+  arrow: 'Arrow',
+  plus: 'Plus',
+  check: 'Check',
+  search: 'Search',
+  download: 'Download',
+  heart: 'Heart',
+};
+function ButtonIconGlyph({ icon, size }: { icon: ButtonIcon; size: number }) {
+  const Glyph = buttonIconGlyphs[icon];
+  return Glyph ? <Glyph size={size} aria-hidden="true" /> : null;
+}
 function WireframeEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose: () => void }) {
   const d = item.data ?? {},
     def = wireframeComponents.find(c => c.component === d.component),
     [label, setLabel] = useState(item.text),
     [options, setOptions] = useState<string>((d.options ?? []).join('\n')),
     [state, setState] = useState<any>(d.state),
-    [link, setLink] = useState<string>(d.link ?? '');
+    [link, setLink] = useState<string>(d.link ?? ''),
+    [variant, setVariant] = useState<ButtonVariant>(d.variant ?? 'solid'),
+    [icon, setIcon] = useState<ButtonIcon | ''>(d.icon ?? '');
   const screens = ctx.board.items.filter(i => i.type === 'screen'),
     hasOptions = ['select', 'tabs', 'list', 'navbar'].includes(d.component),
     linkable = ['button', 'navbar', 'card', 'image', 'avatar'].includes(d.component);
@@ -1092,6 +1134,10 @@ function WireframeEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; o
             ? Math.max(0, Math.min(opts.length - 1, Number(state) || 0))
             : state;
     if (linkable && link) data.link = link;
+    if (d.component === 'button') {
+      if (variant !== 'solid') data.variant = variant;
+      if (icon) data.icon = icon;
+    }
     ctx.update(b => ({
       ...b,
       items: b.items.map(i => (i.id === item.id ? { ...i, text: label.slice(0, 6000), data } : i)),
@@ -1109,6 +1155,35 @@ function WireframeEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; o
           {d.component === 'tabs' ? 'Tabs' : d.component === 'navbar' ? 'Links' : 'Items'} (one per line)
           <textarea aria-label="Component items" rows={5} value={options} onChange={e => setOptions(e.target.value)} />
         </label>
+      )}
+      {d.component === 'button' && (
+        <>
+          <label>
+            Style
+            <select
+              aria-label="Button style"
+              value={variant}
+              onChange={e => setVariant(e.target.value as ButtonVariant)}
+            >
+              {buttonVariants.map(v => (
+                <option key={v} value={v}>
+                  {v[0].toUpperCase() + v.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Icon
+            <select aria-label="Button icon" value={icon} onChange={e => setIcon(e.target.value as ButtonIcon | '')}>
+              <option value="">No icon</option>
+              {buttonIcons.map(v => (
+                <option key={v} value={v}>
+                  {buttonIconLabels[v]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
       )}
       {(d.component === 'toggle' || d.component === 'checkbox') && (
         <label className="media-check">
@@ -1329,7 +1404,30 @@ export const mediaViews: WidgetView[] = [
     Render: p => <EmbedView {...p} />,
     Editor: p => <EmbedEditor {...p} />,
   },
-  { kind: 'doc', mode: 'html', interactive: true, Render: CanvasDoc, Editor: p => <DocEditor {...p} /> },
+  {
+    kind: 'doc',
+    mode: 'html',
+    interactive: true,
+    Render: CanvasDoc,
+    Editor: p => <DocEditor {...p} />,
+    actions: (item, ctx) => [
+      {
+        label: 'Export as Markdown',
+        icon: <Download size={17} />,
+        run: () => {
+          const md = exportMarkdown(String(item.data?.markdown ?? '')),
+            name = markdownFileName(item.text && item.text !== 'Doc' ? item.text : docTitle(md)),
+            url = URL.createObjectURL(new Blob([md], { type: 'text/markdown;charset=utf-8' })),
+            a = document.createElement('a');
+          a.href = url;
+          a.download = name;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          ctx.display(`Exported ${name}.`);
+        },
+      },
+    ],
+  },
   {
     kind: 'wireframe',
     mode: 'html',
@@ -1339,6 +1437,21 @@ export const mediaViews: WidgetView[] = [
     Editor: p => <WireframeEditor {...p} />,
     actions: (item, ctx) => [
       { label: 'Component properties', icon: <Settings2 size={17} />, run: () => openEditor(item.id) },
+      ...(item.data?.component === 'button'
+        ? [
+            {
+              label: `Button style: ${item.data?.variant ?? 'solid'} (change)`,
+              run: () => {
+                const now = buttonVariants.indexOf(item.data?.variant ?? 'solid'),
+                  variant = buttonVariants[(now + 1) % buttonVariants.length],
+                  data = { ...item.data };
+                if (variant === 'solid') delete data.variant;
+                else data.variant = variant;
+                updateItem(ctx, item.id, { data });
+              },
+            },
+          ]
+        : []),
       ...(['toggle', 'checkbox'].includes(item.data?.component)
         ? [
             {

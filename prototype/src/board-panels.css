@@ -363,3 +363,72 @@
     overflow: auto;
   }
 }
+
+/* Reactions (item 83): transient, never saved. */
+.reaction-choices {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+.reaction-choices button {
+  height: 44px;
+  font-size: 24px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+.reaction-choices button:hover {
+  background: #f1f1f5;
+}
+.reaction-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  overflow: hidden;
+  pointer-events: none;
+}
+.reaction-float {
+  position: absolute;
+  bottom: 12%;
+  font-size: 40px;
+  opacity: 0;
+  animation: reaction-rise 2.2s ease-out forwards;
+}
+@keyframes reaction-rise {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(calc(var(--drift) * 0.15), -8vh) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--drift), -60vh) scale(1.1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reaction-float {
+    bottom: 45%;
+    animation: reaction-fade 2.2s linear forwards;
+  }
+  @keyframes reaction-fade {
+    0%,
+    70% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+}
+.authors-panel .media-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+}

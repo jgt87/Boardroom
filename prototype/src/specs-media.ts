@@ -108,33 +108,87 @@ export const wireframeKinds = [
   'list',
 ] as const;
 export type WireframeKind = (typeof wireframeKinds)[number];
+/** Button styles and icons from the wireframe library (item 81). */
+export const buttonVariants = ['solid', 'outline', 'rounded', 'link'] as const;
+export type ButtonVariant = (typeof buttonVariants)[number];
+export const buttonIcons = ['arrow', 'plus', 'check', 'search', 'download', 'heart'] as const;
+export type ButtonIcon = (typeof buttonIcons)[number];
 export const wireframeComponents: {
+  /** Library key: the component, optionally followed by :variant and :icon. */
+  id: string;
   component: WireframeKind;
+  variant?: ButtonVariant;
+  icon?: ButtonIcon;
   label: string;
   size: [number, number];
   text: string;
   options?: string[];
   state?: string | number | boolean;
 }[] = [
-  { component: 'window', label: 'Window', size: [480, 320], text: 'Window title' },
+  { id: 'window', component: 'window', label: 'Window', size: [480, 320], text: 'Window title' },
   {
+    id: 'navbar',
     component: 'navbar',
     label: 'Navigation bar',
     size: [480, 56],
     text: 'Product',
     options: ['Home', 'Features', 'Pricing'],
   },
-  { component: 'button', label: 'Button', size: [140, 44], text: 'Continue' },
-  { component: 'input', label: 'Text field', size: [240, 44], text: 'Email address' },
+  { id: 'button', component: 'button', label: 'Button', size: [140, 44], text: 'Continue' },
   {
+    id: 'button:outline',
+    component: 'button',
+    variant: 'outline',
+    label: 'Outline button',
+    size: [140, 44],
+    text: 'Cancel',
+  },
+  {
+    id: 'button:rounded',
+    component: 'button',
+    variant: 'rounded',
+    label: 'Rounded button',
+    size: [140, 44],
+    text: 'Get started',
+  },
+  {
+    id: 'button:link',
+    component: 'button',
+    variant: 'link',
+    label: 'Link button',
+    size: [120, 36],
+    text: 'Learn more',
+  },
+  {
+    id: 'button:solid:arrow',
+    component: 'button',
+    variant: 'solid',
+    icon: 'arrow',
+    label: 'Button with icon',
+    size: [160, 44],
+    text: 'Next',
+  },
+  {
+    id: 'button:outline:plus',
+    component: 'button',
+    variant: 'outline',
+    icon: 'plus',
+    label: 'Outline button with icon',
+    size: [160, 44],
+    text: 'Add item',
+  },
+  { id: 'input', component: 'input', label: 'Text field', size: [240, 44], text: 'Email address' },
+  {
+    id: 'select',
     component: 'select',
     label: 'Dropdown',
     size: [220, 44],
     text: 'Choose…',
     options: ['Option A', 'Option B', 'Option C'],
   },
-  { component: 'textarea', label: 'Text area', size: [280, 120], text: 'Write a message' },
+  { id: 'textarea', component: 'textarea', label: 'Text area', size: [280, 120], text: 'Write a message' },
   {
+    id: 'tabs',
     component: 'tabs',
     label: 'Tabs',
     size: [360, 48],
@@ -142,13 +196,14 @@ export const wireframeComponents: {
     options: ['Overview', 'Details', 'Reviews'],
     state: 0,
   },
-  { component: 'toggle', label: 'Toggle', size: [180, 36], text: 'Notifications', state: true },
-  { component: 'checkbox', label: 'Checkbox', size: [200, 32], text: 'Remember me', state: false },
-  { component: 'slider', label: 'Slider', size: [240, 36], text: 'Volume', state: 40 },
-  { component: 'card', label: 'Card', size: [260, 180], text: 'Card title' },
-  { component: 'image', label: 'Image placeholder', size: [240, 160], text: 'Image' },
-  { component: 'avatar', label: 'Avatar', size: [64, 64], text: 'AB' },
+  { id: 'toggle', component: 'toggle', label: 'Toggle', size: [180, 36], text: 'Notifications', state: true },
+  { id: 'checkbox', component: 'checkbox', label: 'Checkbox', size: [200, 32], text: 'Remember me', state: false },
+  { id: 'slider', component: 'slider', label: 'Slider', size: [240, 36], text: 'Volume', state: 40 },
+  { id: 'card', component: 'card', label: 'Card', size: [260, 180], text: 'Card title' },
+  { id: 'image', component: 'image', label: 'Image placeholder', size: [240, 160], text: 'Image' },
+  { id: 'avatar', component: 'avatar', label: 'Avatar', size: [64, 64], text: 'AB' },
   {
+    id: 'list',
     component: 'list',
     label: 'List',
     size: [240, 180],
@@ -158,15 +213,20 @@ export const wireframeComponents: {
 ];
 /** Create a wireframe component item centred on a point. */
 export function wireframeItem(
-  component: WireframeKind,
+  component: WireframeKind | string,
   center: { x: number; y: number },
   make: (type: 'wireframe', x: number, y: number) => Item,
 ): Item {
-  const def = wireframeComponents.find(c => c.component === component) ?? wireframeComponents[2],
+  const def =
+      wireframeComponents.find(c => c.id === component) ??
+      wireframeComponents.find(c => c.component === component) ??
+      wireframeComponents[2],
     item = make('wireframe', center.x - def.size[0] / 2, center.y - def.size[1] / 2);
   const data: Record<string, any> = { component: def.component };
   if (def.options) data.options = [...def.options];
   if (def.state !== undefined) data.state = def.state;
+  if (def.variant && def.variant !== 'solid') data.variant = def.variant;
+  if (def.icon) data.icon = def.icon;
   return { ...item, w: def.size[0], h: def.size[1], text: def.text, fill: '#ffffff', data };
 }
 
@@ -357,6 +417,10 @@ export const mediaSpecs: WidgetSpec[] = [
           d.options.some((o: unknown) => typeof o !== 'string' || o.length > 100))
       )
         fail('Invalid wireframe options.');
+      if (d.variant !== undefined && (d.component !== 'button' || !buttonVariants.includes(d.variant)))
+        fail('Invalid button style.');
+      if (d.icon !== undefined && (d.component !== 'button' || !buttonIcons.includes(d.icon)))
+        fail('Invalid button icon.');
     },
     searchText: i => (i.data?.options ?? []).join(' '),
   },

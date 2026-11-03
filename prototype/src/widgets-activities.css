@@ -1,0 +1,360 @@
+/* Slides decks (item 78) and open-ended activities (item 82). */
+.canvas-deck {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #dcdce3;
+  border-radius: 8px;
+  color: #25252c;
+  font:
+    12px Arial,
+    sans-serif;
+  overflow: hidden;
+}
+.canvas-deck-header {
+  flex: none;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border-bottom: 1px solid #e5e5eb;
+}
+.canvas-deck-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.canvas-deck button,
+.canvas-deck select {
+  font: inherit;
+  font-size: 11px;
+}
+.canvas-deck button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
+}
+.canvas-deck-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 5px 10px;
+  border: 0;
+  border-bottom: 1px solid #efeff3;
+  min-width: 0;
+}
+.canvas-deck-bar select {
+  max-width: 150px;
+}
+.canvas-deck-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  background: #f4f4f7;
+  container-type: size;
+}
+.canvas-deck-stage .slide-face {
+  width: min(100cqw, 177.78cqh);
+  box-shadow: 0 1px 4px #25252c22;
+}
+.canvas-deck-strip {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 10px;
+  list-style: none;
+  overflow-x: auto;
+  border-top: 1px solid #efeff3;
+}
+.canvas-deck-strip button {
+  width: 76px;
+  height: 43px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 1px;
+  padding: 3px 5px;
+  border: 1px solid #d5d5dd;
+  border-radius: 4px;
+  color: #25252c;
+  overflow: hidden;
+  text-align: left;
+}
+.canvas-deck-strip button span {
+  display: block;
+  width: 100%;
+  font-size: 9px;
+  line-height: 1.2;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.canvas-deck-strip button[aria-current='true'] {
+  outline: 2px solid #4262ff;
+  outline-offset: 1px;
+}
+.canvas-deck-strip button.slide-dark {
+  color: #fff;
+}
+
+/* One slide; text scales with the slide width. */
+.slide-face {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  box-sizing: border-box;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 2cqw;
+  padding: 5cqw 6cqw;
+  color: #25252c;
+  font-family: Arial, sans-serif;
+  overflow: hidden;
+  border-radius: 4px;
+}
+.slide-face.slide-dark {
+  color: #fff;
+}
+.slide-face .canvas-field {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px dashed transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0.1em 0.2em;
+  resize: none;
+}
+.slide-face .canvas-field:hover {
+  border-color: #9a9aa566;
+}
+.slide-face .canvas-field:focus {
+  border-color: #4262ff;
+  outline: none;
+  background: #ffffff18;
+}
+.slide-field {
+  margin: 0;
+}
+.slide-title {
+  font-size: 6.4cqw;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.slide-subtitle {
+  font-size: 3cqw;
+  opacity: 0.75;
+}
+.slide-title.slide-field,
+.slide-subtitle.slide-field {
+  text-align: center;
+}
+.slide-title .canvas-field,
+.slide-subtitle .canvas-field {
+  text-align: center;
+}
+.slide-layout-title,
+.slide-layout-section {
+  justify-content: center;
+}
+.slide-heading {
+  font-size: 4.4cqw;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.slide-body {
+  flex: 1;
+  min-height: 0;
+  font-size: 2.7cqw;
+  line-height: 1.45;
+}
+ul.slide-body {
+  padding-left: 1.2em;
+}
+.slide-body .canvas-field {
+  height: 100%;
+}
+.slide-columns {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4cqw;
+}
+.slide-layout-quote {
+  justify-content: center;
+}
+.slide-quote {
+  font-size: 4.6cqw;
+  font-style: italic;
+  line-height: 1.3;
+}
+.slide-quote .canvas-field {
+  min-height: 3em;
+}
+.slide-source {
+  font-size: 2.5cqw;
+  opacity: 0.7;
+}
+.slide-blank-text {
+  flex: 1;
+  font-size: 3cqw;
+}
+.slide-blank-text .canvas-field {
+  height: 100%;
+}
+.slide-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2cqw;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 2.6cqw;
+}
+.slide-options li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1cqw;
+  padding: 0.8cqw 1.2cqw;
+  border: 1px solid #c9c9d3;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.slide-option-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #4262ff22;
+  pointer-events: none;
+}
+.slide-options li > span,
+.slide-options li > .canvas-field {
+  position: relative;
+  flex: 1;
+}
+.slide-options b,
+.slide-options button {
+  position: relative;
+}
+.slide-face button {
+  font-size: max(11px, 1.8cqw);
+}
+.slide-add-option {
+  align-self: flex-start;
+}
+
+/* Full-screen presentation */
+.deck-presenter {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  background: #111114;
+}
+.deck-presenter-stage {
+  width: min(100%, calc((100dvh - 120px) * 16 / 9));
+}
+.deck-presenter-stage .slide-face {
+  width: 100%;
+  border-radius: 6px;
+}
+.deck-presenter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  font:
+    14px Arial,
+    sans-serif;
+}
+.deck-presenter-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid #ffffff44;
+  border-radius: 6px;
+  background: #ffffff14;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.deck-presenter-bar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.deck-presenter-bar button:focus-visible {
+  outline: 2px solid #8da2ff;
+  outline-offset: 2px;
+}
+
+/* Open-ended */
+.canvas-open-add {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+.canvas-open-add input {
+  flex: 1;
+  padding: 5px 7px;
+  border: 1px solid #c9c9d3;
+  border-radius: 6px;
+}
+.canvas-open-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.canvas-open-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  background: #fff49b;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.canvas-open-list li span {
+  flex: 1;
+}
+.canvas-open-list li button {
+  flex: none;
+  padding: 1px 3px;
+  border: 0;
+  background: transparent;
+}
+.canvas-open-list .canvas-open-empty {
+  grid-column: 1 / -1;
+  background: transparent;
+  color: #8a8a94;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .deck-presenter-stage .slide-face {
+    animation: deck-in 160ms ease-out;
+  }
+  @keyframes deck-in {
+    from {
+      opacity: 0.4;
+    }
+  }
+}

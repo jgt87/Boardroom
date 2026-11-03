@@ -145,11 +145,15 @@ test('markdown paste detection and conversion to text, notes and a doc', () => {
 
 // Items 37–38 — wireframes and prototype screens
 test('wireframe components create valid items and reject unknown or malformed data', () => {
-  const items = wireframeComponents.map((c, i) => wireframeItem(c.component, { x: i * 300, y: 0 }, createItem));
+  const items = wireframeComponents.map((c, i) => wireframeItem(c.id, { x: i * 300, y: 0 }, createItem));
   for (const [i, c] of wireframeComponents.entries()) {
     assert.equal(items[i].data?.component, c.component);
     assert.deepEqual([items[i].w, items[i].h], c.size);
+    assert.equal(items[i].data?.variant, c.variant === 'solid' ? undefined : c.variant, c.id);
+    assert.equal(items[i].data?.icon, c.icon, c.id);
   }
+  assert.equal(new Set(wireframeComponents.map(c => c.id)).size, wireframeComponents.length);
+  assert.ok(wireframeComponents.filter(c => c.component === 'button').length >= 6, 'button styles are listed');
   roundTrip(board(...items));
   const button = items.find(i => i.data?.component === 'button')!;
   for (const data of [
@@ -158,6 +162,9 @@ test('wireframe components create valid items and reject unknown or malformed da
     { component: 'button', link: '' },
     { component: 'select', options: 'a,b' },
     { component: 'select', options: Array(21).fill('x') },
+    { component: 'button', variant: 'ghost' },
+    { component: 'button', icon: 'rocket' },
+    { component: 'input', variant: 'outline' },
   ])
     assert.throws(() => parseBoard(board({ ...button, data })), JSON.stringify(data));
   assert.equal(createItem('wireframe', 0, 0).data?.component, 'button');

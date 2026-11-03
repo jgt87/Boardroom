@@ -6,7 +6,7 @@ Guidance for coding agents working in this repository.
 
 BoardCraft contains **Boardroom**, an independent local whiteboard prototype (React 19 + TypeScript + Vite) informed by static and runtime analysis of an existing whiteboard's web client. The app is in `prototype/`; the root holds plans, design notes and analysis. Never import, copy or ship captured third-party code: `*.private.json` and `evidence-private/` are private evidence and gitignored. Name the product Boardroom; do not imply it is any existing commercial service.
 
-Work is planned in `NEXT-20-ITEMS-PLAN.md` (items 1–55, each with linked implementation files and tests). Record new work there and in `CHANGELOG.md` (Unreleased). Visual and interaction rules are in `DESIGN.md`; product scope is in `PRODUCT.md`.
+Work is planned in `NEXT-20-ITEMS-PLAN.md` (items 1–85, each with linked implementation files and tests). Record new work there and in `CHANGELOG.md` (Unreleased). Visual and interaction rules are in `DESIGN.md`; product scope is in `PRODUCT.md`.
 
 ## Commands (run from `prototype/`)
 
