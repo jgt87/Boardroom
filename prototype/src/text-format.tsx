@@ -30,11 +30,11 @@ export function textLayout(item: Item) {
 function measureLayout(item: Item) {
   const f = item.format ?? {},
     width = Math.max(8, item.w - 24),
-    height = Math.max(8, item.h - 24);
+    height = Math.max(8, item.h - 24 - 2 * Math.abs(f.baselineOffsetY ?? 0));
   measuring ??= document.createElement('canvas').getContext('2d');
   const measure = (text: string, size: number) => {
     if (!measuring) return text.length * size * 0.6;
-    measuring.font = `${f.italic ? 'italic ' : ''}${f.bold ? 'bold ' : ''}${size}px ${f.fontFamily ?? 'Arial'}`;
+    measuring.font = `${f.italic ? 'italic ' : ''}${f.fontWeight ?? (f.bold ? 700 : 400)} ${size}px ${f.fontFamily ?? 'Arial'}`;
     return measuring.measureText(text).width;
   };
   const text = formattedText(item),
@@ -49,7 +49,7 @@ export function formatStyle(item: Item): React.CSSProperties {
   return {
     fontSize: textLayout(item).size,
     fontFamily: f.fontFamily ?? 'Arial',
-    fontWeight: f.bold ? 700 : 400,
+    fontWeight: f.fontWeight ?? (f.bold ? 700 : 400),
     fontStyle: f.italic ? 'italic' : 'normal',
     textDecoration:
       [f.underline ? 'underline' : '', f.strike ? 'line-through' : ''].filter(Boolean).join(' ') || 'none',
@@ -82,7 +82,7 @@ export function CanvasTextEditor({
     const el = editor.current;
     if (!el || !sticky) return;
     const auto = item.format?.fontSize === undefined || item.format.fontSize === 'auto',
-      available = Math.max(1, item.h - 26);
+      available = Math.max(1, item.h - 26 - 2 * Math.abs(item.format?.baselineOffsetY ?? 0));
     el.style.height = '0px';
     el.style.paddingTop = '0px';
     el.style.paddingBottom = '0px';
@@ -99,7 +99,7 @@ export function CanvasTextEditor({
     }
     const natural = el.scrollHeight;
     el.style.height = '100%';
-    el.style.paddingTop = `${Math.max(4, item.format?.valign === 'top' ? 4 : item.format?.valign === 'bottom' ? item.h - 20 - natural : (item.h - 16 - natural) / 2)}px`;
+    el.style.paddingTop = `${Math.max(0, Math.max(4, item.format?.valign === 'top' ? 4 : item.format?.valign === 'bottom' ? item.h - 20 - natural : (item.h - 16 - natural) / 2) + (item.format?.baselineOffsetY ?? 0))}px`;
     el.style.paddingBottom = '4px';
   }, [text, item.w, item.h, item.format, sticky]);
   return (
@@ -113,6 +113,9 @@ export function CanvasTextEditor({
           ? { background: item.fill, paddingTop: Math.max(4, (item.h - 16 - layout.height) / 2), paddingBottom: 4 }
           : {}),
         lineHeight: 1.4,
+        ...(!sticky && item.format?.baselineOffsetY
+          ? { paddingTop: Math.max(0, 8 + item.format.baselineOffsetY) }
+          : {}),
       }}
       value={text}
       autoFocus
@@ -206,15 +209,35 @@ export function TextControls({ item, onChange }: { item: Item; onChange: (f: Tex
       ].map(({ key, label, icon: Icon }) => (
         <button
           key={key}
-          className={`icon-button ${f[key as 'bold'] ? 'active' : ''}`}
+          className={`icon-button ${(key === 'bold' ? (f.fontWeight ?? (f.bold ? 700 : 400)) >= 600 : f[key as 'bold']) ? 'active' : ''}`}
           aria-label={label}
           title={label}
-          aria-pressed={!!f[key as 'bold']}
-          onClick={() => set({ [key]: !f[key as 'bold'] })}
+          aria-pressed={key === 'bold' ? (f.fontWeight ?? (f.bold ? 700 : 400)) >= 600 : !!f[key as 'bold']}
+          onClick={() =>
+            key === 'bold'
+              ? set({
+                  bold: (f.fontWeight ?? (f.bold ? 700 : 400)) < 600,
+                  fontWeight: (f.fontWeight ?? (f.bold ? 700 : 400)) >= 600 ? 400 : 700,
+                })
+              : set({ [key]: !f[key as 'bold'] })
+          }
         >
           <Icon size={17} />
         </button>
       ))}
+      <select
+        aria-label="Font weight"
+        value={f.fontWeight ?? (f.bold ? 700 : 400)}
+        onChange={e => set({ fontWeight: Number(e.target.value), bold: Number(e.target.value) >= 600 })}
+      >
+        {Array.from(new Set([100, 200, 300, 400, 500, 600, 700, 800, 900, f.fontWeight ?? 400]))
+          .sort((a, b) => a - b)
+          .map(n => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+      </select>
       <span className="divider" />
       {[
         { key: 'left', icon: AlignLeft },
@@ -323,11 +346,19 @@ function ColorToggle({
 export function TextBody({ item }: { item: Item }) {
   const text = formattedText(item),
     h = item.format?.highlight;
-  return h ? (
-    <span style={{ background: h, boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone', padding: '0 2px' }}>
+  return (
+    <span
+      style={{
+        minWidth: 0,
+        maxWidth: '100%',
+        position: 'relative',
+        top: item.format?.baselineOffsetY ?? 0,
+        ...(h
+          ? { background: h, boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone', padding: '0 2px' }
+          : {}),
+      }}
+    >
       {text}
     </span>
-  ) : (
-    <>{text}</>
   );
 }

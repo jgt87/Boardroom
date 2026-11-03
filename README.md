@@ -2,6 +2,8 @@
 
 **Boardroom** is an independent, local whiteboard built with React 19, TypeScript and Vite. It runs entirely in your browser: no accounts, no server sync, and boards are stored only on the device you use.
 
+![A Boardroom board with a retrospective (sticky notes in three frames) and a flowchart](docs/screenshot.png)
+
 ## Features
 
 - **Canvas basics:** sticky notes (emoji, tags, authors, stacks, bulk entry), text, freehand pen, frames with presets, and 53 shapes in Basic, Flowchart, Callouts, UML, BPMN and ERD packs.

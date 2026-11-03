@@ -527,6 +527,55 @@ input[type='color']::-webkit-color-swatch {
   padding: 8px 3px;
   border-radius: 6px;
 }
+.camera-controls {
+  position: fixed;
+  inset: auto 20px 80px auto;
+  margin: 0;
+  width: min(280px, calc(100vw - 40px));
+  max-height: calc(100dvh - 110px);
+  overflow: auto;
+  padding: 16px;
+  color: #25252c;
+}
+.camera-controls h2 {
+  margin: 0 0 16px;
+  font-size: 15px;
+}
+.camera-controls form,
+.camera-controls label {
+  display: grid;
+  gap: 8px;
+}
+.camera-controls form {
+  gap: 12px;
+}
+.camera-controls label {
+  grid-template-columns: 1fr 110px;
+  align-items: center;
+  font-size: 13px;
+}
+.camera-controls input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid #d4d4db;
+  border-radius: 4px;
+}
+.camera-controls button {
+  padding: 9px 12px;
+  border: 1px solid #d4d4db;
+  border-radius: 4px;
+}
+.camera-controls button[type='submit'] {
+  background: #4262ff;
+  color: white;
+  border-color: #4262ff;
+}
+.camera-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
 .help {
   position: absolute;
   right: 20px;

@@ -2,6 +2,7 @@ import React from 'react';
 import { StickyNote, Minus, Plus, Maximize, X, Keyboard, Magnet, Map as MapIcon } from 'lucide-react';
 import { setLocked } from './arrange';
 import { Minimap } from './minimap';
+import { CameraControls } from './camera-controls';
 import { reorderLayer, setHidden, renameItem } from './board-tools';
 import { LayersPanel } from './board-panels';
 import { useApp } from './board-app';
@@ -125,14 +126,7 @@ export function BoardChrome() {
           <button className="icon-button" aria-label="Zoom out" onClick={() => zoom(1 / 1.2)}>
             <Minus size={17} />
           </button>
-          <button
-            className="zoom-label"
-            aria-label={`${Math.round(camera.z * 100)}% (reset to 100%)`}
-            title="Reset zoom to 100%"
-            onClick={() => zoom(1 / camera.z)}
-          >
-            {Math.round(camera.z * 100)}%
-          </button>
+          <CameraControls />
           <button className="icon-button" aria-label="Zoom in" onClick={() => zoom(1.2)}>
             <Plus size={17} />
           </button>

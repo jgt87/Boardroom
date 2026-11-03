@@ -116,6 +116,9 @@ export type TextFormat = {
   strike?: boolean;
   autoHeight?: boolean;
   fontSize?: number | 'auto';
+  fontWeight?: number;
+  /** Vertical text offset in world pixels; positive values move down. */
+  baselineOffsetY?: number;
   fontFamily?: 'Arial' | 'Georgia' | 'monospace';
   bold?: boolean;
   italic?: boolean;
@@ -189,6 +192,7 @@ export type Item = {
   /** Layers panel: display name, visibility. */
   name?: string;
   hidden?: boolean;
+  opacity?: number;
   /** Click-to-navigate link to another object or frame. */
   linkTo?: string;
   /** Text alternative for images and media (accessibility checker). */

@@ -73,6 +73,7 @@ export function useRenderItem() {
         <g
           key={i.id}
           data-item={i.id}
+          opacity={i.opacity}
           data-connector-path={i.connector?.path ?? 'straight'}
           role="img"
           aria-label={i.text ? `Connector: ${i.text}` : 'Connector'}
@@ -135,6 +136,7 @@ export function useRenderItem() {
       <g
         key={i.id}
         data-item={i.id}
+        opacity={i.opacity}
         transform={`translate(${i.x} ${i.y})`}
         onDoubleClick={e => {
           if (!['pen'].includes(i.type)) {

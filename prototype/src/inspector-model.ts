@@ -6,6 +6,7 @@ import { endpoints } from './model.ts';
 import { resizeItems, selectionBounds, translate } from './interactions.ts';
 import type { Bounds } from './interactions.ts';
 import { isShapeKind } from './shapes.ts';
+import { editableIds } from './arrange.ts';
 
 export const LIMIT = 1e7;
 export const MIN_W = 40;
@@ -17,6 +18,8 @@ export type Shared<T> = T | typeof MIXED | undefined;
 const textKinds = new Set(['note', 'text', 'card', 'flipcard']);
 export const altKinds = new Set(['image', 'video', 'pdf', 'icon', 'qr']);
 export const hasText = (i: Item) => textKinds.has(i.type) || isShapeKind(i.type);
+/** These kinds share the canvas text renderer; widgets own their typography. */
+export const hasTextMetrics = (i: Item) => i.type === 'note' || i.type === 'text' || isShapeKind(i.type);
 
 export function selectedItems(board: Board, ids: string[]): Item[] {
   const set = new Set(ids);
@@ -91,6 +94,33 @@ function mapEditable(board: Board, ids: string[], fn: (i: Item) => Item): Board 
 export function setFill(board: Board, ids: string[], color: string): Board {
   if (!/^#[0-9a-f]{6}$/i.test(color)) return board;
   return mapEditable(board, ids, i => (i.fill === color ? i : { ...i, fill: color }));
+}
+
+/** Whole-object opacity, including connector heads and widget content. */
+export function setOpacity(board: Board, ids: string[], opacity: number): Board {
+  if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) return board;
+  return mapEditable(board, editableIds(board, ids), i => ((i.opacity ?? 1) === opacity ? i : { ...i, opacity }));
+}
+
+export function setTextMetric(
+  board: Board,
+  ids: string[],
+  key: 'fontWeight' | 'baselineOffsetY',
+  value: number,
+): Board {
+  if (
+    !Number.isFinite(value) ||
+    (key === 'fontWeight' ? value < 100 || value > 900 || !Number.isInteger(value) : Math.abs(value) > 200)
+  )
+    return board;
+  return mapEditable(board, editableIds(board, ids), i =>
+    !hasTextMetrics(i) || (i.format?.[key] ?? (key === 'fontWeight' ? (i.format?.bold ? 700 : 400) : 0)) === value
+      ? i
+      : {
+          ...i,
+          format: { ...i.format, [key]: value, ...(key === 'fontWeight' ? { bold: value >= 600 } : {}) },
+        },
+  );
 }
 
 /** Border field on shapes only; other kinds are left untouched. */

@@ -1,5 +1,6 @@
 // Board application state and behaviour. UI components read it through useApp().
 import React, { useEffect, useRef, useState } from 'react';
+import { zoomCameraAt } from './camera';
 import {
   MousePointer2,
   Hand,
@@ -540,10 +541,7 @@ function useBoardCore() {
     return { x: (x - r.left - camera.x) / camera.z, y: (y - r.top - camera.y) / camera.z };
   };
   const zoom = (factor: number, at: Point = { x: size.w / 2, y: size.h / 2 }) =>
-    setCamera(c => {
-      const z = Math.max(0.1, Math.min(4, c.z * factor));
-      return { z, x: at.x - ((at.x - c.x) * z) / c.z, y: at.y - ((at.y - c.y) * z) / c.z };
-    });
+    setCamera(c => zoomCameraAt(c, c.z * factor, at));
   const fit = (items = boardRef.current.items) => {
     if (!items.length) return setCamera({ x: 0, y: 0, z: 1 });
     const pts = items.flatMap(i =>

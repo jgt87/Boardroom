@@ -16,10 +16,13 @@ import {
   connectorEnds,
   geometryOf,
   hasText,
+  hasTextMetrics,
   layerPosition,
   moveLayer,
   selectedItems,
   setFill,
+  setOpacity,
+  setTextMetric,
   setGeometry,
   setHiddenFlag,
   setStyleField,
@@ -227,6 +230,52 @@ export function PropertiesInspector({ board, selected, onChange, onClose }: Prop
 
       <fieldset className="inspector-section">
         <legend>Appearance</legend>
+        <CommitField
+          label="Opacity (%)"
+          value={show(
+            shared(items, i => (i.opacity ?? 1) * 100),
+            String,
+          )}
+          mixed={shared(items, i => i.opacity ?? 1) === MIXED}
+          disabled={locked}
+          min={0}
+          max={100}
+          onCommit={v => {
+            if (v.trim()) onChange(b => setOpacity(b, selected, Number(v) / 100));
+          }}
+        />
+        {items.every(hasTextMetrics) && (
+          <>
+            <CommitField
+              label="Font weight"
+              value={show(
+                shared(items, i => i.format?.fontWeight ?? (i.format?.bold ? 700 : 400)),
+                String,
+              )}
+              mixed={shared(items, i => i.format?.fontWeight ?? (i.format?.bold ? 700 : 400)) === MIXED}
+              disabled={locked}
+              min={100}
+              max={900}
+              onCommit={v => {
+                if (v.trim()) onChange(b => setTextMetric(b, selected, 'fontWeight', Number(v)));
+              }}
+            />
+            <CommitField
+              label="Text offset Y"
+              value={show(
+                shared(items, i => i.format?.baselineOffsetY ?? 0),
+                String,
+              )}
+              mixed={shared(items, i => i.format?.baselineOffsetY ?? 0) === MIXED}
+              disabled={locked}
+              min={-200}
+              max={200}
+              onCommit={v => {
+                if (v.trim()) onChange(b => setTextMetric(b, selected, 'baselineOffsetY', Number(v)));
+              }}
+            />
+          </>
+        )}
         <label className="inspector-field">
           <span>{allText ? 'Text colour' : 'Fill'}</span>
           <input

@@ -224,6 +224,7 @@ function validateItem(i: Item, groups: Set<string>): void {
     (i.name !== undefined && (typeof i.name !== 'string' || i.name.length > 200)) ||
     (i.alt !== undefined && (typeof i.alt !== 'string' || i.alt.length > 1000)) ||
     (i.hidden !== undefined && typeof i.hidden !== 'boolean') ||
+    (i.opacity !== undefined && !finite(i.opacity, 0, 1)) ||
     (i.linkTo !== undefined && (typeof i.linkTo !== 'string' || !i.linkTo))
   )
     throw new Error('Invalid object properties.');
@@ -231,6 +232,8 @@ function validateItem(i: Item, groups: Set<string>): void {
   if (
     f &&
     ((f.background !== undefined && !/^#[0-9a-f]{6}$/i.test(f.background)) ||
+      (f.fontWeight !== undefined && (!finite(f.fontWeight, 100, 900) || !Number.isInteger(f.fontWeight))) ||
+      (f.baselineOffsetY !== undefined && !finite(f.baselineOffsetY, -200, 200)) ||
       (f.highlight !== undefined && !/^#[0-9a-f]{6}$/i.test(f.highlight)) ||
       [f.strike, f.autoHeight].some(v => v !== undefined && typeof v !== 'boolean'))
   )

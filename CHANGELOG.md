@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Camera and appearance controls
+- The zoom percentage opens precise zoom and world-center coordinates, a 100% shortcut, and Reset view (origin centered at 100%). Existing wheel/button zoom shares the tested camera math.
+- Properties → Appearance adds whole-object opacity, numeric font weight and vertical text offset. Font weight is also selectable in the text toolbar; Bold stays consistent with numeric weights. Auto text reserves space for the offset.
+- Optional document fields are validated and preserved through saving, undo/redo and SVG export. Existing boards keep their default appearance.
+- Export retains an accessible name on phones, where its visible text is hidden.
+
 ### Emoji and stickers in the tool rail
 - New **Emoji and stickers** button in the left tool rail: pick any emoji (search, categories, skin tones, recent) or one of eight built-in stickers, then click the board to place it. Esc cancels.
 - Fixed the emoji picker's accessibility roles (a list of options instead of a grid without rows).

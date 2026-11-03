@@ -196,7 +196,7 @@ export function TopBar() {
           <Layers size={19} />
         </button>
         <div className="menu-anchor">
-          <button className="export-button" aria-expanded={menu} onClick={() => setMenu(m => !m)}>
+          <button className="export-button" aria-label="Export" aria-expanded={menu} onClick={() => setMenu(m => !m)}>
             <Download size={17} />
             <span>Export</span>
             <ChevronDown size={14} />
