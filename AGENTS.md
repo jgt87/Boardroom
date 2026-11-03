@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository.
 
 ## What this is
 
-BoardCraft contains **Boardroom**, an independent local whiteboard prototype (React 19 + TypeScript + Vite) informed by static and runtime analysis of an existing whiteboard's web client. The app is in `prototype/`; the root holds plans, design notes and analysis. Never import, copy or ship captured third-party code: `*.private.json` and `evidence-private/` are private evidence and gitignored. Name the product Boardroom; do not imply it is any existing commercial service.
+This repository contains **Boardroom**, an independent local whiteboard prototype (React 19 + TypeScript + Vite) informed by static and runtime analysis of an existing whiteboard's web client. The app is in `prototype/`; the root holds plans, design notes and analysis. Never import, copy or ship captured third-party code: `*.private.json` and `evidence-private/` are private evidence and gitignored. Name the product Boardroom; do not imply it is any existing commercial service.
 
 Work is planned in `NEXT-20-ITEMS-PLAN.md` (items 1–85, each with linked implementation files and tests). Record new work there and in `CHANGELOG.md` (Unreleased). Visual and interaction rules are in `DESIGN.md`; product scope is in `PRODUCT.md`.
 
@@ -50,4 +50,4 @@ Tests import source files directly, so pure modules must use `.ts` extensions in
 - Native HTML5 drag-and-drop: always `preventDefault()` in `dragover` based on `dataTransfer.types`, not React state; that state is not updated yet during a real drag.
 - Performance checks in an automated browser tab: background tabs are throttled to 1 frame per second, so time with forced layout (`offsetHeight`), not `requestAnimationFrame`.
 - Exports draw SVG (with `foreignObject`) to a canvas via a `data:` URL; a `blob:` URL taints the canvas in Chrome.
-- Keep UI text free of assistant or vendor names; the project's own naming is Boardroom/BoardCraft.
+- Keep UI text free of assistant or vendor names; the project's own name is Boardroom.
