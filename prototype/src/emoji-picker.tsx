@@ -39,6 +39,8 @@ export type EmojiPickerProps = {
   allowRemove?: boolean;
   /** Footnote; defaults to the note about local markers. */
   note?: string | null;
+  /** Extra choices shown above the search (for example built-in stickers). */
+  extra?: React.ReactNode;
 };
 
 /** Anchored emoji picker. Arrow keys, Home/End and Page Up/Down move; Enter or Space chooses; Esc closes. */
@@ -49,6 +51,7 @@ export function EmojiPicker({
   title = 'Marker',
   allowRemove = true,
   note,
+  extra,
 }: EmojiPickerProps) {
   const [groups, setGroups] = useState<EmojiGroup[] | null>(null),
     [error, setError] = useState(''),
@@ -165,6 +168,7 @@ export function EmojiPicker({
           <X size={17} />
         </button>
       </div>
+      {extra}
       <div className="ep-toolbar">
         <label className="ep-search">
           <Search size={15} aria-hidden="true" />
@@ -230,12 +234,12 @@ export function EmojiPicker({
           Loading emoji…
         </p>
       ) : items.length ? (
-        <div ref={grid} className="ep-grid" role="grid" aria-label="Emoji" onKeyDown={gridKeys}>
+        <div ref={grid} className="ep-grid" role="listbox" aria-label="Emoji" onKeyDown={gridKeys}>
           {items.map((item, i) => (
             <button
               key={`${item.emoji}${i}`}
               data-index={i}
-              role="gridcell"
+              role="option"
               tabIndex={i === focus ? 0 : -1}
               aria-label={`Use ${item.emoji}, ${item.name}`}
               title={item.name}

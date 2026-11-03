@@ -34,6 +34,7 @@ import { createImageItem, replaceImage, splitAssets, referencedAssets } from './
 import { loadAssets, saveAsset, pruneAssets, readImageFile } from './assets-store';
 import { wireframeItem } from './specs-media';
 import { OPEN_EDITOR_EVENT } from './widgets-media';
+import { stampChoice } from './widgets-graphics';
 import { PREVIEW_EVENT, usePreviewState } from './prototype-preview';
 import { looksLikeMarkdown } from './markdown';
 import { applyLayouts } from './autolayout';
@@ -614,6 +615,9 @@ function useBoardCore() {
     const item = pendingPlacement?.startsWith('wf:')
       ? wireframeItem(pendingPlacement.slice(3) as never, point, (t: Kind, x: number, y: number) => createItem(t, x, y))
       : createItem(kind, point.x, point.y, fill);
+    const stamp =
+      kind === 'stamp' && pendingPlacement?.startsWith('stamp:') ? stampChoice(pendingPlacement.slice(6)) : null;
+    if (stamp) Object.assign(item, { data: stamp.data, fill: stamp.fill });
     if (kind === 'mermaid') item.text = starters.Flowchart;
     if (kind === 'mindmap') item.nodes = [{ id: crypto.randomUUID(), parent: null, text: 'Central topic' }];
     if (kind === 'code') {

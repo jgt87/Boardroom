@@ -1,4 +1,4 @@
-import { Undo2, Redo2, LayoutTemplate, Shapes, Ellipsis, MousePointer2 } from 'lucide-react';
+import { Undo2, Redo2, LayoutTemplate, Shapes, Ellipsis, MousePointer2, Smile } from 'lucide-react';
 import { colors, undo, redo, bulkNotes } from './model';
 import type { Kind } from './model';
 import { ToolGallery, FormatEditor, BulkPanel } from './formats';
@@ -10,9 +10,12 @@ import { PenOptions } from './board-panels';
 import { useApp } from './board-app';
 import { tools } from './board-app';
 import { useState } from 'react';
+import { EmojiPicker } from './emoji-picker';
+import { StickerChoices } from './widgets-graphics';
 
 export function ToolRail() {
-  const [navigationMenu, setNavigationMenu] = useState(false);
+  const [navigationMenu, setNavigationMenu] = useState(false),
+    [emojiMenu, setEmojiMenu] = useState(false);
   const {
     addCentered,
     board,
@@ -52,14 +55,23 @@ export function ToolRail() {
     setPendingPlacement,
     setFacil,
   } = useApp();
+  /** Start click-to-place for an emoji (`emoji:<emoji>`) or a built-in sticker kind. */
+  const placeStamp = (choice: string) => {
+    setEmojiMenu(false);
+    setEditing(null);
+    setSelected([]);
+    setPendingPlacement('stamp:' + choice);
+    setTool('stamp');
+  };
   return (
     <>
       <nav
         className="tools floating"
         aria-label="Creation tools"
         onClickCapture={e => {
-          if ((e.target as Element).closest('button')?.getAttribute('aria-label') !== 'Select')
-            setNavigationMenu(false);
+          const label = (e.target as Element).closest('button')?.getAttribute('aria-label');
+          if (label !== 'Select') setNavigationMenu(false);
+          if (label !== 'Emoji and stickers') setEmojiMenu(false);
         }}
       >
         <button
@@ -136,6 +148,22 @@ export function ToolRail() {
             </button>
           ))}
         <button
+          data-tool-anchor="emoji"
+          aria-label="Emoji and stickers"
+          aria-expanded={emojiMenu}
+          aria-pressed={tool === 'stamp' && !!pendingPlacement?.startsWith('stamp:')}
+          className={tool === 'stamp' && pendingPlacement?.startsWith('stamp:') ? 'active' : ''}
+          onClick={() => {
+            setEmojiMenu(v => !v);
+            setGallery(null);
+            setShapes(false);
+            setBulk(false);
+          }}
+        >
+          <Smile size={21} strokeWidth={1.7} />
+          <span className="tool-tip">Emoji and stickers</span>
+        </button>
+        <button
           data-tool-anchor="essentials"
           aria-label="Tools, media and integrations"
           aria-expanded={gallery === 'Essentials'}
@@ -149,6 +177,20 @@ export function ToolRail() {
           <span className="tool-tip">Tools, media and integrations</span>
         </button>
       </nav>
+      {emojiMenu && (
+        <AnchoredPanel anchor="emoji">
+          <EmojiPicker
+            title="Emoji and stickers"
+            allowRemove={false}
+            note="Choose an emoji or sticker, then click the board to place it. Esc cancels."
+            extra={<StickerChoices onChoose={kind => placeStamp(kind)} />}
+            onChoose={emoji => {
+              if (emoji) placeStamp('emoji:' + emoji);
+            }}
+            onClose={() => setEmojiMenu(false)}
+          />
+        </AnchoredPanel>
+      )}
       {navigationMenu && (
         <AnchoredPanel anchor="select">
           <aside className="shape-menu floating" aria-label="Selection tools">
@@ -284,17 +326,29 @@ export function ToolRail() {
       </div>
       {tool !== 'select' && tool !== 'hand' && (
         <AnchoredPanel
-          anchor={isShapeKind(tool) || tool === 'arrow' ? 'rectangle' : pendingPlacement ? 'formats' : tool}
+          anchor={
+            isShapeKind(tool) || tool === 'arrow'
+              ? 'rectangle'
+              : pendingPlacement?.startsWith('stamp:')
+                ? 'emoji'
+                : pendingPlacement
+                  ? 'formats'
+                  : tool
+          }
         >
           <div className="tool-options floating">
             <strong>
               {isShapeKind(tool)
                 ? shapeLabels[tool]
-                : tool === 'stack'
-                  ? 'Sticky stack'
-                  : tool === 'comment'
-                    ? 'Comment'
-                    : tools.find(t => t.id === tool)?.label || tool[0].toUpperCase() + tool.slice(1)}
+                : pendingPlacement?.startsWith('stamp:emoji:')
+                  ? `Place ${pendingPlacement.slice(12)}`
+                  : pendingPlacement?.startsWith('stamp:')
+                    ? 'Place sticker'
+                    : tool === 'stack'
+                      ? 'Sticky stack'
+                      : tool === 'comment'
+                        ? 'Comment'
+                        : tools.find(t => t.id === tool)?.label || tool[0].toUpperCase() + tool.slice(1)}
             </strong>
             {tool === 'pen' && (
               <PenOptions

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Emoji and stickers in the tool rail
+- New **Emoji and stickers** button in the left tool rail: pick any emoji (search, categories, skin tones, recent) or one of eight built-in stickers, then click the board to place it. Esc cancels.
+- Fixed the emoji picker's accessibility roles (a list of options instead of a grid without rows).
+
 ### Faster loading — 2026-11-03
 - Added `npm run serve`: an optimized production build on port 4173 (LAN-reachable). It loads in 8 compressed requests (0.26 MB) instead of the dev server's ~150 source files, which could leave other devices, or a busy browser, on "Opening Boardroom…".
 - The dev server now compiles every source module at startup instead of on first request.

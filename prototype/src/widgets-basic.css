@@ -576,3 +576,23 @@
   font-style: inherit;
   color: inherit;
 }
+/* Built-in stickers at the top of the tool-rail emoji panel. */
+.rail-stickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 0 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #e5e5eb;
+}
+.rail-stickers button {
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.rail-stickers button:hover,
+.rail-stickers button:focus-visible {
+  border-color: #4262ff;
+}

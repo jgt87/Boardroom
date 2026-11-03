@@ -214,3 +214,27 @@ test('reactions float without changing the board; authors label new sticky notes
   await page.reload();
   await expect(page.locator('.note-author', { hasText: 'Sam Lee' })).toBeVisible();
 });
+
+test('the tool rail Emoji and stickers button places emoji and stickers by clicking the board', async ({ page }) => {
+  await seed(page, empty);
+  await page.getByRole('button', { name: 'Emoji and stickers', exact: true }).click();
+  const panel = page.getByRole('complementary', { name: 'Emoji and stickers' });
+  await expect(panel.getByRole('button', { name: 'Star sticker' })).toBeVisible();
+  await panel.getByRole('textbox', { name: 'Search emoji' }).fill('rocket');
+  await page.keyboard.press('Enter');
+  await expect(panel).toHaveCount(0);
+  expect((await savedBoard(page)).items.length).toBe(0);
+  await page.locator('svg.canvas').click({ position: { x: 600, y: 360 } });
+  await waitForSave(page, b => b.items.length === 1 && b.items[0].data.emoji === '🚀', 'emoji placed');
+  expect((await savedBoard(page)).items[0].type).toBe('stamp');
+  await page.getByRole('button', { name: 'Emoji and stickers', exact: true }).click();
+  expect(await axeViolations(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Star sticker' }).click();
+  await page.locator('svg.canvas').click({ position: { x: 800, y: 360 } });
+  await waitForSave(page, b => b.items.some(i => i.data?.stamp === 'star'), 'sticker placed');
+  await page.getByRole('button', { name: 'Emoji and stickers', exact: true }).click();
+  await page.getByRole('button', { name: 'Heart sticker' }).click();
+  await page.keyboard.press('Escape');
+  await page.locator('svg.canvas').click({ position: { x: 400, y: 500 } });
+  expect((await savedBoard(page)).items.length).toBe(2);
+});

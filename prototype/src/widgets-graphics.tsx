@@ -7,9 +7,23 @@ import type { StampKind } from './specs-basic';
 import { qrMatrix, qrPath, QR_MAX } from './qr';
 import { Dialog, data, setData } from './widget-kit';
 import { EmojiPicker } from './emoji-picker';
+import { isValidEmojiValue } from './emoji-data';
 
 type StampData = { stamp: StampKind | 'emoji'; emoji?: string };
 const EMOJI_STAMP_FILL = '#fff4dc';
+/**
+ * Stamp data for a tool-rail choice: `emoji:<emoji>` or a built-in sticker kind. Returns null for
+ * anything else, so a stale or malformed choice falls back to the default stamp.
+ */
+export function stampChoice(choice: string): { data: StampData; fill: string } | null {
+  if (choice.startsWith('emoji:')) {
+    const emoji = choice.slice(6);
+    return isValidEmojiValue(emoji) ? { data: { stamp: 'emoji', emoji }, fill: EMOJI_STAMP_FILL } : null;
+  }
+  return (stampKinds as readonly string[]).includes(choice)
+    ? { data: { stamp: choice as StampKind }, fill: stampColors[choice as StampKind] }
+    : null;
+}
 
 // ---- Divider and stamp (27) ------------------------------------------------------------------
 export function DividerRender({ item }: { item: Item }) {
@@ -127,6 +141,27 @@ export function StampRender({ item }: { item: Item }) {
       <circle cx="50" cy="50" r="46" fill={item.fill} stroke="#ffffff" strokeWidth="4" />
       <StampGlyph kind={kind} />
     </svg>
+  );
+}
+/** Built-in sticker choices for the tool-rail emoji panel. */
+export function StickerChoices({ onChoose }: { onChoose: (kind: StampKind) => void }) {
+  return (
+    <div className="rail-stickers" role="group" aria-label="Stickers">
+      {stampKinds.map(k => (
+        <button
+          key={k}
+          type="button"
+          aria-label={`${stampLabels[k]} sticker`}
+          title={stampLabels[k]}
+          onClick={() => onChoose(k)}
+        >
+          <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true">
+            <circle cx="50" cy="50" r="46" fill={stampColors[k]} />
+            <StampGlyph kind={k} />
+          </svg>
+        </button>
+      ))}
+    </div>
   );
 }
 export function StampEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose: () => void }) {
