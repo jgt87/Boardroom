@@ -44,9 +44,12 @@ export function contains(outer: Bounds, inner: Bounds) {
     inner.y + inner.h <= outer.y + outer.h
   );
 }
+/** Kinds that carry the objects inside their bounds when moved (frames and swimlanes, gap E6). */
+export const containerKinds = ['frame', 'swimlane'];
+export const isContainer = (i: { type: string }) => containerKinds.includes(i.type);
 export function frameMoveIds(items: Item[], ids: string[]): string[] {
   const selected = new Set(ids),
-    frames = items.filter(i => selected.has(i.id) && i.type === 'frame');
+    frames = items.filter(i => selected.has(i.id) && isContainer(i));
   for (const item of items) if (frames.some(frame => contains(frame, itemBounds(item, items)))) selected.add(item.id);
   return [...selected];
 }

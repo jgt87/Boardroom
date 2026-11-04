@@ -68,6 +68,7 @@ export const catalog: Record<string, CatalogEntry[]> = {
     e('Org chart', 'orgchart'),
     e('Shapes and lines', 'rectangle'),
     e('Auto-layout container', 'autolayout'),
+    e('Swimlanes', 'swimlane', 'Lanes for cross-functional process diagrams'),
     e('Mermaid', 'mermaid'),
   ],
   Planning: [

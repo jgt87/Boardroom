@@ -19,6 +19,8 @@ import { validateTagColors } from './card-tools.ts';
 import { validateLayers } from './layers.ts';
 import { validateReactions } from './notes.ts';
 import { canRotate, isValidRotation } from './rotation.ts';
+import { validateSpans } from './rich-text.ts';
+import { validateMermaidLink, validateMermaidNode } from './mermaid-link-rules.ts';
 
 export const imageMimes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 export const mediaMimes = ['video/mp4', 'video/webm', 'application/pdf'];
@@ -228,6 +230,7 @@ function validateItem(i: Item, groups: Set<string>): void {
   if (i.group !== undefined && (typeof i.group !== 'string' || !groups.has(i.group)))
     throw new Error('An object refers to a missing group.');
   if (i.locked !== undefined && typeof i.locked !== 'boolean') throw new Error('Invalid lock state.');
+  validateSpans(i);
   if (i.type === 'image' && (typeof i.assetId !== 'string' || !i.assetId || i.assetId.length > 100))
     throw new Error('An image is missing its file reference.');
   if (
@@ -299,6 +302,8 @@ function validateItem(i: Item, groups: Set<string>): void {
   )
     throw new Error('Invalid drawing style.');
   if (i.type === 'frame' && i.data !== undefined) validateFrameData(i.data);
+  if (i.type === 'frame' && i.data?.mermaid !== undefined) validateMermaidLink(i.data.mermaid);
+  if (i.mermaidNode !== undefined) validateMermaidNode(i.mermaidNode);
   if (i.type === 'mindmap') validateMindStyle(i);
   validateWidget(i);
 }

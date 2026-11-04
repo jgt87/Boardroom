@@ -34,8 +34,16 @@ import {
   shared,
 } from './inspector-model';
 import './inspector.css';
+import { kindLabels, linkOf, linkState, stateLabels } from './mermaid-link';
 
-type Props = { board: Board; selected: string[]; onChange: (change: (b: Board) => Board) => void; onClose: () => void };
+type Props = {
+  board: Board;
+  selected: string[];
+  onChange: (change: (b: Board) => Board) => void;
+  onClose: () => void;
+  /** Open the code panel of a frame linked to Mermaid code. */
+  onEditMermaid?: (id: string) => void;
+};
 const DEFAULT_BORDER = { borderColor: '#2d2d34', borderWidth: 1.5, borderStyle: 'solid', borderOpacity: 1 } as const;
 const round = (n: number) => Math.round(n * 10) / 10;
 const kindLabel = (i: Item) => (isShapeKind(i.type) ? shapeLabels[i.type] : (specFor(i.type)?.label ?? i.type));
@@ -99,7 +107,7 @@ function CommitField({
 
 const show = <T,>(v: Shared<T>, f: (x: T) => string) => (v === MIXED || v === undefined ? '' : f(v));
 
-export function PropertiesInspector({ board, selected, onChange, onClose }: Props) {
+export function PropertiesInspector({ board, selected, onChange, onClose, onEditMermaid }: Props) {
   const panel = useRef<HTMLElement>(null);
   const items = selectedItems(board, selected);
   const locked = items.some(i => i.locked);
@@ -227,6 +235,30 @@ export function PropertiesInspector({ board, selected, onChange, onClose }: Prop
           {many && <p className="inspector-hint">Editing moves or scales the selection as one box.</p>}
         </fieldset>
       )}
+
+      {single &&
+        linkOf(single) &&
+        (() => {
+          const link = linkOf(single)!;
+          return (
+            <fieldset className="inspector-section">
+              <legend>Mermaid code</legend>
+              <dl className="inspector-summary">
+                <dt>Diagram</dt>
+                <dd>{kindLabels[link.kind]}</dd>
+                <dt>Sync</dt>
+                <dd>{stateLabels[linkState(board, single.id)].replace('Mermaid · ', '')}</dd>
+                <dt>Code</dt>
+                <dd>{link.code.split('\n').length} lines</dd>
+              </dl>
+              {onEditMermaid && (
+                <div className="inspector-toggles">
+                  <button onClick={() => onEditMermaid(single.id)}>Edit Mermaid code</button>
+                </div>
+              )}
+            </fieldset>
+          );
+        })()}
 
       {single?.type === 'arrow' &&
         (() => {

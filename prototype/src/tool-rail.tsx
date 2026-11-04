@@ -418,11 +418,12 @@ export function ToolRail() {
           onReplace={(items, notes) => {
             const id = formatId;
             update({ ...boardRef.current, items: [...boardRef.current.items.filter(i => i.id !== id), ...items] });
-            setSelected(items.filter(i => i.type !== 'arrow').map(i => i.id));
+            // The first item is the frame that keeps the link to the code.
+            setSelected([items[0].id]);
             setFormatId(null);
             fit(items);
             display(
-              `Converted to ${items.filter(i => i.type !== 'arrow').length} shapes.${notes.length ? ' ' + notes.join(' ') : ''} Undo restores the diagram.`,
+              `Converted to ${items.filter(i => i.type !== 'arrow' && i.type !== 'frame').length} shapes, linked to their code. Press Enter on the frame to edit the code.${notes.length ? ' ' + notes.join(' ') : ''} Undo restores the diagram.`,
             );
           }}
           onClose={() => setFormatId(null)}

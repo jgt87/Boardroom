@@ -2,7 +2,7 @@
 // screen-reader users can explore the board by headings and pick an object by name (Alt+O).
 import { X } from 'lucide-react';
 import { useApp } from './board-app';
-import { outlineByFrame } from './access-tools';
+import { laneDescription, outlineByFrame } from './access-tools';
 import { describeItem } from './navigation';
 import { announce } from './announce';
 
@@ -17,7 +17,8 @@ export function BoardOutline() {
     if (!item) return;
     setSelected([id]);
     if (!item.hidden) fit([item]);
-    announce(describeItem(item));
+    const lane = laneDescription(board, id);
+    announce(describeItem(item) + (lane ? `, ${lane}` : ''));
   };
   let shown = 0;
   return (

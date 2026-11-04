@@ -6,7 +6,7 @@ export type Box = { x: number; y: number; w: number; h: number };
 /** Kinds that never rotate: connectors follow their ends, frames stay axis-aligned (they define
  * containment and presentation slides), pen strokes keep their raw points for the eraser, and
  * layout containers keep their children on a straight grid. */
-export const unrotatableKinds = ['arrow', 'frame', 'pen', 'grid', 'autolayout'];
+export const unrotatableKinds = ['arrow', 'frame', 'pen', 'grid', 'autolayout', 'swimlane'];
 export const canRotate = (item: { type: string }) => !unrotatableKinds.includes(item.type);
 /** Rotation snap step while Shift is held. */
 export const ROTATION_SNAP = 15;

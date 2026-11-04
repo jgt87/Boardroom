@@ -108,7 +108,7 @@ export function addConnectedCopy(
     ...(source.format ? { format: clone(source.format) } : {}),
     ...(source.style ? { style: clone(source.style) } : {}),
   };
-  const occupied = board.items.filter(i => !['frame', 'arrow'].includes(i.type) && !i.hidden);
+  const occupied = board.items.filter(i => !['frame', 'swimlane', 'arrow'].includes(i.type) && !i.hidden);
   const horizontal = side === 'left' || side === 'right';
   for (
     let attempt = 0;

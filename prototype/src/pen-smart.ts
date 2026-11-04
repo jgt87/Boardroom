@@ -71,7 +71,7 @@ export function lineEnds(items: Box[], line: Recognized, tolerance = 12): { from
       .reverse()
       .find(
         i =>
-          !['arrow', 'pen', 'frame', 'stickypad'].includes(i.type) &&
+          !['arrow', 'pen', 'frame', 'swimlane', 'stickypad'].includes(i.type) &&
           !i.hidden &&
           p.x >= i.x - tolerance &&
           p.x <= i.x + i.w + tolerance &&

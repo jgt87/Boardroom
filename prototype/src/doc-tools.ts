@@ -143,6 +143,8 @@ export const docShortcutHelp = [
   ['Ctrl+U', 'Underline'],
   ['Ctrl+Shift+X', 'Strikethrough'],
   ['Ctrl+E', 'Inline code'],
+  ['Ctrl+K', 'Link'],
+  ['@', 'Mention someone'],
   ['Ctrl+Alt+1–3', 'Heading 1–3'],
   ['Ctrl+Alt+0', 'Normal text'],
   ['Ctrl+Alt+4', 'Bulleted list'],

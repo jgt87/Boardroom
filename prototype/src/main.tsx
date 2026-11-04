@@ -8,6 +8,7 @@
 // direction beats the roll. No new visual-world or alternate-composition selection.
 // FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 import './polyfills';
+import { trackInputModality } from './input-modality';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
@@ -41,4 +42,5 @@ function App() {
     </AppContext.Provider>
   );
 }
+trackInputModality();
 createRoot(document.getElementById('root')!).render(<App />);

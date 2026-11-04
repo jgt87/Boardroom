@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Sticky stack peel, start-up screen and focus ring
+- **Peeling a note off a sticky stack** is animated frame by frame:
+  - The sheet bends while still glued, tears off past a threshold, tilts while carried, and settles on drop.
+  - The next sheet curls up.
+  - Released early, the sheet springs back and nothing is taken.
+  - The paper never stretches.
+- **A new start-up screen** has the Boardroom mark, sticky notes landing on a mini board, and a progress bar. It covers slow and error states (with a Reload button), dark mode and reduced motion.
+- **The whole-board focus ring** now shows only for keyboard navigation, so it no longer appears while dragging notes.
+
+### Rich text, swimlanes and linked Mermaid diagrams
+- **Rich text:**
+  - Text objects get per-word bold, italic, underline, strikethrough, colour and highlight, links (Ctrl+K) and @person chips, with a floating mini-toolbar.
+  - Docs get links (Ctrl+K), highlight, text colour and @person chips.
+- **Swimlanes:**
+  - A container with horizontal or vertical lanes and optional phases. Its contents move with it and stay in their lanes when lanes are added, reordered or resized.
+  - A "Cross-functional flowchart" template.
+- **Linked Mermaid diagrams:**
+  - Converted shapes stay linked to their code. An edit panel shows the code next to the shapes, with two-way sync for flowcharts and a choice when both sides changed.
+  - Unlink keeps the shapes.
+
 ### Help-center gaps, round 2
 - **Keyboard and access:**
   - Place tools with Enter, extend the selection and resize from the keyboard, enter and leave groups.

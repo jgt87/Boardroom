@@ -1,6 +1,8 @@
 // More starter templates with categories and search (gap list I5). Pure: no React, no DOM.
 // Each template is laid out from `at` with the board's own objects (frames, sticky notes, text, shapes).
 import type { Item, Point } from './model.ts';
+import { SWIM_LANE_HEADER, SWIM_PHASE_HEADER, SWIM_TITLE } from './specs-swimlane.ts';
+import type { SwimlaneData } from './specs-swimlane.ts';
 
 export type Make = (type: Item['type'], x: number, y: number, fill?: string) => Item;
 export const templateCategories = [
@@ -27,7 +29,8 @@ export type StarterName =
   | 'Meeting agenda'
   | 'Icebreaker'
   | 'Brainwriting'
-  | 'User story map';
+  | 'User story map'
+  | 'Cross-functional flowchart';
 export const starterNames: StarterName[] = [
   'Brainstorm',
   'Kanban retro',
@@ -43,6 +46,7 @@ export const starterNames: StarterName[] = [
   'Icebreaker',
   'Brainwriting',
   'User story map',
+  'Cross-functional flowchart',
 ];
 export type TemplateInfo = { name: string; category: TemplateCategory; about: string; keywords?: string };
 /** Every gallery template (the original four first), with its category and description. */
@@ -139,6 +143,12 @@ export const templateCatalog: TemplateInfo[] = [
     category: 'Agile',
     about: 'Activities and steps across the top, stories in release slices below',
     keywords: 'backlog mvp journey release',
+  },
+  {
+    name: 'Cross-functional flowchart',
+    category: 'Diagramming',
+    about: 'A process in swimlanes, one lane per team, with phases',
+    keywords: 'swimlane swim lane process flow bpmn responsibilities',
   },
 ];
 /** Templates matching a search text (name, category, description, keywords) and an optional category. */
@@ -363,6 +373,68 @@ export function starterItems(name: StarterName, at: Point, make: Make): Item[] {
         note('Story', 200, 300, colors.yellow),
         note('Story', 460, 300, colors.yellow),
         note('Story', 720, 540, colors.yellow),
+      ];
+    }
+    case 'Cross-functional flowchart': {
+      // Lanes (rows) per team and two phases; each step sits inside its lane so it moves with it.
+      const laneNames = ['Customer', 'Sales', 'Operations'],
+        lane = 180,
+        phase = 520,
+        top = SWIM_TITLE + SWIM_PHASE_HEADER,
+        left = SWIM_LANE_HEADER;
+      const sid = () => crypto.randomUUID();
+      const data: SwimlaneData = {
+        orientation: 'horizontal',
+        lanes: laneNames.map((title, k) => ({
+          id: sid(),
+          title,
+          size: lane,
+          color: ['#dbeafe', '#dcf5e3', '#fff4c2'][k],
+        })),
+        phases: [
+          { id: sid(), title: 'Request', size: phase },
+          { id: sid(), title: 'Fulfil', size: phase },
+        ],
+      };
+      const pool = {
+        ...make('swimlane', at.x, at.y),
+        text: 'Order process',
+        w: left + 2 * phase,
+        h: top + 3 * lane,
+        data,
+      };
+      const step = (kind: Item['type'], s: string, l: number, x: number, w: number, h: number) => ({
+        ...make(kind, at.x + left + x, at.y + top + l * lane + (lane - h) / 2, '#ffffff'),
+        text: s,
+        w,
+        h,
+      });
+      const start = step('terminator', 'Start', 0, 40, 180, 70),
+        order = step('rectangle', 'Place order', 0, 280, 180, 90),
+        review = step('rectangle', 'Review order', 1, 280, 180, 90),
+        approve = step('diamond', 'Approved?', 1, phase + 40, 160, 130),
+        ship = step('rectangle', 'Ship order', 2, phase + 260, 180, 90),
+        done = step('terminator', 'Receive order', 0, phase + 260, 180, 70);
+      const link = (a: Item, b: Item, text = '') => ({
+        ...make('arrow', 0, 0),
+        from: a.id,
+        to: b.id,
+        text,
+        connector: { path: 'elbow' as const },
+      });
+      return [
+        pool,
+        start,
+        order,
+        review,
+        approve,
+        ship,
+        done,
+        link(start, order),
+        link(order, review),
+        link(review, approve),
+        link(approve, ship, 'Yes'),
+        link(ship, done),
       ];
     }
   }

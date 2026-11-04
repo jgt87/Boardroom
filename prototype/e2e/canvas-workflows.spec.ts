@@ -7,7 +7,7 @@ test('sticky select-and-type and Alt-drag duplicate are undoable', async ({ page
   );
   await item(page, 'n').click();
   await page.keyboard.type('Hello');
-  await expect(page.getByRole('textbox', { name: 'Edit object text' })).toHaveValue('Hello');
+  await expect(page.getByRole('textbox', { name: 'Edit object text' })).toHaveText('Hello');
   await page.keyboard.press('Control+Enter');
   await waitForSave(page, b => b.items[0].text === 'Hello', 'typed');
   await page.getByRole('button', { name: 'Undo', exact: true }).click();

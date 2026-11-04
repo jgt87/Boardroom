@@ -1,0 +1,171 @@
+/* Per-word rich text: canvas editor, mini toolbar, link popover, mention chips (canvas and Docs). */
+.object-editor.rich-editor {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: auto;
+  cursor: text;
+}
+.text-mention,
+.doc-mention {
+  display: inline;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: #e6eaff;
+  color: #2f45c7;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.text-link {
+  color: #1c64f2;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.rich-text-popup > * {
+  position: fixed;
+  z-index: 1000;
+  font:
+    13px Arial,
+    sans-serif;
+  color: #25252c;
+}
+.rich-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  max-width: 260px;
+  padding: 3px;
+  transform: translate(-50%, calc(-100% - 8px));
+  background: #fff;
+  border: 1px solid var(--border, #e5e5eb);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px #25252c26;
+}
+.rich-toolbar .icon-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+.rich-toolbar .icon-button.active {
+  background: #eef1ff;
+  color: var(--blue, #4262ff);
+}
+.rich-swatches {
+  display: flex;
+  gap: 4px;
+  flex-basis: 100%;
+  padding: 3px 2px 1px;
+}
+.rich-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid #25252c33;
+  line-height: 1;
+}
+.rich-swatch:focus-visible,
+.rich-toolbar .icon-button:focus-visible {
+  outline: 2px solid var(--blue, #4262ff);
+  outline-offset: 1px;
+}
+.rich-swatch-none {
+  background: #fff;
+  color: #696973;
+}
+.rich-link-popover {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 300px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid var(--border, #e5e5eb);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #25252c26;
+}
+.rich-link-popover input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #c9c9d3;
+  border-radius: 6px;
+  font: inherit;
+}
+.rich-link-popover input[aria-invalid='true'] {
+  border-color: #c92a2a;
+}
+.rich-link-popover button {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font: inherit;
+}
+.rich-link-error {
+  flex-basis: 100%;
+  color: #b42318;
+}
+.rich-mention-menu {
+  min-width: 160px;
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #dcdce3;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #25252c26;
+}
+.rich-mention-menu li {
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rich-mention-menu li[aria-selected='true'] {
+  background: #eef1ff;
+}
+/* Docs: the popover and the mention list sit inside the Doc, positioned in its own pixels. */
+.canvas-doc-wrap .rich-link-popover,
+.canvas-doc-wrap .rich-mention-menu {
+  position: absolute;
+  left: 18px;
+  z-index: 4;
+  font:
+    12px Arial,
+    sans-serif;
+}
+.doc-content mark {
+  background: #fff27a;
+  color: inherit;
+  padding: 0 1px;
+}
+.doc-palette-anchor {
+  position: relative;
+  display: inline-flex;
+}
+.doc-color-letter {
+  text-decoration: underline 3px #d92d20;
+  text-underline-offset: 2px;
+}
+.canvas-doc-tools mark {
+  padding: 0 2px;
+  background: #fff27a;
+}
+.canvas-doc-tools .doc-palette {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 4;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #dcdce3;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #25252c26;
+}

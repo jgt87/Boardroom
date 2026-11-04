@@ -1,17 +1,27 @@
-// Startup message shown before the app loads (kept out of index.html for the Content Security Policy).
+// Start-up screen behaviour before the app loads (kept out of index.html for the Content Security Policy).
+// States are classes on #startup, styled in startup.css: is-slow (still loading), is-error (failed, offers
+// Reload) and is-file (opened as a file, offers the server link).
 (function () {
-  var title = document.querySelector('#startup h1'),
-    message = document.getElementById('startup-message');
-  if (!title || !message) return;
-  function show(heading, text) {
+  var root = document.getElementById('startup'),
+    title = document.querySelector('#startup h1'),
+    message = document.getElementById('startup-message'),
+    reload = document.getElementById('startup-reload');
+  if (!root || !title || !message) return;
+  function show(state, heading, text) {
     if (!document.getElementById('startup')) return; // the app has started
+    root.className = state;
     title.textContent = heading;
     message.textContent = text;
   }
+  if (reload)
+    reload.addEventListener('click', function () {
+      location.reload();
+    });
   if (location.protocol === 'file:') {
     show(
+      'is-file',
       'Open Boardroom through its local server',
-      'This React project cannot run by opening its HTML file directly. The development server is at the link below. If it is not running, open a terminal in the prototype folder and run npm run dev.',
+      'This page cannot run from its HTML file directly. Use the link below. If nothing opens, run npm run dev in the prototype folder first.',
     );
     document.getElementById('startup-link').hidden = false;
     return;
@@ -22,10 +32,11 @@
     if (failed || !document.getElementById('startup')) return;
     failed = true;
     show(
-      'The editor could not finish loading',
-      'Reload this page with Ctrl+Shift+R. If this message remains, the application failed to start' +
-        (detail ? ': ' + detail : '.'),
+      'is-error',
+      'Boardroom could not finish loading',
+      'Try reloading. If this keeps happening, the app failed to start' + (detail ? ': ' + detail : '.'),
     );
+    if (reload) reload.focus();
   }
   addEventListener(
     'error',
@@ -41,7 +52,11 @@
   // A first load from another machine on the development server can take a while: say so, but do not give up.
   setTimeout(function () {
     if (!failed)
-      show('Opening Boardroom…', 'Still loading. The first visit from another device can take up to a minute.');
+      show(
+        'is-slow',
+        'Still opening…',
+        'The first visit from another device can take up to a minute. Your boards are safe.',
+      );
   }, 8000);
   setTimeout(function () {
     fail('loading took longer than 90 seconds.');

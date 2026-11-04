@@ -40,6 +40,8 @@ const cleanLabel = (text: string) =>
     .replace(/^"(.*)"$/s, '$1')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/&quot;|#quot;/g, '"')
+    // Mermaid entity codes such as #93; let quoted labels hold brackets.
+    .replace(/#(\d{1,6});/g, (_, n: string) => String.fromCodePoint(Math.min(0x10ffff, Number(n))))
     .slice(0, 6000);
 /** Statements split on new lines and on semicolons outside double quotes. */
 const statements = (code: string) => {
@@ -276,9 +278,21 @@ type GEdge = {
   endHead?: ConnectorHead;
 };
 type Direction = ParsedFlowchart['direction'];
+/** Stable Mermaid key per created item id: node and subgraph ids, `from>to#n` for edges (code-to-shape links). */
+export type Keys = Record<string, string>;
+/** Converted items, notes about what was skipped, and the Mermaid key of every created item. */
+export type Converted = { items: Item[]; notes: string[]; keys: Keys };
+/** Key of the n-th edge between two Mermaid ids (n counts from 0 in code order). */
+export const edgeKey = (from: string, to: string, n: number) => `${from}>${to}#${n}`;
 
 /** Lay out nodes in ranks, wrap groups in frames, and bind elbow connectors to the created objects. */
-function buildLayered(nodes: GNode[], edges: GEdge[], groups: Subgraph[], direction: Direction, origin: Point): Item[] {
+function buildLayered(
+  nodes: GNode[],
+  edges: GEdge[],
+  groups: Subgraph[],
+  direction: Direction,
+  origin: Point,
+): { items: Item[]; keys: Keys } {
   const layers = layerFlowchart(nodes, edges),
     horizontal = direction === 'LR' || direction === 'RL';
   const maxRank = Math.max(...[...layers.values()].map(l => l.rank)),
@@ -331,6 +345,9 @@ function buildLayered(nodes: GNode[], edges: GEdge[], groups: Subgraph[], direct
     frames.set(g.id, frame);
     ids.set(g.id, frame.id);
   }
+  const keys: Keys = {},
+    seen = new Map<string, number>();
+  for (const [key, id] of ids) keys[id] = key;
   const lines: Item[] = edges
     .filter(e => ids.has(e.from) && ids.has(e.to))
     .map(e => {
@@ -339,8 +356,12 @@ function buildLayered(nodes: GNode[], edges: GEdge[], groups: Subgraph[], direct
       if (e.width) connector.width = e.width;
       if (e.startHead && e.startHead !== 'none') connector.startHead = e.startHead;
       if (e.endHead !== undefined && e.endHead !== 'arrow') connector.endHead = e.endHead;
+      const n = seen.get(`${e.from}>${e.to}`) ?? 0,
+        id = crypto.randomUUID();
+      seen.set(`${e.from}>${e.to}`, n + 1);
+      keys[id] = edgeKey(e.from, e.to, n);
       return {
-        id: crypto.randomUUID(),
+        id,
         type: 'arrow' as const,
         x: 0,
         y: 0,
@@ -358,11 +379,11 @@ function buildLayered(nodes: GNode[], edges: GEdge[], groups: Subgraph[], direct
     .sort((a, b) => depth(a) - depth(b))
     .map(g => frames.get(g.id))
     .filter((f): f is Item => !!f);
-  return [...orderedFrames, ...shapesOut, ...lines];
+  return { items: [...orderedFrames, ...shapesOut, ...lines], keys };
 }
 
 const SIZE: Record<string, [number, number]> = { diamond: [170, 110], ellipse: [150, 100] };
-function flowchartItems(code: string, origin: Point): { items: Item[]; notes: string[] } {
+function flowchartItems(code: string, origin: Point): Converted {
   const chart = parseFlowchart(code);
   const nodes: GNode[] = chart.nodes.map(n => {
     const [w, h] = SIZE[n.shape] ?? [180, 80];
@@ -376,7 +397,7 @@ function flowchartItems(code: string, origin: Point): { items: Item[]; notes: st
     ...(e.style === 'thick' ? { width: 4 } : {}),
     ...(e.arrow ? {} : { endHead: 'none' as const }),
   }));
-  return { items: buildLayered(nodes, edges, chart.groups, chart.direction, origin), notes: chart.notes };
+  return { ...buildLayered(nodes, edges, chart.groups, chart.direction, origin), notes: chart.notes };
 }
 
 // ---- Sequence diagrams -------------------------------------------------------------------------
@@ -495,7 +516,7 @@ const SEQ_COL = 230,
   SEQ_BOX_W = 170,
   SEQ_BOX_H = 60,
   SEQ_ROW = 64;
-function sequenceItems(code: string, origin: Point): { items: Item[]; notes: string[] } {
+function sequenceItems(code: string, origin: Point): Converted {
   const seq = parseSequence(code),
     pad = seq.blocks.length ? 40 : 0;
   const centre = (id: string) =>
@@ -505,7 +526,8 @@ function sequenceItems(code: string, origin: Point): { items: Item[]; notes: str
   const tops: Item[] = [],
     bottoms: Item[] = [],
     lifelines: Item[] = [],
-    steps: Item[] = [];
+    steps: Item[] = [],
+    keys: Keys = {};
   for (const p of seq.participants) {
     const x = centre(p.id) - SEQ_BOX_W / 2,
       kind: ShapeKind = p.actor ? 'roundrect' : 'rectangle';
@@ -513,8 +535,12 @@ function sequenceItems(code: string, origin: Point): { items: Item[]; notes: str
     const bottom = { ...createItem(kind, x, bottomY, '#ffffff'), w: SEQ_BOX_W, h: SEQ_BOX_H, text: p.label };
     tops.push(top);
     bottoms.push(bottom);
+    keys[top.id] = `p:${p.id}`;
+    keys[bottom.id] = `p:${p.id}:end`;
+    const life = createItem('arrow', 0, 0);
+    keys[life.id] = `l:${p.id}`;
     lifelines.push({
-      ...createItem('arrow', 0, 0),
+      ...life,
       w: 0,
       h: 0,
       fill: '#a1a1aa',
@@ -524,7 +550,8 @@ function sequenceItems(code: string, origin: Point): { items: Item[]; notes: str
     });
   }
   seq.steps.forEach((s, k) => {
-    const y = rowY(k);
+    const y = rowY(k),
+      at = steps.length;
     if (s.kind === 'message') {
       const a = centre(s.from),
         b = centre(s.to),
@@ -548,20 +575,23 @@ function sequenceItems(code: string, origin: Point): { items: Item[]; notes: str
         x = s.side === 'left' ? left - w - 16 : s.side === 'right' ? left + 16 : (left + right) / 2 - w / 2;
       steps.push({ ...createItem('note', Math.round(x), y - 22, '#fff49b'), w, h: 48, text: s.text });
     }
+    keys[steps[at].id] = `s:${k}`;
   });
   const width = (seq.participants.length - 1) * SEQ_COL + SEQ_BOX_W;
-  const frames = seq.blocks.map(b => {
+  const frames = seq.blocks.map((b, k) => {
     const inset = b.depth * 14,
       y = rowY(b.start) - SEQ_ROW / 2 + inset,
       h = rowY(b.end) - SEQ_ROW / 2 - y - inset;
+    const frame = createItem('frame', origin.x + pad / 2 + inset - 10, y);
+    keys[frame.id] = `b:${k}`;
     return {
-      ...createItem('frame', origin.x + pad / 2 + inset - 10, y),
+      ...frame,
       w: width + pad + 20 - inset * 2,
       h: Math.max(40, h),
       text: b.title.slice(0, 200),
     };
   });
-  return { items: [...frames, ...tops, ...bottoms, ...lifelines, ...steps], notes: seq.notes };
+  return { items: [...frames, ...tops, ...bottoms, ...lifelines, ...steps], notes: seq.notes, keys };
 }
 
 // ---- Class diagrams ----------------------------------------------------------------------------
@@ -669,7 +699,7 @@ export function parseClassDiagram(code: string): ParsedClass {
 }
 const tableWidth = (title: string, rows: string[]) =>
   Math.min(380, Math.max(200, Math.round(Math.max(title.length * 9, ...rows.map(r => r.length * 7.4)) + 60)));
-function classItems(code: string, origin: Point): { items: Item[]; notes: string[] } {
+function classItems(code: string, origin: Point): Converted {
   const c = parseClassDiagram(code);
   const nodes: GNode[] = c.classes.map(k => {
     const rows: EntityRow[] = k.members.map(m => ({ name: m, type: '' }));
@@ -683,7 +713,7 @@ function classItems(code: string, origin: Point): { items: Item[]; notes: string
       data: { rows },
     };
   });
-  return { items: buildLayered(nodes, c.relations, [], c.direction, origin), notes: c.notes };
+  return { ...buildLayered(nodes, c.relations, [], c.direction, origin), notes: c.notes };
 }
 
 // ---- State diagrams ----------------------------------------------------------------------------
@@ -787,7 +817,7 @@ export function parseStateDiagram(code: string): ParsedState {
     notes.push(`${plural(skipped, 'line was', 'lines were')} not converted (notes, concurrency or styling).`);
   return { direction, states: kept, transitions, groups, notes };
 }
-function stateItems(code: string, origin: Point): { items: Item[]; notes: string[] } {
+function stateItems(code: string, origin: Point): Converted {
   const s = parseStateDiagram(code);
   const nodes: GNode[] = s.states.map(st => {
     const base = { id: st.id, label: st.label, ...(st.group ? { group: st.group } : {}) };
@@ -799,7 +829,7 @@ function stateItems(code: string, origin: Point): { items: Item[]; notes: string
   });
   const edges: GEdge[] = s.transitions.map(t => ({ from: t.from, to: t.to, label: t.label }));
   // Groups with no kept members are dropped by the builder.
-  return { items: buildLayered(nodes, edges, s.groups, s.direction, origin), notes: s.notes };
+  return { ...buildLayered(nodes, edges, s.groups, s.direction, origin), notes: s.notes };
 }
 
 // ---- ER diagrams -------------------------------------------------------------------------------
@@ -880,7 +910,7 @@ export function parseErDiagram(code: string): ParsedEr {
   if (skipped) notes.push(`${plural(skipped, 'line was', 'lines were')} not converted.`);
   return { entities, relations, notes };
 }
-function erItems(code: string, origin: Point): { items: Item[]; notes: string[] } {
+function erItems(code: string, origin: Point): Converted {
   const er = parseErDiagram(code);
   const nodes: GNode[] = er.entities.map(e => ({
     id: e.id,
@@ -894,14 +924,14 @@ function erItems(code: string, origin: Point): { items: Item[]; notes: string[] 
     fill: '#dfe5ff',
     data: { rows: e.rows, stripes: true },
   }));
-  return { items: buildLayered(nodes, er.relations, [], 'LR', origin), notes: er.notes };
+  return { ...buildLayered(nodes, er.relations, [], 'LR', origin), notes: er.notes };
 }
 
 /**
  * Native items for Mermaid code: shapes (or entity tables) plus connectors bound with from/to, and frames for
  * subgraphs, composite states and sequence blocks. Origin is the top-left.
  */
-export function mermaidToNative(code: string, origin: Point): { items: Item[]; notes: string[] } {
+export function mermaidToNative(code: string, origin: Point): Converted {
   const kind = mermaidKind(code);
   if (kind === 'sequence') return sequenceItems(code, origin);
   if (kind === 'class') return classItems(code, origin);
@@ -912,7 +942,7 @@ export function mermaidToNative(code: string, origin: Point): { items: Item[]; n
 }
 
 // ---- Native shapes back to Mermaid -------------------------------------------------------------
-const brackets: Partial<Record<ShapeKind, [string, string]>> = {
+export const brackets: Partial<Record<ShapeKind, [string, string]>> = {
   ellipse: ['((', '))'],
   terminator: ['([', '])'],
   cylinder: ['[(', ')]'],

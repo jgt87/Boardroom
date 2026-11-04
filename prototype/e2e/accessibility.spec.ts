@@ -26,6 +26,7 @@ const widgetKinds = [
   'ranking',
   'quiz',
   'chart',
+  'swimlane',
 ];
 
 async function seedEverything(page: Page) {

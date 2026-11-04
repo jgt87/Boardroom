@@ -11,7 +11,7 @@ import {
   radiusKinds,
 } from './shapes';
 import type { ShapeKind } from './shapes';
-import { Minus, MoveUpRight, CornerUpRight, Network, Circle, Table2, Shapes, X } from 'lucide-react';
+import { Minus, MoveUpRight, CornerUpRight, Network, Circle, Table2, Rows3, Shapes, X } from 'lucide-react';
 import { loadCustomShapes, removeCustomShape, storeCustomShapes } from './custom-shapes';
 import type { CustomShape } from './custom-shapes';
 import './r5-canvas.css';
@@ -240,7 +240,7 @@ export function CompactShapesMenu({
 }: {
   onLine: (preset: LinePreset) => void;
   onShape: (kind: ShapeKind) => void;
-  onKind: (kind: 'divider' | 'mermaid' | 'entity') => void;
+  onKind: (kind: 'divider' | 'mermaid' | 'entity' | 'swimlane') => void;
   /** Place a saved custom shape (track R5). */
   onCustom?: (shape: CustomShape) => void;
 }) {
@@ -285,6 +285,7 @@ export function CompactShapesMenu({
       <hr />
       {row('Diagram', <Network size={16} />, () => onKind('mermaid'))}
       {row('Entity table', <Table2 size={16} />, () => onKind('entity'))}
+      {row('Swimlanes', <Rows3 size={16} />, () => onKind('swimlane'))}
       {onCustom && (
         <>
           <hr />

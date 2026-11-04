@@ -38,7 +38,8 @@ export type WidgetKind =
   | 'shortcut'
   | 'stickypad'
   | 'chart'
-  | 'entity';
+  | 'entity'
+  | 'swimlane';
 export const widgetKinds: WidgetKind[] = [
   'drawio',
   'card',
@@ -75,6 +76,7 @@ export const widgetKinds: WidgetKind[] = [
   'stickypad',
   'chart',
   'entity',
+  'swimlane',
 ];
 export type Kind =
   | 'note'
@@ -256,6 +258,9 @@ export type Item = {
   recordGroup?: string;
   recordView?: import('./record-query.ts').RecordViewConfig;
   format?: TextFormat;
+  /** Per-word styles, links and mentions over `text`; used only while `spansFor` is the hash of `text`. */
+  spans?: import('./rich-text.ts').TextSpan[];
+  spansFor?: string;
   link?: string;
   tags?: string[];
   connector?: ConnectorFormat;
@@ -292,6 +297,11 @@ export type Item = {
   /** When the object was created and last modified on this device (ISO; object info in the inspector). */
   createdAt?: string;
   modifiedAt?: string;
+  /**
+   * Shape or connector generated from Mermaid code: `frame` is the linked diagram frame (its `data.mermaid` holds the
+   * code) and `id` the stable Mermaid key (node or subgraph id, or `from>to#n` for an edge). See mermaid-link.ts.
+   */
+  mermaidNode?: { frame: string; id: string };
 };
 export type CommentThread = {
   id: string;
@@ -855,7 +865,7 @@ export function addConnectedNote(board: Board, sourceId: string): { board: Board
     h: source.h,
     format: source.format ? clone(source.format) : undefined,
   };
-  const occupied = board.items.filter(i => !['frame', 'arrow'].includes(i.type));
+  const occupied = board.items.filter(i => !['frame', 'swimlane', 'arrow'].includes(i.type));
   for (
     let attempt = 0;
     attempt < 2000 &&

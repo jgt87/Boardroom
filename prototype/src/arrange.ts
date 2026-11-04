@@ -9,6 +9,7 @@ import { gridOwner } from './grid-canvas.ts';
 import type { GridData } from './grid.ts';
 import { frameMoveIds, selectionBounds, translate } from './interactions.ts';
 import type { Bounds } from './interactions.ts';
+import { expandLinked, remapMermaidNode } from './mermaid-link-rules.ts';
 
 export type AlignMode = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
 
@@ -252,7 +253,7 @@ export function duplicateItems(
 ): { board: Board; ids: string[] } {
   const off = typeof offset === 'number' ? { x: offset, y: offset } : offset;
   const included = new Set([
-    ...ids,
+    ...expandLinked(board, ids),
     ...ids.flatMap(id => {
       const i = board.items.find(i => i.id === id);
       return i?.type === 'grid' ? ((i.data as GridData).objects ?? []).map(o => o.id) : [];
@@ -269,7 +270,7 @@ export function duplicateItems(
     parent: gmap.get(g)?.parent && newGroup.has(gmap.get(g)!.parent!) ? newGroup.get(gmap.get(g)!.parent!)! : null,
   }));
   const copies = source.map(i => {
-    const copy: Item = { ...clone(i), id: map.get(i.id)!, x: i.x + off.x, y: i.y + off.y };
+    const copy: Item = { ...remapMermaidNode(clone(i), map), id: map.get(i.id)!, x: i.x + off.x, y: i.y + off.y };
     if (i.from) copy.from = map.get(i.from) ?? i.from;
     if (i.to) copy.to = map.get(i.to) ?? i.to;
     if (i.linkTo && map.has(i.linkTo)) copy.linkTo = map.get(i.linkTo);

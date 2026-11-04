@@ -38,7 +38,7 @@ export const defaultAutoLayout = (): AutoLayoutData => ({
   children: [],
 });
 export const isContainer = (i: Item | undefined): boolean => i?.type === 'autolayout';
-const canAdopt = (i: Item) => !['autolayout', 'frame', 'arrow', 'pen'].includes(i.type) && !i.locked;
+const canAdopt = (i: Item) => !['autolayout', 'frame', 'swimlane', 'arrow', 'pen'].includes(i.type) && !i.locked;
 export const containerOf = (board: Board, childId: string): Item | undefined =>
   board.items.find(i => isContainer(i) && (i.data as AutoLayoutData | undefined)?.children?.includes(childId));
 

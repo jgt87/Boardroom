@@ -7,13 +7,29 @@ import { editableIds, groupMembers, rootGroupOf } from './arrange.ts';
 import { frameAroundItem, nearestInDirection, readingOrder, type Direction } from './navigation.ts';
 import { kindLabel } from './switch-type.ts';
 import type { A11yIssue } from './board-tools.ts';
+import { laneOf } from './swimlane.ts';
+import { swimlaneSummary } from './specs-swimlane.ts';
 
 // ---- Names ------------------------------------------------------------------------------------
 const clip = (text: string, max: number) => text.trim().replace(/\s+/g, ' ').slice(0, max);
 /** Accessible name of a rendered object: its kind, then its description, name or text. */
 export function itemAriaLabel(i: Item): string {
+  if (i.type === 'swimlane') return swimlaneSummary(i);
   const text = clip(i.alt || i.name || i.text || '', 160);
   return `${kindLabel(i.type)}: ${text || 'Untitled'}`;
+}
+/** Where an object sits in a swimlane, e.g. "in lane Sales, phase Plan, of swimlane Orders" (gap E6). */
+export function laneDescription(board: Board, id: string): string {
+  const place = laneOf(board, id);
+  if (!place) return '';
+  const name = (s: { title: string }) => clip(s.title, 60) || 'Untitled';
+  return [
+    `in lane ${name(place.lane)}`,
+    place.phase ? `phase ${name(place.phase)}` : '',
+    `of swimlane ${clip(place.swimlane.name || place.swimlane.text, 60) || 'Untitled'}`,
+  ]
+    .filter(Boolean)
+    .join(', ');
 }
 
 /** Spoken colour name: the palette name when there is one, otherwise an approximate hue name. */
@@ -188,6 +204,8 @@ export function itemDetails(board: Board, id: string): string {
   const frameId = frameAroundItem(board, i.id),
     frame = frameId ? board.items.find(f => f.id === frameId) : undefined;
   if (frame) parts.push(`in frame ${clip(frame.name || frame.text, 60) || 'Untitled'}`);
+  const lane = laneDescription(board, i.id);
+  if (lane) parts.push(lane);
   if (i.group) parts.push(`in a group of ${groupMembers(board, rootGroupOf(board, i)!).length}`);
   const links = board.items.filter(c => c.type === 'arrow' && (c.from === i.id || c.to === i.id)).length;
   if (links) parts.push(`${links} ${links === 1 ? 'connection' : 'connections'}`);
@@ -216,10 +234,12 @@ export function outlineByFrame(board: Board): OutlineSection[] {
   const sections = new Map<string, OutlineSection>(
     frames.map(f => [f.id, { frame: { id: f.id, title: clip(f.name || f.text, 80) || 'Untitled frame' }, items: [] }]),
   );
-  const loose: OutlineSection = { items: [] };
+  const loose: OutlineSection = { items: [] },
+    lanes = board.items.some(i => i.type === 'swimlane');
   for (const id of order) {
-    const i = byId.get(id)!;
-    const entry = { id, label: itemAriaLabel(i) };
+    const i = byId.get(id)!,
+      lane = lanes ? laneDescription(board, id) : '';
+    const entry = { id, label: itemAriaLabel(i) + (lane ? `, ${lane}` : '') };
     const home = frameAroundItem(board, id);
     if (home && sections.has(home)) sections.get(home)!.items.push(entry);
     else if (i.type !== 'frame') loose.items.push(entry);

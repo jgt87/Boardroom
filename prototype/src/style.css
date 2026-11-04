@@ -881,7 +881,12 @@ kbd {
     scroll-behavior: auto !important;
   }
 }
-.canvas:focus-visible {
+/* The whole-board focus ring is for keyboard navigation only (input-modality.ts): after typing, browsers can
+   report :focus-visible for a later mouse-driven focus, which framed the board while dragging notes. */
+.canvas:focus {
+  outline: none;
+}
+html[data-input='keyboard'] .canvas:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: -3px;
 }
@@ -1293,18 +1298,6 @@ kbd {
   body:has(.board-side-panel) .tool-column {
     left: 376px;
     transition: left 0.15s ease;
-  }
-}
-/* Sticky stack: the curl settles back in after each peel (item 110). */
-.stickypad-curl {
-  animation: pad-curl 0.5s ease-out;
-}
-@keyframes pad-curl {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
   }
 }
 /* Top-right bar (item 114): one grouped toolbar, buttons without their own cards, ending in Present. */

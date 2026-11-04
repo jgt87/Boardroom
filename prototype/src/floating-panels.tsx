@@ -74,6 +74,7 @@ import {
 import { viewFor } from './widgets';
 import type { WidgetCtx } from './widget-types';
 import { useApp } from './board-app';
+import { MermaidLinkPanel } from './mermaid-link-panel';
 
 export function FloatingPanels() {
   const {
@@ -627,6 +628,7 @@ export function FloatingPanels() {
           onClose={() => setCodeId(null)}
         />
       )}
+      <MermaidLinkPanel />
     </>
   );
 }

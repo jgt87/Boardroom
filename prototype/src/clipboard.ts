@@ -4,6 +4,7 @@
 import type { Board, GroupDef, ImageAsset, Item, RecordRow } from './model.ts';
 import { clone, endpoints } from './model.ts';
 import type { GridData } from './grid.ts';
+import { expandLinked, remapMermaidNode } from './mermaid-link-rules.ts';
 
 export const CLIP_FORMAT = 'boardroom-objects';
 export type ClipPayload = {
@@ -18,14 +19,17 @@ export type ClipPayload = {
   bounds: { x: number; y: number; w: number; h: number };
 };
 
-/** Objects to copy: the selection, including every group member, frame contents are not added. */
+/**
+ * Objects to copy: the selection, including every group member. Frame contents are not added, except for a frame
+ * linked to Mermaid code, which is copied with its diagram so the link keeps working.
+ */
 export function copySelection(
   board: Board,
   ids: string[],
   assets: Record<string, ImageAsset> = {},
   assetBudget = 2_000_000,
 ): ClipPayload | null {
-  const chosen = new Set(ids),
+  const chosen = new Set(expandLinked(board, ids)),
     // Connectors store their real end points so a paste that drops an attachment keeps the shape.
     items = board.items
       .filter(
@@ -131,7 +135,8 @@ export function pastePayload(
     dx = at.x - payload.bounds.x,
     dy = at.y - payload.bounds.y;
   const items = payload.items.map(src => {
-    const i: Item = { ...clone(src), id: idMap.get(src.id)!, x: src.x + dx, y: src.y + dy };
+    // A diagram linked to Mermaid code keeps its link when its frame is pasted too.
+    const i: Item = { ...remapMermaidNode(clone(src), idMap), id: idMap.get(src.id)!, x: src.x + dx, y: src.y + dy };
     delete i.locked;
     if (i.type === 'grid')
       i.data = {

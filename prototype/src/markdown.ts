@@ -9,6 +9,15 @@ import { calloutOf, calloutLabels } from './doc-tools.ts';
 
 export const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+/** `@[Name]`: a mention in Doc Markdown. Names have no brackets or line breaks and are at most 80 characters. */
+const MENTION_SOURCE = /^@\[([^[\]\n]{1,80})\]/;
+/** Markdown for a mention chip (brackets and line breaks in the name are dropped). */
+export const mentionMarkdown = (name: string) =>
+  `@[${name
+    .replace(/[[\]\r\n\t]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)}]`;
 const safeHref = (href: string) => (/^(https?:|mailto:)/i.test(href.trim()) ? href.trim() : '');
 
 /** Render Markdown to sanitised HTML. Headings get ids `doc-h-<n>` in document order (matches docOutline). */
@@ -28,6 +37,49 @@ export function renderMarkdown(md: string): string {
         },
         renderer(this: any, token: any) {
           return `<u>${this.parser.parseInline(token.tokens)}</u>`;
+        },
+      },
+      // `==text==` is a highlight.
+      {
+        name: 'highlight',
+        level: 'inline',
+        start: (src: string) => src.indexOf('=='),
+        tokenizer(this: any, src: string) {
+          const m = /^==(?=[^\s=])([\s\S]*?[^\s=])==/.exec(src);
+          return m ? { type: 'highlight', raw: m[0], tokens: this.lexer.inlineTokens(m[1]) } : undefined;
+        },
+        renderer(this: any, token: any) {
+          return `<mark>${this.parser.parseInline(token.tokens)}</mark>`;
+        },
+      },
+      // `{color:#rrggbb}text{/color}` is coloured text; only six-digit hex colours are accepted.
+      {
+        name: 'textColor',
+        level: 'inline',
+        start: (src: string) => src.indexOf('{color:'),
+        tokenizer(this: any, src: string) {
+          const m = /^\{color:(#[0-9a-fA-F]{6})\}([\s\S]+?)\{\/color\}/.exec(src);
+          return m
+            ? { type: 'textColor', raw: m[0], color: m[1].toLowerCase(), tokens: this.lexer.inlineTokens(m[2]) }
+            : undefined;
+        },
+        renderer(this: any, token: any) {
+          const color = /^#[0-9a-f]{6}$/.test(token.color) ? token.color : '#25252c';
+          return `<span class="doc-color" style="color:${color}">${this.parser.parseInline(token.tokens)}</span>`;
+        },
+      },
+      // `@[Name]` is a mention chip.
+      {
+        name: 'mention',
+        level: 'inline',
+        start: (src: string) => src.indexOf('@['),
+        tokenizer(src: string) {
+          const m = MENTION_SOURCE.exec(src);
+          return m ? { type: 'mention', raw: m[0], name: m[1].trim() } : undefined;
+        },
+        renderer(token: any) {
+          const name = escapeHtml(token.name);
+          return `<span class="doc-mention" contenteditable="false" data-mention="${name}">@${name}</span>`;
         },
       },
     ],
@@ -97,6 +149,10 @@ export function plain(text: string): string {
     .replace(/(\*\*|__)(.+?)\1/g, '$2')
     .replace(/(\*|_)(.+?)\1/g, '$2')
     .replace(/~~(.+?)~~/g, '$1')
+    .replace(/\+\+(.+?)\+\+/g, '$1')
+    .replace(/==(.+?)==/g, '$1')
+    .replace(/\{color:#[0-9a-fA-F]{6}\}([\s\S]*?)\{\/color\}/g, '$1')
+    .replace(/@\[([^[\]\n]{1,80})\]/g, '@$1')
     .replace(/<[^>]*>/g, '')
     .trim();
 }

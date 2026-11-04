@@ -1,8 +1,15 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="theme-color" content="#f4f4f5"/><link rel="icon" href="/favicon.svg"/><title>Boardroom · Local whiteboard</title></head>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)"/><meta name="theme-color" content="#17171c" media="(prefers-color-scheme: dark)"/><link rel="icon" href="/favicon.svg"/><link rel="stylesheet" href="/startup.css"/><title>Boardroom · Local whiteboard</title></head>
 <body>
-  <div id="root"><div id="startup" style="font:16px/1.6 Arial,sans-serif;color:#25252c;max-width:520px;margin:15vh auto;padding:28px"><h1 style="font-size:26px">Opening Boardroom…</h1><p id="startup-message">Loading the local whiteboard.</p><a id="startup-link" hidden href="http://127.0.0.1:5173/" style="color:#4262ff">Open the local whiteboard</a></div></div>
+  <div id="root"><div id="startup" role="status" aria-live="polite"><div class="su-card">
+    <div class="su-brand"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#4262ff"/><g fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"><path d="m6 12 10-5 10 5-10 5zM6 17l10 5 10-5M6 22l10 5 10-5"/></g></svg>Boardroom</div>
+    <div class="su-board" aria-hidden="true"><span class="su-note"></span><span class="su-note"></span><span class="su-note"></span></div>
+    <h1>Opening your boards…</h1>
+    <p id="startup-message">Loading the local whiteboard.</p>
+    <div class="su-progress" aria-hidden="true"></div>
+    <div class="su-actions"><button id="startup-reload" type="button">Reload</button><a id="startup-link" hidden href="http://127.0.0.1:5173/">Open the local whiteboard</a></div>
+  </div></div></div>
   <script src="/startup.js"></script>
   <script type="module" src="/src/main.tsx"></script>
 </body></html>

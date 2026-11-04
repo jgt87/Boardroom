@@ -1,7 +1,10 @@
 import React, { useMemo, useRef, useState } from 'react';
 import type { Item } from './model';
 import type { WidgetCtx } from './widget-types';
-import { renderMarkdown } from './markdown';
+import { mentionMarkdown, renderMarkdown } from './markdown';
+import { cleanMentionName, isSafeHref } from './rich-text';
+import { mentionMatches, mentionQuery } from './mentions';
+import { LinkPopover, MentionMenu, SwatchRow, mentionPeople, textColors } from './rich-editing';
 import { canvasControl } from './canvas-fields';
 import { useLatest } from './use-latest';
 import { filterSlash, docTemplates, calloutLabels, DOC_MAX, docShortcut, emojiQuery } from './doc-tools';
@@ -10,14 +13,47 @@ import type { EmojiEntry, EmojiGroup } from './emoji-data';
 import { StatusChip } from './status-chip';
 import type { SlashCommand, CalloutKind } from './doc-tools';
 
+/** `#rrggbb` for a CSS colour value (`rgb()` or hex), or null. */
+export function hexColor(css: string | null | undefined): string | null {
+  const value = (css ?? '').trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(value)) return value;
+  const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(value);
+  if (!m || (m[4] !== undefined && Number(m[4]) === 0) || [m[1], m[2], m[3]].some(n => Number(n) > 255)) return null;
+  return '#' + [m[1], m[2], m[3]].map(n => Number(n).toString(16).padStart(2, '0')).join('');
+}
+/** Wrap inline Markdown around `inner`, keeping surrounding spaces outside the markers. */
+const wrapInline = (open: string, close: string, inner: string) => {
+  const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(inner)!;
+  return m[2] ? `${m[1]}${open}${m[2]}${close}${m[3]}` : inner;
+};
 /** Serialize only supported rich-text elements. Pasted HTML is never persisted. */
 export function markdownFrom(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE)
-    return (node.textContent ?? '').replace(/([\\`*_[\]~])/g, '\\$1').replace(/\+(?=\+)/g, '\\+');
+    return (node.textContent ?? '')
+      .replace(/([\\`*_[\]~])/g, '\\$1')
+      .replace(/\+(?=\+)/g, '\\+')
+      .replace(/=(?==)/g, '\\=')
+      .replace(/\{(?=\/?color)/g, '\\{');
   if (!(node instanceof HTMLElement)) return '';
   if (node.classList.contains('doc-callout-title')) return '';
   const children = () => Array.from(node.childNodes).map(markdownFrom).join('');
+  if (node.dataset.mention !== undefined) {
+    const name = cleanMentionName(node.dataset.mention);
+    return name ? mentionMarkdown(name) : '';
+  }
   switch (node.tagName) {
+    case 'MARK':
+      return wrapInline('==', '==', children());
+    case 'FONT':
+    case 'SPAN': {
+      const color =
+        node.tagName === 'FONT'
+          ? hexColor(node.getAttribute('color'))
+          : node.classList.contains('doc-color')
+            ? hexColor(node.style.color)
+            : null;
+      return color ? wrapInline(`{color:${color}}`, '{/color}', children()) : children();
+    }
     case 'BR':
       return '\n';
     case 'STRONG':
@@ -85,6 +121,9 @@ export function markdownFrom(node: Node): string {
   }
 }
 
+/** Colour the browser's highlight command uses before the words become <mark> elements. */
+const HIGHLIGHT_MARKER = '#fff27b';
+
 export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const editor = useRef<HTMLDivElement>(null),
     [slash, setSlash] = useState<{ query: string; top: number; active: number } | null>(null),
@@ -95,7 +134,12 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       active: number;
       results: EmojiEntry[];
     } | null>(null),
-    emojiGroups = useRef<EmojiGroup[] | null>(null);
+    emojiGroups = useRef<EmojiGroup[] | null>(null),
+    [link, setLink] = useState<{ top: number; initial: string; hasLink: boolean } | null>(null),
+    [mention, setMention] = useState<{ start: number; names: string[]; top: number; active: number } | null>(null),
+    [palette, setPalette] = useState(false),
+    savedRange = useRef<Range | null>(null),
+    popoverOpen = useRef(false);
   const md = String(item.data?.markdown ?? '');
   const save = (next: string) => {
     if (item.locked || next === md.trim()) return;
@@ -188,6 +232,160 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     sel.removeAllRanges();
     sel.addRange(range);
   };
+  const inEditor = (n: Node | null | undefined) => !!n && !!editor.current?.contains(n);
+  const currentRange = () => {
+    const sel = getSelection();
+    if (!sel?.rangeCount) return null;
+    const r = sel.getRangeAt(0);
+    return inEditor(r.commonAncestorContainer) ? r : null;
+  };
+  const anchorOf = (r: Range) => {
+    const n = r.startContainer,
+      a = (n.nodeType === Node.TEXT_NODE ? n.parentElement : (n as Element))?.closest('a');
+    return a && inEditor(a) ? (a as HTMLAnchorElement) : null;
+  };
+  /** Local (unzoomed) offset below a rectangle, for menus positioned inside the Doc. */
+  const below = (rect: DOMRect) => {
+    const wrap = editor.current!.parentElement!.getBoundingClientRect();
+    return (rect.bottom - wrap.top) / (ctx.zoom || 1);
+  };
+  const unwrap = (el: Element) => el.replaceWith(...Array.from(el.childNodes));
+  const touching = (r: Range, selector: string) =>
+    Array.from(editor.current?.querySelectorAll(selector) ?? []).filter(el => r.intersectsNode(el));
+  const restoreSelection = () => {
+    editor.current?.focus();
+    const sel = getSelection();
+    if (savedRange.current && sel) {
+      sel.removeAllRanges();
+      sel.addRange(savedRange.current);
+    }
+  };
+  /** Ctrl+K or the Link button: add, change or remove the link at the selection. */
+  const openLink = () => {
+    if (item.locked) return;
+    const r = currentRange();
+    if (!r) return ctx.display('Place the cursor in the document to add a link.');
+    savedRange.current = r.cloneRange();
+    const a = anchorOf(r);
+    popoverOpen.current = true;
+    setSlash(null);
+    setEmoji(null);
+    setMention(null);
+    setPalette(false);
+    setLink({ top: below((a ?? r).getBoundingClientRect()), initial: a?.getAttribute('href') ?? '', hasLink: !!a });
+  };
+  const closeLink = () => {
+    setLink(null);
+    popoverOpen.current = false;
+    restoreSelection();
+  };
+  const applyLink = (href: string) => {
+    closeLink();
+    const r = currentRange();
+    if (!r) return;
+    const a = anchorOf(r);
+    if (a) a.setAttribute('href', href);
+    else if (r.collapsed) {
+      const el = document.createElement('a');
+      el.setAttribute('href', href);
+      el.textContent = href.replace(/^mailto:/i, '');
+      r.insertNode(el);
+      r.setStartAfter(el);
+      r.collapse(true);
+      const sel = getSelection()!;
+      sel.removeAllRanges();
+      sel.addRange(r);
+    } else document.execCommand('createLink', false, href);
+  };
+  const removeLink = () => {
+    closeLink();
+    const r = currentRange(),
+      a = r && anchorOf(r);
+    if (a) unwrap(a);
+  };
+  /** Highlight the selection, or remove the highlight it touches. */
+  const toggleHighlight = () => {
+    const r = currentRange();
+    if (!r || item.locked) return;
+    const marks = touching(r, 'mark');
+    if (marks.length) return marks.forEach(unwrap);
+    if (r.collapsed) return ctx.display('Select text to highlight it.');
+    document.execCommand('styleWithCSS', false, 'true');
+    document.execCommand('hiliteColor', false, HIGHLIGHT_MARKER);
+    document.execCommand('styleWithCSS', false, 'false');
+    // The browser marks the words with a background colour; store them as <mark> (==text==).
+    editor.current?.querySelectorAll<HTMLElement>('span').forEach(span => {
+      if (hexColor(span.style.backgroundColor) !== HIGHLIGHT_MARKER) return;
+      const mark = document.createElement('mark');
+      mark.append(...Array.from(span.childNodes));
+      span.replaceWith(mark);
+    });
+  };
+  /** Colour the selection (undefined: back to the default colour). */
+  const setColor = (color: string | undefined) => {
+    setPalette(false);
+    const r = currentRange();
+    if (!r || item.locked) return;
+    // Nested colours cannot be written as Markdown: clear the colours the selection touches first.
+    touching(r, 'span.doc-color, font[color]').forEach(unwrap);
+    if (!color || r.collapsed) return;
+    document.execCommand('styleWithCSS', false, 'false');
+    document.execCommand('foreColor', false, color);
+    editor.current?.querySelectorAll<HTMLElement>('font[color], span').forEach(el => {
+      const value = el.tagName === 'FONT' ? hexColor(el.getAttribute('color')) : hexColor(el.style.color);
+      if (value !== color || el.classList.contains('doc-color')) return;
+      const span = document.createElement('span');
+      span.className = 'doc-color';
+      span.style.color = color;
+      span.append(...Array.from(el.childNodes));
+      el.replaceWith(span);
+    });
+  };
+  /** Show people while "@name" is typed right before the caret. */
+  const watchMention = () => {
+    const root = editor.current,
+      sel = getSelection(),
+      node = sel?.anchorNode;
+    if (!root || item.locked || !sel?.isCollapsed || !node || node.nodeType !== Node.TEXT_NODE || !root.contains(node))
+      return setMention(null);
+    const q = mentionQuery(node.textContent ?? '', sel.anchorOffset),
+      names = q ? mentionMatches(mentionPeople(ctx.board), q.query) : [];
+    if (!q || !names.length) return setMention(null);
+    const range = document.createRange();
+    range.setStart(node, sel.anchorOffset);
+    range.collapse(true);
+    const top = below(range.getBoundingClientRect());
+    setMention(m => ({
+      start: q.start,
+      names,
+      top,
+      active: m && m.start === q.start ? Math.min(m.active, names.length - 1) : 0,
+    }));
+  };
+  const applyMention = (name: string) => {
+    const sel = getSelection(),
+      node = sel?.anchorNode,
+      state = mention,
+      clean = cleanMentionName(name);
+    setMention(null);
+    if (!state || !clean || !node || node.nodeType !== Node.TEXT_NODE || !inEditor(node)) return;
+    const range = document.createRange();
+    range.setStart(node, Math.min(state.start, sel!.anchorOffset));
+    range.setEnd(node, sel!.anchorOffset);
+    range.deleteContents();
+    const chip = document.createElement('span'),
+      space = document.createTextNode('\u00a0');
+    chip.className = 'doc-mention';
+    chip.contentEditable = 'false';
+    chip.dataset.mention = clean;
+    chip.textContent = `@${clean}`;
+    range.insertNode(space);
+    range.insertNode(chip);
+    range.setStartAfter(space);
+    range.collapse(true);
+    sel!.removeAllRanges();
+    sel!.addRange(range);
+  };
   /** Show emoji suggestions while ":name" is typed right before the caret. */
   const watchEmoji = () => {
     const root = editor.current,
@@ -237,6 +435,29 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const matches = slash ? filterSlash(slash.query) : [];
   const keyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     e.stopPropagation();
+    if (mention && mention.names.length) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        setMention({ ...mention, active: (mention.active + step + mention.names.length) % mention.names.length });
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        applyMention(mention.names[Math.min(mention.active, mention.names.length - 1)]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMention(null);
+        return;
+      }
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key.toLowerCase() === 'k' || e.code === 'KeyK')) {
+      e.preventDefault();
+      openLink();
+      return;
+    }
     if (emoji && emoji.results.length) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -295,10 +516,20 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     watchSlash,
     watchEmoji,
     keyDown,
+    watchMention,
     blur: () => {
+      if (popoverOpen.current) return;
       setSlash(null);
       setEmoji(null);
+      setMention(null);
       commit();
+    },
+    click: (e: React.MouseEvent) => {
+      const a = (e.target as Element).closest?.('a[href]');
+      if (!a || !(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const href = a.getAttribute('href');
+      if (isSafeHref(href)) window.open(href, '_blank', 'noopener,noreferrer');
     },
   });
   // The editable element only re-renders when its saved content or lock changes, so menu state
@@ -311,7 +542,7 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         key={md}
         className="canvas-doc doc-content"
         role="textbox"
-        aria-label="Document content. Type / on an empty line for blocks."
+        aria-label="Document content. Type / on an empty line for blocks, @ to mention someone."
         aria-multiline="true"
         aria-haspopup="listbox"
         contentEditable={!item.locked}
@@ -322,7 +553,9 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         onInput={() => {
           live.current.watchSlash();
           live.current.watchEmoji();
+          live.current.watchMention();
         }}
+        onClick={e => live.current.click(e)}
         onPaste={e => {
           e.preventDefault();
           document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
@@ -361,6 +594,33 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
           >
             <s>S</s>
           </button>
+          <button
+            disabled={!!item.locked}
+            aria-label="Highlight document text"
+            title="Highlight"
+            onClick={toggleHighlight}
+          >
+            <mark>H</mark>
+          </button>
+          <span className="doc-palette-anchor">
+            <button
+              disabled={!!item.locked}
+              aria-label="Document text colour"
+              aria-expanded={palette}
+              title="Text colour"
+              onClick={() => setPalette(p => !p)}
+            >
+              <span className="doc-color-letter">A</span>
+            </button>
+            {palette && (
+              <span className="doc-palette">
+                <SwatchRow label="Document text colour" colors={textColors} onPick={setColor} />
+              </span>
+            )}
+          </span>
+          <button disabled={!!item.locked} aria-label="Insert link" title="Link (Ctrl+K)" onClick={openLink}>
+            Link
+          </button>
           <button disabled={!!item.locked} onClick={() => command('formatBlock', 'h1')}>
             H1
           </button>
@@ -391,6 +651,30 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       </div>
       <div className="canvas-doc-wrap">
         {editable}
+        {link && (
+          <LinkPopover
+            initial={link.initial}
+            hasLink={link.hasLink}
+            style={{ top: link.top + 6 }}
+            onApply={applyLink}
+            onRemove={removeLink}
+            onCancel={closeLink}
+            onLeave={to => {
+              setLink(null);
+              popoverOpen.current = false;
+              if (!to || !editor.current?.contains(to)) commit();
+            }}
+          />
+        )}
+        {mention && mention.names.length > 0 && (
+          <MentionMenu
+            names={mention.names}
+            active={mention.active}
+            style={{ top: mention.top + 4 }}
+            onPick={applyMention}
+            onHover={k => setMention({ ...mention, active: k })}
+          />
+        )}
         {emoji && emoji.results.length > 0 && (
           <ul
             className="doc-slash-menu doc-emoji-menu"

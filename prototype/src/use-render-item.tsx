@@ -4,7 +4,10 @@ import { readableTextOn } from './board-tools';
 import { Lock, Link as LinkIcon } from 'lucide-react';
 import { richKinds } from './model';
 import type { Item } from './model';
-import { formatStyle, CanvasTextEditor, TextBody } from './text-format';
+import { formatStyle, TextBody } from './text-format';
+import { CanvasTextEditor } from './rich-text-editor';
+import { withRichText } from './rich-text';
+import { mentionPeople } from './rich-editing';
 import { RichPreview } from './formats';
 import { NoteBadges } from './sticky-tools';
 import { connectorGeometry, ConnectorCaption, ConnectorLabels } from './connectors';
@@ -25,12 +28,14 @@ import { gridOwner } from './grid-canvas';
 import { itemAriaLabel, nextNoteBeside } from './access-tools';
 import './canvas-workflows.css';
 import { autoList, autoListKinds } from './text-auto';
+import { linkOf, linkState, stateLabels } from './mermaid-link';
 
 /** Renders one board object (shape, note, connector, widget, media) with its overlays. */
 export function useRenderItem() {
   const {
     previewState,
     assets,
+    authorName,
     boardRef,
     camera,
     editing,
@@ -209,6 +214,46 @@ export function useRenderItem() {
                 {i.text || 'Untitled frame'}
               </text>
             )}
+            {linkOf(i) &&
+              (() => {
+                // Badge in the top-right corner of a diagram linked to its Mermaid code (inside the frame's
+                // padding, clear of the board header): shows the sync state and opens the code panel.
+                const st = linkState(shown, i.id),
+                  label = stateLabels[st],
+                  bw = label.length * 6.6 + 22,
+                  open = () => {
+                    setSelected([i.id]);
+                    openEditor(i.id);
+                  };
+                return (
+                  <g
+                    className={`mermaid-badge ${st === 'both' ? 'both' : st === 'synced' ? '' : 'changed'}`}
+                    transform={`translate(${i.w - 8 / camera.z} ${8 / camera.z}) scale(${1 / camera.z})`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${label}. Edit the Mermaid code`}
+                    data-mermaid-badge={st}
+                    onPointerDown={e => e.stopPropagation()}
+                    onDoubleClick={e => e.stopPropagation()}
+                    onClick={e => {
+                      e.stopPropagation();
+                      open();
+                    }}
+                    onKeyDown={e => {
+                      if (e.key !== 'Enter' && e.key !== ' ') return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      open();
+                    }}
+                  >
+                    <title>Edit the linked Mermaid code</title>
+                    <rect x={-bw} y={0} width={bw} height={22} rx={11} strokeWidth={1} />
+                    <text x={-bw / 2} y={15} textAnchor="middle" fontSize={11.5}>
+                      {label}
+                    </text>
+                  </g>
+                );
+              })()}
           </>
         )}
         {i.type === 'pen' &&
@@ -293,7 +338,9 @@ export function useRenderItem() {
             <CanvasTextEditor
               item={i}
               initialText={editSeed.current?.id === i.id ? editSeed.current.text : undefined}
-              onCommit={text => {
+              rich={!frame && !viewFor(i.type)}
+              people={() => mentionPeople(boardRef.current, authorName)}
+              onCommit={(text, spans) => {
                 editSeed.current = null;
                 update({
                   ...boardRef.current,
@@ -301,14 +348,14 @@ export function useRenderItem() {
                     if (n.id !== i.id) return n;
                     // "- " and "1. " lines become a list (track R5).
                     const listed = autoListKinds(n, shape) ? autoList(text, n.format) : null;
-                    return listed ? { ...n, ...listed } : { ...n, text };
+                    return listed ? { ...withRichText(n, n.text, []), ...listed } : withRichText(n, text, spans);
                   }),
                 });
                 setEditing(null);
               }}
               onTab={
                 i.type === 'note'
-                  ? text => {
+                  ? (text, spans) => {
                       // Tab while editing a sticky note saves it and starts the next note beside it (one undo step).
                       editSeed.current = null;
                       const base = boardRef.current,
@@ -317,7 +364,7 @@ export function useRenderItem() {
                       const next = nextNoteBeside(source);
                       update({
                         ...base,
-                        items: [...base.items.map(n => (n.id === i.id ? { ...n, text } : n)), next],
+                        items: [...base.items.map(n => (n.id === i.id ? withRichText(n, text, spans) : n)), next],
                       });
                       setSelected([next.id]);
                       setEditing(next.id);
@@ -392,6 +439,7 @@ export function useRenderItem() {
       mindEditId === i.id,
       zoomDependent(i) ? camera.z : 0,
       i.type === 'note' && !!shown.showAuthors,
+      linkOf(i) ? linkState(shown, i.id) : '',
     ].join('|');
     const deps: unknown[] = [
       i.type === 'arrow' ? geometries.get(i.id) : null,

@@ -30,6 +30,7 @@ import { PropertiesInspector } from './inspector';
 import { DeckPresenter } from './widgets-activities';
 import { ReactionLayer } from './collab-extras';
 import { copyText, objectLink } from './use-deep-links';
+import { linkOf, unlinkMermaid } from './mermaid-link';
 
 export function BoardOverlays() {
   const app = useApp();
@@ -224,6 +225,26 @@ export function BoardOverlays() {
             } as MenuEntry,
           ]
         : []),
+      ...(single && linkOf(selectedItem)
+        ? [
+            { label: 'Edit Mermaid code', run: () => openEditor(selectedItem!.id) } as MenuEntry,
+            {
+              label: 'Copy Mermaid code',
+              run: () =>
+                copyText(linkOf(selectedItem)!.code).then(ok =>
+                  display(ok ? 'Mermaid code copied.' : 'The code could not be copied.'),
+                ),
+            } as MenuEntry,
+            {
+              label: 'Unlink from Mermaid code',
+              run: () =>
+                run(
+                  b => unlinkMermaid(b, selectedItem!.id),
+                  () => display('Unlinked. The shapes stay; the code is no longer kept. Undo restores the link.'),
+                ),
+            } as MenuEntry,
+          ]
+        : []),
       ...(types.some(t => isShapeKind(t.type) || t.type === 'note' || t.type === 'frame')
         ? [
             {
@@ -353,6 +374,7 @@ export function BoardOverlays() {
           selected={selected}
           onChange={change => run(change)}
           onClose={() => setInspector(false)}
+          onEditMermaid={openEditor}
         />
       )}
       <DeckPresenter board={board} update={update} boardRef={boardRef} />

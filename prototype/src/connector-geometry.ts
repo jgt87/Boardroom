@@ -32,7 +32,7 @@ export type ConnectorGeometry = {
   samples: Point[];
 };
 export const DEFAULT_CLEARANCE = 16;
-export const canConnect = (item: Item) => !['arrow', 'pen', 'frame'].includes(item.type);
+export const canConnect = (item: Item) => !['arrow', 'pen', 'frame', 'swimlane'].includes(item.type);
 const routeCache = new Map<string, Point[] | null>();
 function cachedRoute(a: Point, na: Point, b: Point, nb: Point, obstacles: Rect[], clearance: number) {
   const key = JSON.stringify([a, na, b, nb, clearance, obstacles]);

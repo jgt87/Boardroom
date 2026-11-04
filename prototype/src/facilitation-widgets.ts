@@ -61,7 +61,7 @@ export function matrixContents(board: Board, matrixId: string): [Item[], Item[],
     out: [Item[], Item[], Item[], Item[]] = [[], [], [], []];
   if (!matrix) return out;
   for (const i of board.items) {
-    if (['frame', 'pen', 'matrix'].includes(i.type)) continue;
+    if (['frame', 'swimlane', 'pen', 'matrix'].includes(i.type)) continue;
     const q = matrixQuadrant(matrix, i);
     if (q !== null) out[q].push(i);
   }

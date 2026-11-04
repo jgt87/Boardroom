@@ -5,6 +5,7 @@ import type { Board, Item, Kind, Point } from './model.ts';
 import { itemBounds } from './interactions.ts';
 import { isShapeKind } from './shapes.ts';
 import { widgetSearchText } from './widget-specs.ts';
+import { swimlaneSummary } from './specs-swimlane.ts';
 import type { Bounds } from './interactions.ts';
 
 export type Camera = { x: number; y: number; z: number };
@@ -392,6 +393,7 @@ export function nearestInDirection(board: Board, fromId: string, dir: Direction)
 }
 /** Spoken description of one object for screen readers (gap F3). */
 export function describeItem(i: Item): string {
+  if (i.type === 'swimlane') return [swimlaneSummary(i), i.locked ? 'locked' : ''].filter(Boolean).join(', ');
   const kind = i.type === 'note' ? 'Sticky note' : i.type === 'arrow' ? 'Connector' : i.type;
   const text = (i.alt || i.name || i.text || '').trim().replace(/\s+/g, ' ').slice(0, 120);
   return [kind[0].toUpperCase() + kind.slice(1), text || 'no text', i.locked ? 'locked' : '']

@@ -84,13 +84,17 @@ test.describe('feature smoke', () => {
     await page.getByRole('button', { name: /Convert to shapes/ }).click();
     await waitForSave(
       page,
-      b => !b.items.some((i: any) => i.id === 'mm') && b.items.filter((i: any) => i.type !== 'arrow').length === 4,
+      b =>
+        !b.items.some((i: any) => i.id === 'mm') &&
+        b.items.filter((i: any) => i.type !== 'arrow' && i.type !== 'frame').length === 4,
       'converted',
     );
     const b = await savedBoard(page);
+    // The shapes sit in a frame that keeps the Mermaid code (see mermaid-link.spec.ts).
+    expect(b.items.find((i: any) => i.type === 'frame').data.mermaid.code).toContain('B -- no --> D');
     expect(
       b.items
-        .filter((i: any) => i.type !== 'arrow')
+        .filter((i: any) => i.type !== 'arrow' && i.type !== 'frame')
         .map((i: any) => `${i.type}:${i.text}`)
         .sort(),
     ).toEqual(['cylinder:Backlog', 'diamond:Ready?', 'rectangle:Start', 'roundrect:Ship']);

@@ -33,6 +33,7 @@ import {
   allKinds,
 } from './model';
 import type { Board, History, Item, Kind, Point, ImageAsset } from './model';
+import type { PeelState } from './peel-motion';
 import { textLayout } from './text-format';
 import { isShapeKind } from './shapes';
 import { starters } from './formats';
@@ -60,6 +61,7 @@ import { recordVisit } from './activity';
 import { BASE_LAYER, assignNewToLayer, inLockedLayer, sortByLayer } from './layers';
 import { applyGridLayouts, gridOwner } from './grid-canvas';
 import { applyMindBounds } from './mindmap-bounds';
+import { fitSwimlanes } from './swimlane';
 import {
   privateIds,
   detachComments,
@@ -106,6 +108,7 @@ import { docFromMarkdown, DOC_FILE_MAX } from './doc-tools';
 import { validateWidget } from './widget-specs';
 import { stampAuthors, cleanAuthor, AUTHOR_KEY } from './authors';
 import { stampTimes } from './item-times';
+import { linkOf, syncMermaidLinks } from './mermaid-link';
 
 export const KEY = LEGACY_KEY;
 /** Open the local board library (migrating a legacy single board on first run). */
@@ -155,6 +158,8 @@ export type Gesture =
       handle?: Handle;
       endpoint?: 'start' | 'end';
       bend?: { kind: 'bend' | 'segment'; index: number };
+      /** Pulling a note off a sticky stack (item 133); the note is only taken once `peel.live.detached`. */
+      peel?: PeelState;
     }
   | {
       mode: 'erase' | 'label';
@@ -168,12 +173,16 @@ export type Gesture =
       handle?: Handle;
       endpoint?: 'start' | 'end';
       bend?: { kind: 'bend' | 'segment'; index: number };
+      /** Pulling a note off a sticky stack (item 133); the note is only taken once `peel.live.detached`. */
+      peel?: PeelState;
     };
 
 function useBoardCore() {
   const [gallery, setGallery] = useState<'Formats' | 'Essentials' | null>(null),
     [bulk, setBulk] = useState(false),
     [formatId, setFormatId] = useState<string | null>(null),
+    /** Frame whose linked Mermaid code is open in the side panel. */
+    [mermaidLinkId, setMermaidLinkId] = useState<string | null>(null),
     [shapes, setShapes] = useState(false);
   const [history, setHistory] = useState<History>({ past: [], current: initial.board, future: [] });
   const board = history.current,
@@ -322,7 +331,7 @@ function useBoardCore() {
   const navigationRef = useLatest(viewPrefs.navigation);
   const [commandsOpen, setCommandsOpen] = useState(false);
   const [connectTarget, setConnectTarget] = useState<string | null>(null),
-    [peeling, setPeeling] = useState<string | null>(null);
+    [peeling, setPeeling] = useState<PeelState | null>(null);
   const setViewPrefs = (patch: Partial<ViewPrefs>) =>
     setViewPrefsState(prev => {
       const next = { ...prev, ...patch };
@@ -342,7 +351,8 @@ function useBoardCore() {
   };
   const normalize = (input: Board): Board => {
     const next = applyGridLayouts(applyLayouts(syncRecordCards(stripRotation(input), boardRef.current)));
-    return normalizeText(applyMindBounds(next, boardRef.current));
+    // A linked flowchart whose shapes changed gets its code rewritten in the same undo step.
+    return syncMermaidLinks(normalizeText(fitSwimlanes(applyMindBounds(next, boardRef.current))));
   };
   const normalizeText = (next: Board): Board => {
     let changed = false;
@@ -902,7 +912,8 @@ function useBoardCore() {
       w = Math.max(...pts.map(p => p.x)) - x,
       h = Math.max(...pts.map(p => p.y)) - y;
     const left = size.w <= 600 ? 65 : 100,
-      right = outline ? 320 : size.w <= 600 ? 20 : 40;
+      // Leave room for the outline or the linked Mermaid code panel on the right.
+      right = outline ? 320 : mermaidLinkId && size.w > 900 ? 470 : size.w <= 600 ? 20 : 40;
     const usableW = Math.max(100, size.w - left - right),
       z = Math.max(0.1, Math.min(1.4, (usableW - 32) / Math.max(w, 1), (size.h - 220) / Math.max(h, 1)));
     setCamera({ z, x: left + (usableW - w * z) / 2 - x * z, y: 90 + (size.h - 180 - h * z) / 2 - y * z });
@@ -1191,7 +1202,10 @@ function useBoardCore() {
       }
       return;
     }
-    if (item?.type === 'mindmap') {
+    if (linkOf(item)) {
+      setEditing(null);
+      setMermaidLinkId(id);
+    } else if (item?.type === 'mindmap') {
       setEditing(null);
       setMindEditId(id);
     } else if (item && richKinds.includes(item.type)) {
@@ -1595,6 +1609,8 @@ function useBoardCore() {
     backView,
     goBack,
     formatId,
+    mermaidLinkId,
+    setMermaidLinkId,
     gallery,
     geometries,
     geometryOf,

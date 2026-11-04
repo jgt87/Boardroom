@@ -35,6 +35,7 @@ if (typeof document !== 'undefined') {
 }
 import { syncedCard } from './record-canvas';
 import { createItem } from './model';
+import { StickyPeel } from './sticky-peel';
 
 export function CanvasSurface() {
   const {
@@ -70,7 +71,6 @@ export function CanvasSurface() {
     viewPrefs,
     lasso,
     connectTarget,
-    peeling,
     selectedItem,
     selectionLocked,
     setMindEditId,
@@ -342,8 +342,9 @@ export function CanvasSurface() {
         <g id="objects" transform={`translate(${camera.x} ${camera.y}) scale(${camera.z})`}>
           {[
             ...shown.items.filter(i => i.type === 'frame'),
+            ...shown.items.filter(i => i.type === 'swimlane'),
             ...shown.items.filter(i => i.type === 'screen'),
-            ...shown.items.filter(i => i.type !== 'frame' && i.type !== 'screen'),
+            ...shown.items.filter(i => i.type !== 'frame' && i.type !== 'swimlane' && i.type !== 'screen'),
           ]
             .filter(i => !i.hidden && !inHiddenLayer(shown, i) && !covered.has(i.id) && inView(i))
             .map(renderItem)}
@@ -528,7 +529,7 @@ export function CanvasSurface() {
                   !selectionLocked &&
                   selected.length === 1 &&
                   selectedItem &&
-                  !['arrow', 'pen', 'frame', 'stickypad'].includes(selectedItem.type) &&
+                  !['arrow', 'pen', 'frame', 'swimlane', 'stickypad'].includes(selectedItem.type) &&
                   anchorSides.map(side => {
                     const p = anchorPoint(b, side, camera.z);
                     return (
@@ -661,10 +662,8 @@ export function CanvasSurface() {
             pointerEvents="none"
           />
         ))}
-        {peeling && (
-          // A note peeled off a sticky stack is lifted while it is dragged (item 110).
-          <style>{`[data-item="${peeling}"]{filter:drop-shadow(0 12px 18px rgb(0 0 0 / 0.26));}`}</style>
-        )}
+        {/* Pulling a note off a sticky stack, animated frame by frame (items 110, 133). */}
+        <StickyPeel />
         {connectTarget &&
           (() => {
             // Drop target while drawing a connector (item 113): shaded, outlined, with its connection points.

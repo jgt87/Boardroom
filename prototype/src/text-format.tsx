@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Bold,
   Italic,
@@ -19,6 +19,8 @@ import { fontStack } from './model';
 import { useBrandKit } from './brand-kit-panel';
 import { fontsBrandFirst } from './brand-kit';
 import { fitText, wrappedLineCount } from './text-layout';
+import { activeSpans, lineRuns, runCss } from './rich-text';
+import type { Run, TextSpan } from './rich-text';
 let measuring: CanvasRenderingContext2D | null = null;
 const layoutCache = new Map<string, { size: number; lines: number; height: number }>();
 /** Cached text layout: measuring with canvas is expensive and boards re-render often. */
@@ -67,89 +69,6 @@ export function formatStyle(item: Item): React.CSSProperties {
           ? 'flex-end'
           : 'center',
   };
-}
-export function CanvasTextEditor({
-  item,
-  initialText,
-  onCommit,
-  onTab,
-}: {
-  item: Item;
-  initialText?: string;
-  onCommit: (text: string) => void;
-  /** Tab (without modifiers): save and hand over to the caller instead of committing on blur. */
-  onTab?: (text: string) => void;
-}) {
-  const handedOver = useRef(false);
-  const [text, setText] = useState(initialText ?? item.text),
-    live = { ...item, text },
-    layout = textLayout(live),
-    sticky = item.type === 'note';
-  const editor = useRef<HTMLTextAreaElement>(null);
-  useLayoutEffect(() => {
-    const el = editor.current;
-    if (!el || !sticky) return;
-    const auto = item.format?.fontSize === undefined || item.format.fontSize === 'auto',
-      available = Math.max(1, item.h - 26 - 2 * Math.abs(item.format?.baselineOffsetY ?? 0));
-    el.style.height = '0px';
-    el.style.paddingTop = '0px';
-    el.style.paddingBottom = '0px';
-    if (auto) {
-      let low = 1,
-        high = Math.min(512, available / 1.4);
-      for (let i = 0; i < 11; i++) {
-        const size = (low + high) / 2;
-        el.style.fontSize = `${size}px`;
-        if (el.scrollHeight <= available) low = size;
-        else high = size;
-      }
-      el.style.fontSize = `${Math.floor(low * 10) / 10}px`;
-    }
-    const natural = el.scrollHeight;
-    el.style.height = '100%';
-    el.style.paddingTop = `${Math.max(0, Math.max(4, item.format?.valign === 'top' ? 4 : item.format?.valign === 'bottom' ? item.h - 20 - natural : (item.h - 16 - natural) / 2) + (item.format?.baselineOffsetY ?? 0))}px`;
-    el.style.paddingBottom = '4px';
-  }, [text, item.w, item.h, item.format, sticky]);
-  return (
-    <textarea
-      ref={editor}
-      aria-label="Edit object text"
-      className={`object-editor ${sticky ? 'sticky-editor' : ''}`}
-      style={{
-        ...formatStyle(live),
-        ...(sticky
-          ? { background: item.fill, paddingTop: Math.max(4, (item.h - 16 - layout.height) / 2), paddingBottom: 4 }
-          : {}),
-        lineHeight: 1.4,
-        ...(!sticky && item.format?.baselineOffsetY
-          ? { paddingTop: Math.max(0, 8 + item.format.baselineOffsetY) }
-          : {}),
-      }}
-      value={text}
-      autoFocus
-      maxLength={6000}
-      onFocus={e =>
-        initialText === undefined
-          ? e.currentTarget.select()
-          : e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)
-      }
-      onPointerDown={e => e.stopPropagation()}
-      onChange={e => setText(e.target.value)}
-      onBlur={() => {
-        if (!handedOver.current) onCommit(text);
-      }}
-      onKeyDown={e => {
-        e.stopPropagation();
-        if (onTab && e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
-          e.preventDefault();
-          handedOver.current = true;
-          onTab(text);
-          return;
-        }
-        if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) e.currentTarget.blur();
-      }}
-    />
-  );
 }
 export function formattedText(item: Item) {
   return !item.format?.list || item.format.list === 'none'
@@ -387,9 +306,67 @@ function ColorToggle({
     </span>
   );
 }
-/** Text body with optional highlight behind each line. */
+/** One styled run of canvas text. Links open on Ctrl/Cmd+click; a plain click still selects and drags the object. */
+function RunView({ run }: { run: Run }) {
+  const s = run.style;
+  if (s.mention)
+    return (
+      <span className="text-mention" style={runCss(s) as React.CSSProperties}>
+        {run.text}
+      </span>
+    );
+  let body: React.ReactNode = run.text;
+  if (s.italic) body = <em>{body}</em>;
+  if (s.bold) body = <strong style={{ fontWeight: 700 }}>{body}</strong>;
+  // Weight and slant come from <strong> and <em>; the wrapper carries decoration and colours.
+  const rest = runCss({ ...s, bold: false, italic: false }) as React.CSSProperties;
+  if (s.href)
+    return (
+      <a
+        className="text-link"
+        href={s.href}
+        target="_blank"
+        rel="noopener noreferrer nofollow"
+        tabIndex={-1}
+        draggable={false}
+        title={`${s.href} (Ctrl+click to open)`}
+        style={{ ...rest, pointerEvents: 'auto' }}
+        onPointerDown={e => {
+          if (e.ctrlKey || e.metaKey) e.stopPropagation();
+        }}
+        onClick={e => {
+          e.preventDefault();
+          if (!(e.ctrlKey || e.metaKey)) return;
+          e.stopPropagation();
+          window.open(s.href, '_blank', 'noopener,noreferrer');
+        }}
+      >
+        {body}
+      </a>
+    );
+  return Object.keys(rest).length ? <span style={rest}>{body}</span> : <>{body}</>;
+}
+/** Styled lines, with list markers in front of each line like `formattedText`. */
+function RichLines({ item, spans }: { item: Item; spans: TextSpan[] }) {
+  const list = item.format?.list;
+  return (
+    <>
+      {lineRuns(item.text, spans).map((line, k) => (
+        <React.Fragment key={k}>
+          {k > 0 && '\n'}
+          {list === 'bullet' ? '• ' : list === 'number' ? `${k + 1}. ` : ''}
+          {line.map((run, r) => (
+            <RunView key={r} run={run} />
+          ))}
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+/** Text body with optional highlight behind each line, and per-word styles when the object has them. */
 export function TextBody({ item }: { item: Item }) {
-  const text = formattedText(item),
+  const spans = activeSpans(item),
+    text = spans.length ? <RichLines item={item} spans={spans} /> : formattedText(item),
     h = item.format?.highlight;
   return (
     <span

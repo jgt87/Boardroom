@@ -41,7 +41,7 @@ export function useExporters() {
     out.setAttribute('xmlns:xhtml', 'http://www.w3.org/1999/xhtml');
     const group = svg.current!.querySelector('#objects')!.cloneNode(true) as SVGGElement;
     group.removeAttribute('transform');
-    group.querySelectorAll('.selection,.search-hit,.lock-badge,textarea').forEach(n => n.remove());
+    group.querySelectorAll('.selection,.search-hit,.lock-badge,textarea,.object-editor').forEach(n => n.remove());
     // Frame titles are sized for the current zoom on screen; exports draw them at a fixed world size so
     // they fit the title band kept above each frame page.
     group.querySelectorAll('text.frame-title').forEach(t => {

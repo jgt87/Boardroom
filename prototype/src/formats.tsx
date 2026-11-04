@@ -134,7 +134,7 @@ import {
   mindColorNames,
 } from './mindmap-style';
 import type { MindStyle } from './mindmap-style';
-import { mermaidToNative } from './mermaid-native';
+import { convertToLinked } from './mermaid-link';
 
 export const starters: Record<string, string> = {
   Flowchart: 'flowchart LR\n  A[Start with an idea] --> B[Explore possibilities]\n  B --> C[Make it happen]',
@@ -580,7 +580,7 @@ export function FormatEditor({
   board: Board;
   onApply: (item: Item, rows?: RecordRow[]) => void;
   onClose: () => void;
-  /** Replace the Mermaid object with native shapes and connectors (one undo step in the caller). */
+  /** Replace the Mermaid object with a linked frame of native shapes and connectors (one undo step in the caller). */
   onReplace?: (items: Item[], notes: string[]) => void;
 }) {
   const [convertError, setConvertError] = useState('');
@@ -715,7 +715,7 @@ export function FormatEditor({
                   <button
                     onClick={() => {
                       try {
-                        const r = mermaidToNative(draft.text, { x: item.x, y: item.y });
+                        const r = convertToLinked(draft.text, { x: item.x, y: item.y });
                         onReplace(r.items, r.notes);
                       } catch (err) {
                         setConvertError((err as Error).message);
@@ -725,8 +725,8 @@ export function FormatEditor({
                     Convert to shapes
                   </button>
                   <span className="format-hint">
-                    Flowchart, sequence, class, state and ER diagrams become editable shapes and connectors; subgraphs
-                    become frames.
+                    Flowchart, sequence, class, state and ER diagrams become editable shapes and connectors in a frame
+                    that stays linked to this code; subgraphs become frames.
                   </span>
                 </div>
               )}

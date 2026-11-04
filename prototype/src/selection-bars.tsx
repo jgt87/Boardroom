@@ -22,6 +22,7 @@ import {
   ArrowLeftRight,
   SquarePlus,
   FileDown,
+  Code2,
 } from 'lucide-react';
 import { insertShapeOnConnector } from './diagram-gaps';
 import { ImageAdjustControls } from './image-tools';
@@ -55,6 +56,7 @@ import { BrandSwatches } from './brand-kit-panel';
 import { CardBar, NoteReactButton, SwitchToCard, SwitchTypeMenu } from './card-bar';
 import { ColorMenu } from './color-menu';
 import { rememberColor } from './color-store';
+import { linkOf } from './mermaid-link';
 
 export function SelectionBars() {
   const {
@@ -489,6 +491,15 @@ export function SelectionBars() {
               >
                 <StickyNote size={17} />
               </button>
+              {linkOf(selectedItem) && (
+                <button
+                  className="widget-action"
+                  title="Edit the linked Mermaid code (Enter)"
+                  onClick={() => openEditor(selectedItem.id)}
+                >
+                  <Code2 size={15} /> Edit Mermaid code
+                </button>
+              )}
             </>
           )}
           <FacilitationActions />

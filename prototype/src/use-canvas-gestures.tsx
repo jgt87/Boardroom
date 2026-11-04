@@ -26,7 +26,9 @@ import { canCopyToRecords, copyToRecords, recordDropAt } from './record-canvas';
 import { adoptGridObjects, detachGridObjects, gridDropAt } from './grid-canvas';
 import { stackNext, simplify, strokeFromPoints, eraseAt, eraseAlong, nearestAlong } from './board-tools';
 import { recognizeStroke, lassoSelect, lineEnds, isScribble, scribbleTargets } from './pen-smart';
-import { peelNote } from './specs-stickypad';
+import { padSheet, peelNote } from './specs-stickypad';
+import { detaches } from './peel-motion';
+import type { PeelState } from './peel-motion';
 import { newPenState, pointerPolicy, ignoreTouch, penDown, penUp } from './pointer-input';
 import type { PenState } from './pointer-input';
 
@@ -35,7 +37,11 @@ const connectTargetAt = (board: { items: Item[] }, p: Point, fromId?: string) =>
   [...board.items]
     .reverse()
     .find(
-      i => !['arrow', 'pen', 'frame', 'stickypad'].includes(i.type) && !i.hidden && i.id !== fromId && pointInBox(i, p),
+      i =>
+        !['arrow', 'pen', 'frame', 'swimlane', 'stickypad'].includes(i.type) &&
+        !i.hidden &&
+        i.id !== fromId &&
+        pointInBox(i, p),
     );
 /** A pen stroke's points in world coordinates. */
 const absolutePoints = (i: Item) => (i.points ?? []).map(p => ({ x: i.x + p.x, y: i.y + p.y }));
@@ -351,20 +357,29 @@ export function useCanvasGestures(core: BoardCore) {
       !e.shiftKey &&
       (e.target as Element).getAttribute('data-pad-peel')
     ) {
-      // Sticky stack (item 110): peel a new note off the pad and drag it; the pad stays.
+      // Sticky stack (items 110, 133): the top sheet bends while it is still glued; once pulled far enough it
+      // tears off as a new note that follows the pointer. The pad stays. sticky-peel.tsx animates it.
       const note = peelNote(item, (x, y, f) => createItem('note', x, y, f)),
-        withNote = {
-          ...base.board,
-          items: [
-            ...base.board.items.map(i =>
-              i.id === item.id ? { ...i, data: { ...i.data, peels: ((i.data?.peels as number) ?? 0) + 1 } } : i,
-            ),
-            note,
-          ],
+        sheet = padSheet(item),
+        peel: PeelState = {
+          note: note.id,
+          pad: item.id,
+          grab: start,
+          grabX: (start.x - sheet.x) / sheet.s,
+          sheet,
+          noteSize: { w: note.w, h: note.h },
+          fill: item.fill,
+          live: { detached: false },
         };
-      setPeeling(note.id);
-      setSelected([note.id]);
-      gesture.current = { ...base, board: withNote, ids: [note.id], mode: 'move' };
+      setPeeling(peel);
+      setSelected([]);
+      gesture.current = {
+        ...base,
+        board: { ...base.board, items: [...base.board.items, note] },
+        ids: [note.id],
+        mode: 'move',
+        peel,
+      };
     } else if (tool === 'select') {
       if (item) {
         const group = expandGroups(current, [id!]),
@@ -386,7 +401,7 @@ export function useCanvasGestures(core: BoardCore) {
       if (tool === 'arrow') {
         next.w = 0;
         next.h = 0;
-        if (item && !['arrow', 'pen', 'frame'].includes(item.type)) next.from = item.id;
+        if (item && !['arrow', 'pen', 'frame', 'swimlane'].includes(item.type)) next.from = item.id;
       }
       if (tool === 'pen') {
         next.points = [{ x: 0, y: 0 }];
@@ -407,6 +422,12 @@ export function useCanvasGestures(core: BoardCore) {
       dx = p.x - g.start.x,
       dy = p.y - g.start.y;
     if (Math.hypot(e.clientX - g.screen.x, e.clientY - g.screen.y) > 3) g.moved = true;
+    if (g.mode === 'move' && g.peel && !g.peel.live.detached) {
+      // Still glued to the pad: only the overlay bends the sheet until the pull tears it off.
+      if (!detaches(g.peel.sheet, { x: dx, y: dy })) return;
+      g.peel.live.detached = true;
+      setSelected(g.ids);
+    }
     if (g.mode === 'pan')
       setCamera({ ...g.camera, x: g.camera.x + e.clientX - g.screen.x, y: g.camera.y + e.clientY - g.screen.y });
     else if (g.mode === 'endpoint' && g.moved)
@@ -530,7 +551,7 @@ export function useCanvasGestures(core: BoardCore) {
         const p = toWorld(e.clientX, e.clientY);
         const target = [...g.board.items]
           .reverse()
-          .find(i => !['arrow', 'pen', 'frame'].includes(i.type) && pointInBox(i, p));
+          .find(i => !['arrow', 'pen', 'frame', 'swimlane'].includes(i.type) && pointInBox(i, p));
         if (target && target.id !== g.item.from) g.item.to = target.id;
         if (!g.moved) g.item.w = 180;
       }
@@ -599,7 +620,8 @@ export function useCanvasGestures(core: BoardCore) {
     } else if (g.mode === 'label') {
       if (moved && draft) update(draft);
     } else if (g.mode === 'move' || g.mode === 'resize') {
-      if (moved) {
+      // A sheet released before it tore off springs back onto the pad: nothing is taken.
+      if (moved && !(g.peel && !g.peel.live.detached)) {
         const next = transformed(g, final, e.shiftKey, e.altKey).board;
         const drop = g.mode === 'move' ? recordDropAt(document.elementsFromPoint(e.clientX, e.clientY)) : null;
         if (drop && canCopyToRecords(g.board, g.ids, drop)) {
