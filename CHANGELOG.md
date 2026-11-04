@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0 — 2026-11-04
+
 ### Help-center gaps, closing round
 - **Text and records:**
   - Code blocks get a text size and line numbers.
