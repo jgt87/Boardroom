@@ -18,6 +18,7 @@ import {
   removeSaved,
   storeColors,
 } from './color-store';
+import { BrandSwatches, useBrandKit } from './brand-kit-panel';
 import './r5-canvas.css';
 
 type EyeDropperCtor = new () => { open: () => Promise<{ sRGBHex: string }> };
@@ -41,7 +42,8 @@ export function ColorMenu({ value, board, onPick }: { value: string; board: Boar
   const [open, setOpen] = useState(false),
     [recent, setRecent] = useState<string[]>([]),
     [saved, setSaved] = useState<string[]>([]),
-    wrap = useRef<HTMLSpanElement>(null);
+    wrap = useRef<HTMLSpanElement>(null),
+    brandKit = useBrandKit();
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => {
@@ -102,6 +104,14 @@ export function ColorMenu({ value, board, onPick }: { value: string; board: Boar
             }
           }}
         >
+          {brandKit.colors.length > 0 && (
+            <>
+              <h3>Brand</h3>
+              <div className="color-menu-row">
+                <BrandSwatches label="Brand colours" value={value} onPick={pick} />
+              </div>
+            </>
+          )}
           <h3>Recent</h3>
           <div className="color-menu-row" role="group" aria-label="Recent colours">
             {recent.length ? recent.map(c => swatch(c)) : <p>Colours you use appear here.</p>}

@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Help-center gaps, closing round
+- **Text and records:**
+  - Code blocks get a text size and line numbers.
+  - Table, Kanban and Timeline get status chips.
+  - "Clear formatting" (Ctrl+\) in the text editor and Docs.
+  - With reduce motion on, animated GIFs pause on their first frame, with a play button.
+- **Files and data:**
+  - XLSX import asks which worksheet to use.
+  - CSV dates such as 03/04/2026 take their day/month order from the rest of the column.
+  - "Download original" returns the real SVG or BMP file.
+  - Saved blueprints are included in library backups.
+  - Pasted images go through the same checks as imported files.
+- **Canvas:**
+  - A locked linked Mermaid diagram keeps its code.
+  - Cutting a linked diagram takes the whole diagram.
+  - The shape inserted on a connector can be chosen.
+  - Resize cursors follow rotation, and resizing a multi-selection no longer skews rotated objects.
+  - Brand colours appear in every colour picker.
+  - Enter on a focused toolbar button presses it instead of opening the editor.
+
 ### Sticky stack peel, start-up screen and focus ring
 - **Peeling a note off a sticky stack** is animated frame by frame:
   - The sheet bends while still glued, tears off past a threshold, tilts while carried, and settles on drop.

@@ -80,7 +80,7 @@ test('rejects traversal names, unexpected entries, bad mime types, oversized fil
       decodeBundle(
         zipSync({
           'manifest.json': manifest({
-            a: { mime: 'image/svg+xml', width: 1, height: 1, name: 'x', file: 'media/a.svg' },
+            a: { mime: 'image/tiff', width: 1, height: 1, name: 'x', file: 'media/a.tif' },
           }),
           'board.json': boardJson,
         }),

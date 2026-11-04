@@ -268,6 +268,11 @@ export type Item = {
   group?: string;
   locked?: boolean;
   assetId?: string;
+  /**
+   * Images converted to PNG when added (SVG, BMP): the asset holding the file as it was added (gap R2-Q3).
+   * It is only ever downloaded ("Download original"), never drawn.
+   */
+  originalAssetId?: string;
   crop?: Crop;
   /** Image flip, brightness and contrast, applied when drawn; the stored picture is unchanged. */
   adjust?: ImageAdjust;

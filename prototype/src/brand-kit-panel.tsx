@@ -15,16 +15,31 @@ import {
 /** The brand kit of this browser; re-renders when it changes. */
 export const useBrandKit = () => useSyncExternalStore(subscribeBrandKit, getBrandKit, getBrandKit);
 
-/** Brand colour buttons placed before a colour input (nothing when the kit is empty). */
-export function BrandSwatches({ value, onPick }: { value?: string; onPick: (color: string) => void }) {
+/**
+ * Brand colour buttons shown next to a colour input (nothing when the kit is empty). One component for every
+ * colour picker; `label` names the group when several pickers share a panel. Keep it outside a `<label>`, or
+ * the first swatch would become that label's control.
+ */
+export function BrandSwatches({
+  value,
+  onPick,
+  label = 'Brand colours',
+  disabled,
+}: {
+  value?: string;
+  onPick: (color: string) => void;
+  label?: string;
+  disabled?: boolean;
+}) {
   const kit = useBrandKit();
   if (!kit.colors.length) return null;
   return (
-    <span className="brand-swatches" role="group" aria-label="Brand colours">
+    <span className="brand-swatches" role="group" aria-label={label}>
       {kit.colors.map(c => (
         <button
           key={c}
           type="button"
+          disabled={disabled}
           className={value?.toLowerCase() === c ? 'chosen' : ''}
           aria-label={`Brand colour ${colorName(c)}`}
           aria-pressed={value?.toLowerCase() === c}

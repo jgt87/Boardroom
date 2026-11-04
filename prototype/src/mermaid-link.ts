@@ -404,7 +404,8 @@ export function syncMermaidLinks(board: Board): Board {
   if (!hasLinks(board)) return board;
   let next = board;
   for (const frame of board.items.filter(i => linkOf(i)?.kind === 'flowchart'))
-    if (linkState(next, frame.id) === 'shapes')
+    // A locked frame keeps its code: the badge keeps showing that the shapes changed.
+    if (editableIds(next, [frame.id]).includes(frame.id) && linkState(next, frame.id) === 'shapes')
       try {
         next = codeFromShapes(next, frame.id).board;
       } catch {

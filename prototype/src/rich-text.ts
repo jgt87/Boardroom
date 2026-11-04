@@ -210,6 +210,18 @@ export function applyStyle(
   }
   return normalizeSpans(out, length);
 }
+/** Styles removed by "Clear formatting" (R6a-Q1). Links and mention identities are content, not formatting. */
+export const clearableStyles = ['bold', 'italic', 'underline', 'strike', 'color', 'highlight'] as const;
+/**
+ * Clear formatting: remove every text style from [start, end), or from the whole text when the range is empty.
+ * Mention chips stay chips (only their styling goes) and links stay links. The range widens over any mention
+ * it cuts through, as every other style command does.
+ */
+export function clearStyles(text: string, spans: readonly TextSpan[], start: number, end: number): TextSpan[] {
+  const [from, to] = start === end ? [0, text.length] : [Math.min(start, end), Math.max(start, end)];
+  return applyStyle(text, spans, from, to, Object.fromEntries(clearableStyles.map(k => [k, undefined])));
+}
+
 /** Is the style flag on for every character in [start, end)? */
 export function hasStyle(spans: readonly TextSpan[], start: number, end: number, key: ToggleKey): boolean {
   if (end <= start) return false;

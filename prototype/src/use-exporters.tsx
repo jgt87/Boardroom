@@ -94,13 +94,16 @@ export function useExporters() {
         'width',
         'overflow',
         'white-space',
+        'overflow-wrap',
+        'position',
+        'min-height',
         'text-align',
         'font-style',
         'font-weight',
       ])
         node.style.setProperty(key, computed.getPropertyValue(key));
     });
-    group.querySelectorAll('.link-badge,.vote-badge,.comment-pin').forEach(n => n.remove());
+    group.querySelectorAll('.link-badge,.vote-badge,.comment-pin,.gif-toggle').forEach(n => n.remove());
     // Selection-only export: drop every object outside the kept set (styles were copied above, by index).
     if (only)
       group.querySelectorAll('[data-item]').forEach(n => {

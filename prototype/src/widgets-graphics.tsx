@@ -6,6 +6,7 @@ import { stampKinds } from './specs-basic';
 import type { StampKind } from './specs-basic';
 import { qrMatrix, qrPath, QR_MAX } from './qr';
 import { Dialog, data, setData } from './widget-kit';
+import { BrandSwatches } from './brand-kit-panel';
 import { EmojiPicker } from './emoji-picker';
 import { isValidEmojiValue } from './emoji-data';
 
@@ -390,6 +391,7 @@ export function IconEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx;
           Colour
           <input type="color" aria-label="Icon colour" value={color} onChange={e => setColor(e.target.value)} />
         </label>
+        <BrandSwatches label="Brand colours for icon" value={color} onPick={setColor} />
         <span>{icons ? `${names.length}${names.length === 240 ? '+' : ''} icons` : 'Loading icons…'}</span>
       </div>
       <div ref={list} className="w-icon-grid" role="listbox" aria-label="Icons" onKeyDown={move}>
@@ -487,10 +489,12 @@ export function QrEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; o
           Code colour
           <input type="color" aria-label="QR colour" value={color} onChange={e => setColor(e.target.value)} />
         </label>
+        <BrandSwatches label="Brand colours for code" value={color} onPick={setColor} />
         <label>
           Background
           <input type="color" aria-label="QR background" value={bg} onChange={e => setBg(e.target.value)} />
         </label>
+        <BrandSwatches label="Brand colours for background" value={bg} onPick={setBg} />
         <label>
           Quiet zone
           <select aria-label="Quiet zone" value={quiet} onChange={e => setQuiet(Number(e.target.value))}>

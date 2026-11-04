@@ -1,6 +1,14 @@
 import { expandGroups } from './arrange';
 import React from 'react';
-import { selectionBounds, handles, handlePoint, SELECT_GAP, anchorSides, anchorPoint } from './interactions';
+import {
+  selectionBounds,
+  handles,
+  handlePoint,
+  resizeCursor,
+  SELECT_GAP,
+  anchorSides,
+  anchorPoint,
+} from './interactions';
 import { canRotate } from './rotation';
 import type { Item } from './model';
 
@@ -508,7 +516,7 @@ export function CanvasSurface() {
                           width={2 * hit}
                           height={2 * hit}
                           fill="transparent"
-                          style={{ cursor: handle + '-resize' }}
+                          style={{ cursor: resizeCursor(handle, turned?.rotation) }}
                         />
                         {corner && (
                           <circle

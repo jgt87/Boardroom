@@ -2,8 +2,9 @@
 // Every field is optional; boards written before these features load unchanged.
 import { isValidAuthor } from './authors.ts';
 import { validItemTimes } from './item-times.ts';
-import { validateBoardSettings } from './board-settings.ts';
-import type { Board, Item, RecordRow } from './model.ts';
+import { validateBoardSettings, validateItemStatus } from './board-settings.ts';
+import { validateCodeData } from './code-lines.ts';
+import type { Board, ImageAsset, Item, RecordRow } from './model.ts';
 import { normalizeNoteLink } from './model.ts';
 import { recordsError } from './records.ts';
 import { schemaOf, validateRecordSchema, validateRecordValues } from './record-schema.ts';
@@ -26,8 +27,40 @@ export const imageMimes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 export const mediaMimes = ['video/mp4', 'video/webm', 'application/pdf'];
 export const MAX_IMAGE_BYTES = 4_000_000;
 export const MAX_MEDIA_BYTES = 25_000_000;
+/**
+ * Original files kept beside their PNG conversion (gap R2-Q3). They are stored and downloaded only; the app
+ * never draws them or places their markup in the page.
+ */
+export const originalImageMimes = ['image/svg+xml', 'image/bmp'];
+/** Largest SVG accepted (also the limit for adding one). */
+export const MAX_SVG_BYTES = 5_000_000;
+/** Largest stored file of each kind: images 4 MB, SVG originals 5 MB, BMP originals, video and PDF 25 MB. */
+export const assetByteLimit = (mime: string) =>
+  imageMimes.includes(mime) ? MAX_IMAGE_BYTES : mime === 'image/svg+xml' ? MAX_SVG_BYTES : MAX_MEDIA_BYTES;
+/** Every type an asset may hold. */
+export const assetMimes = [...imageMimes, ...mediaMimes, ...originalImageMimes];
 const finite = (v: unknown, min: number, max: number) =>
   typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
+/**
+ * One stored image or media file: an allowed type, a base64 data URL of that type within its size limit,
+ * sane dimensions and a short name. Used for backups and for pasted objects, which can come from anywhere.
+ */
+export function isValidAsset(a: unknown): a is ImageAsset {
+  if (!a || typeof a !== 'object') return false;
+  const x = a as Partial<ImageAsset>;
+  return (
+    typeof x.mime === 'string' &&
+    assetMimes.includes(x.mime) &&
+    typeof x.data === 'string' &&
+    x.data.startsWith(`data:${x.mime};base64,`) &&
+    x.data.length <= assetByteLimit(x.mime) * 1.4 + 100 &&
+    /^[A-Za-z0-9+/=]*$/.test(x.data.slice(x.data.indexOf(',') + 1)) &&
+    finite(x.width, 1, 20000) &&
+    finite(x.height, 1, 20000) &&
+    typeof x.name === 'string' &&
+    x.name.length <= 200
+  );
+}
 const sides = ['top', 'right', 'bottom', 'left'];
 /** Largest corner radius (gap D8); the rendered radius is also capped at half the shorter side. */
 export const MAX_RADIUS = 500;
@@ -63,21 +96,7 @@ export function validateExtensions(b: Board): void {
   if (b.assets !== undefined) {
     if (!b.assets || typeof b.assets !== 'object' || Array.isArray(b.assets) || Object.keys(b.assets).length > 500)
       throw new Error('Invalid image assets.');
-    for (const a of Object.values(b.assets)) {
-      if (
-        !a ||
-        ![...imageMimes, ...mediaMimes].includes(a.mime) ||
-        typeof a.data !== 'string' ||
-        !a.data.startsWith(`data:${a.mime};base64,`) ||
-        a.data.length > (imageMimes.includes(a.mime) ? MAX_IMAGE_BYTES : MAX_MEDIA_BYTES) * 1.4 + 100 ||
-        !/^[A-Za-z0-9+/=]*$/.test(a.data.slice(a.data.indexOf(',') + 1)) ||
-        !finite(a.width, 1, 20000) ||
-        !finite(a.height, 1, 20000) ||
-        typeof a.name !== 'string' ||
-        a.name.length > 200
-      )
-        throw new Error('Invalid image asset.');
-    }
+    for (const a of Object.values(b.assets)) if (!isValidAsset(a)) throw new Error('Invalid image asset.');
   }
   if (
     b.comments !== undefined &&
@@ -234,6 +253,14 @@ function validateItem(i: Item, groups: Set<string>): void {
   if (i.type === 'image' && (typeof i.assetId !== 'string' || !i.assetId || i.assetId.length > 100))
     throw new Error('An image is missing its file reference.');
   if (
+    i.originalAssetId !== undefined &&
+    (i.type !== 'image' ||
+      typeof i.originalAssetId !== 'string' ||
+      !/^[A-Za-z0-9_-]{1,100}$/.test(i.originalAssetId) ||
+      i.originalAssetId === i.assetId)
+  )
+    throw new Error('Invalid original image reference.');
+  if (
     i.crop !== undefined &&
     (!i.crop ||
       !finite(i.crop.x, 0, 1) ||
@@ -305,6 +332,11 @@ function validateItem(i: Item, groups: Set<string>): void {
   if (i.type === 'frame' && i.data?.mermaid !== undefined) validateMermaidLink(i.data.mermaid);
   if (i.mermaidNode !== undefined) validateMermaidNode(i.mermaidNode);
   if (i.type === 'mindmap') validateMindStyle(i);
+  if (i.type === 'code') validateCodeData(i.data);
+  if (['table', 'kanban', 'timeline'].includes(i.type) && i.data !== undefined) {
+    if (!i.data || typeof i.data !== 'object' || Array.isArray(i.data)) throw new Error('Invalid records data.');
+    validateItemStatus(i.data);
+  }
   validateWidget(i);
 }
 

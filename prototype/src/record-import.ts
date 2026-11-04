@@ -6,9 +6,27 @@ import { createItem, normalizeNoteLink } from './model.ts';
 import type { RecordField, RecordSchema, RecordValues } from './record-schema.ts';
 import { defaultSchema, schemaOf, validateRecordSchema, validateRecordValues } from './record-schema.ts';
 import { parseDelimited } from './smart-paste.ts';
-import { parseDate, parseNumber } from './cell-values.ts';
+import { parseDate, parseNumber, slashedDateOrder } from './cell-values.ts';
+import type { DateOrder } from './cell-values.ts';
 
-export { parseDate, parseNumber };
+export { parseDate, parseNumber, slashedDateOrder };
+
+/** The order to read a column's slashed dates with, or undefined while it is unclear. */
+const settledOrder = (o: ReturnType<typeof slashedDateOrder>): DateOrder | undefined =>
+  o === 'dmy' || o === 'mdy' ? o : undefined;
+/**
+ * A note about how a column's slashed dates were read (gap Q15): the order inferred from the column, or why they
+ * were left unread. Null when the column has no slashed dates.
+ */
+export function dateOrderNote(header: string, order: ReturnType<typeof slashedDateOrder>, keptAsText = false) {
+  const name = `"${header.slice(0, 60) || 'Untitled'}"`,
+    outcome = keptAsText ? 'the column was kept as text' : 'they were left empty';
+  if (order === 'dmy') return `Dates in ${name} were read as day/month/year.`;
+  if (order === 'mdy') return `Dates in ${name} were read as month/day/year.`;
+  if (order === 'ambiguous') return `Dates in ${name} could be day/month or month/day, so ${outcome}.`;
+  if (order === 'conflict') return `Dates in ${name} mix day/month and month/day order, so ${outcome}.`;
+  return null;
+}
 
 /** Records per dataset (the board format limit). */
 export const IMPORT_ROWS_MAX = 1000;
@@ -79,7 +97,8 @@ export function inferFieldType(values: string[]): { type: RecordField['type']; o
   const filled = values.map(v => v.trim()).filter(Boolean);
   if (!filled.length) return { type: 'text' };
   if (filled.every(v => parseNumber(v) !== null)) return { type: 'number' };
-  if (filled.every(v => parseDate(v) !== null)) return { type: 'date' };
+  const order = settledOrder(slashedDateOrder(filled));
+  if (filled.every(v => parseDate(v, order) !== null)) return { type: 'date' };
   if (filled.every(v => parseBool(v) !== null) && filled.some(v => /^(true|false|yes|no)$/i.test(v)))
     return { type: 'checkbox' };
   if (filled.every(v => parseUrl(v) !== null)) return { type: 'url' };
@@ -89,14 +108,14 @@ export function inferFieldType(values: string[]): { type: RecordField['type']; o
   return { type: 'text' };
 }
 
-function fieldValue(field: RecordField, raw: string): string | number | boolean | undefined {
+function fieldValue(field: RecordField, raw: string, order?: DateOrder): string | number | boolean | undefined {
   const v = raw.trim();
   if (!v) return undefined;
   switch (field.type) {
     case 'number':
       return parseNumber(v) ?? undefined;
     case 'date':
-      return parseDate(v) ?? undefined;
+      return parseDate(v, order) ?? undefined;
     case 'checkbox':
       return parseBool(v) ?? undefined;
     case 'url':
@@ -139,6 +158,15 @@ export function importRecordTable(
     fieldFor = new Map<number, RecordField>(),
     names = new Set(fields.map(f => f.name));
   let droppedColumns = 0;
+  // Slashed dates (03/04/2026) are read in the day/month order the whole column settles (gap Q15).
+  const dateNotes: string[] = [],
+    orderFor = new Map<number, DateOrder | undefined>();
+  const readOrder = (index: number) => {
+    const order = slashedDateOrder(kept.map(r => r[index] ?? '')),
+      note = dateOrderNote(header[index] ?? '', order);
+    if (note) dateNotes.push(note);
+    return settledOrder(order);
+  };
   for (const col of mapping) {
     if (typeof col.target !== 'object') continue;
     const values = kept.map(r => r[col.index] ?? '');
@@ -146,6 +174,7 @@ export function importRecordTable(
     const match = fields.find(f => f.name.toLowerCase() === name.toLowerCase() && f.type !== 'formula');
     if (match) {
       fieldFor.set(col.index, match);
+      if (match.type === 'date') orderFor.set(col.index, readOrder(col.index));
       continue;
     }
     if (!values.some(v => v.trim())) continue;
@@ -165,6 +194,17 @@ export function importRecordTable(
     fields.push(field);
     names.add(name);
     fieldFor.set(col.index, field);
+    if (field.type === 'date') orderFor.set(col.index, readOrder(col.index));
+    else if (field.type === 'text') {
+      // A column of dates whose order stays unclear keeps its text rather than losing it.
+      const order = slashedDateOrder(values),
+        filled = values.map(v => v.trim()).filter(Boolean);
+      if (
+        (order === 'ambiguous' || order === 'conflict') &&
+        filled.every(v => parseDate(v, 'dmy') !== null || parseDate(v, 'mdy') !== null)
+      )
+        dateNotes.push(dateOrderNote(header[col.index] ?? '', order, true)!);
+    }
   }
   if (droppedColumns)
     notes.push(
@@ -175,6 +215,8 @@ export function importRecordTable(
     BuiltIn,
     number | undefined
   >;
+  const startOrder = cols.start === undefined ? undefined : readOrder(cols.start),
+    endOrder = cols.end === undefined ? undefined : readOrder(cols.end);
   let skipped = 0;
   const cell = (r: string[], i: number | undefined) => (i === undefined ? '' : (r[i] ?? '').trim());
   const rows = kept.map(r => {
@@ -185,8 +227,8 @@ export function importRecordTable(
     else status = statuses[0];
     const start = cell(r, cols.start),
       end = cell(r, cols.end),
-      startIso = start ? parseDate(start) : '',
-      endIso = end ? parseDate(end) : '';
+      startIso = start ? parseDate(start, startOrder) : '',
+      endIso = end ? parseDate(end, endOrder) : '';
     if (startIso === null || endIso === null) skipped++;
     const row: RecordRow = {
       id: makeId(),
@@ -213,13 +255,14 @@ export function importRecordTable(
     if (link) row.link = link;
     const values: RecordValues = {};
     for (const [index, field] of fieldFor) {
-      const v = fieldValue(field, r[index] ?? '');
+      const v = fieldValue(field, r[index] ?? '', orderFor.get(index));
       if (v !== undefined) values[field.id] = v;
       else if ((r[index] ?? '').trim()) skipped++;
     }
     if (Object.keys(values).length) row.values = values;
     return row;
   });
+  notes.push(...dateNotes);
   if (skipped)
     notes.push(
       `${skipped} value${skipped === 1 ? ' was' : 's were'} left empty because they did not fit the column type.`,

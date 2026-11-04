@@ -11,6 +11,8 @@ import { filterSlash, docTemplates, calloutLabels, DOC_MAX, docShortcut, emojiQu
 import { loadEmojiGroups, searchEmojis } from './emoji-data';
 import type { EmojiEntry, EmojiGroup } from './emoji-data';
 import { StatusChip } from './status-chip';
+import { clearInlineFormatting } from './doc-clear';
+import { RemoveFormatting } from 'lucide-react';
 import type { SlashCommand, CalloutKind } from './doc-tools';
 
 /** `#rrggbb` for a CSS colour value (`rgb()` or hex), or null. */
@@ -321,6 +323,18 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       span.replaceWith(mark);
     });
   };
+  /** Clear formatting (Ctrl+\): inline marks leave the selection; links and mentions stay. */
+  const clearFormatting = () => {
+    const r = currentRange();
+    if (!r || item.locked || !editor.current) return;
+    setPalette(false);
+    if (r.collapsed) return ctx.display('Select text to clear its formatting.');
+    const cleared = clearInlineFormatting(editor.current, r);
+    if (!cleared) return;
+    const sel = getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(cleared);
+  };
   /** Colour the selection (undefined: back to the default colour). */
   const setColor = (color: string | undefined) => {
     setPalette(false);
@@ -456,6 +470,11 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key.toLowerCase() === 'k' || e.code === 'KeyK')) {
       e.preventDefault();
       openLink();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === '\\' || e.code === 'Backslash')) {
+      e.preventDefault();
+      clearFormatting();
       return;
     }
     if (emoji && emoji.results.length) {
@@ -620,6 +639,14 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
           </span>
           <button disabled={!!item.locked} aria-label="Insert link" title="Link (Ctrl+K)" onClick={openLink}>
             Link
+          </button>
+          <button
+            disabled={!!item.locked}
+            aria-label="Clear formatting"
+            title="Clear formatting (Ctrl+\)"
+            onClick={clearFormatting}
+          >
+            <RemoveFormatting size={14} aria-hidden="true" />
           </button>
           <button disabled={!!item.locked} onClick={() => command('formatBlock', 'h1')}>
             H1

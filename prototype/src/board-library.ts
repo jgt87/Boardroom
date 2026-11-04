@@ -704,7 +704,8 @@ export function assetRefsAcrossBoards(kv: KeyValueStore, lib: Library): Set<stri
   for (const b of lib.boards) {
     const raw = kv.getItem(boardKey(b.id));
     if (!raw) continue;
-    for (const m of raw.matchAll(/"assetId":"([^"\\]{1,100})"/g)) out.add(m[1]);
+    // Kept SVG/BMP originals of converted images (gap R2-Q3) are referenced as originalAssetId.
+    for (const m of raw.matchAll(/"(?:assetId|originalAssetId)":"([^"\\]{1,100})"/g)) out.add(m[1]);
   }
   return out;
 }

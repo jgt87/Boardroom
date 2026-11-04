@@ -9,6 +9,7 @@ import type { PollData } from './facilitation-widgets';
 import { CardEditor, CardRender, FlipEditor, FlipRender } from './widgets-cards';
 import { data, patchItem, pickFile, saveText, setData } from './widget-kit';
 import { gridImportNote, importIntoGrid, isTableFile, readTableFile } from './table-file';
+import { askSheet } from './sheet-picker';
 import { toCsv } from './csv';
 import { gridRows } from './grid';
 import type { GridData } from './grid';
@@ -88,7 +89,8 @@ export const basicViews: WidgetView[] = [
             if (!file) return;
             try {
               if (!isTableFile(file.name)) throw new Error('Choose a .csv, .tsv or .xlsx file.');
-              const rows = await readTableFile(file);
+              const rows = await readTableFile(file, askSheet);
+              if (!rows) return;
               let note = '';
               ctx.update(b => {
                 const made = importIntoGrid(b, item.id, rows);

@@ -30,6 +30,7 @@ import {
   toggleHiddenColumn,
 } from './record-query';
 import type { RecordCalc } from './record-query';
+import { StatusChip } from './status-chip';
 
 export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const rows = ctx.board.datasets?.[item.datasetId!] ?? [];
@@ -472,6 +473,7 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     >
       <div className="rich-title canvas-widget-header">
         <span>{item.text || 'Records'}</span>
+        <StatusChip status={item.data?.status} />
         <div {...canvasControl} className="canvas-view-switch" role="group" aria-label="Record layout">
           {view === 'table' && <RecordImportControls item={item} ctx={ctx} />}
           <RecordFields item={item} ctx={ctx} />

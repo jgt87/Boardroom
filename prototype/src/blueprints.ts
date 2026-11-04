@@ -160,9 +160,17 @@ export function parseBlueprints(raw: string | null, parse: (raw: unknown) => Boa
   } catch {
     return [];
   }
+  return validBlueprints(list, parse).slice(0, BLUEPRINT_LIMIT);
+}
+/**
+ * The valid blueprints in an untrusted list (storage or a library backup, gap R3-Q2). Malformed entries, boards
+ * that do not validate and blueprints over `maxBytes` (as JSON) are dropped; media objects and embedded media are
+ * left out as when a blueprint is saved. At most 200 entries are read.
+ */
+export function validBlueprints(list: unknown, parse: (raw: unknown) => Board, maxBytes = Infinity): Blueprint[] {
   if (!Array.isArray(list)) return [];
   const out: Blueprint[] = [];
-  for (const v of list) {
+  for (const v of list.slice(0, 200)) {
     if (!v || typeof v.id !== 'string' || !v.id || typeof v.name !== 'string' || !Array.isArray(v.boards)) continue;
     const boards: BlueprintBoard[] = [];
     for (const e of v.boards.slice(0, BLUEPRINT_BOARDS_MAX)) {
@@ -171,20 +179,53 @@ export function parseBlueprints(raw: string | null, parse: (raw: unknown) => Boa
         boards.push({ title: e.title.slice(0, 200), template: e.template });
       else if (e.board)
         try {
-          boards.push({ title: e.title.slice(0, 200), board: parse(e.board) });
+          const board = withoutMedia(parse(e.board));
+          delete board.assets;
+          boards.push({ title: e.title.slice(0, 200), board });
         } catch {
           // Invalid board: left out.
         }
     }
     if (!boards.length) continue;
     const bp: Blueprint = { id: v.id.slice(0, 100), name: cleanSpace(v.name) || 'Blueprint', boards };
-    if (typeof v.created === 'string') bp.created = v.created;
+    if (typeof v.created === 'string') bp.created = v.created.slice(0, 40);
     if (typeof v.emoji === 'string' && cleanEmoji(v.emoji)) bp.emoji = cleanEmoji(v.emoji);
     if (typeof v.description === 'string' && cleanSpaceDescription(v.description))
       bp.description = cleanSpaceDescription(v.description);
+    if (maxBytes < Infinity && JSON.stringify(bp).length > maxBytes) continue;
     out.push(bp);
   }
-  return out.slice(0, BLUEPRINT_LIMIT);
+  return out;
+}
+/**
+ * Add restored blueprints (gap R3-Q2) the way a library restore adds boards: nothing saved here is replaced or
+ * dropped. A blueprint identical to one already saved is skipped; one whose id is taken by a different blueprint
+ * is added under a new id. Blueprints that do not fit under BLUEPRINT_LIMIT are left out and counted in `full`.
+ */
+export function mergeBlueprints(
+  list: Blueprint[],
+  incoming: Blueprint[],
+  makeId: () => string,
+): { list: Blueprint[]; added: number; skipped: number; full: number } {
+  const same = (a: Blueprint, b: Blueprint) => JSON.stringify(a) === JSON.stringify(b),
+    ids = new Set(list.map(b => b.id)),
+    added: Blueprint[] = [];
+  let skipped = 0,
+    full = 0;
+  for (const bp of incoming) {
+    if ([...list, ...added].some(x => x.id === bp.id && same(x, bp))) {
+      skipped++;
+      continue;
+    }
+    if (list.length + added.length >= BLUEPRINT_LIMIT) {
+      full++;
+      continue;
+    }
+    const id = ids.has(bp.id) ? makeId() : bp.id;
+    ids.add(id);
+    added.push({ ...bp, id });
+  }
+  return { list: [...added, ...list], added: added.length, skipped, full };
 }
 /** Newest first; at most BLUEPRINT_LIMIT kept. */
 export const addBlueprint = (list: Blueprint[], bp: Blueprint) => [bp, ...list].slice(0, BLUEPRINT_LIMIT);

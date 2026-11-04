@@ -7,10 +7,23 @@ import {
   downscaleSize,
   imageFileError,
   imageTypeOf,
+  originalAsset,
   rasterSize,
   svgDeclaredSize,
 } from './images';
 import { MAX_IMAGE_BYTES } from './model-ext';
+
+/**
+ * Read an image file. SVG and BMP files are converted to PNG for the board and also return the file as added,
+ * to be stored as a download-only original (gap R2-Q3); `original` is absent for other types and oversize files.
+ */
+export async function readImageWithOriginal(file: File): Promise<{ asset: ImageAsset; original?: ImageAsset }> {
+  const asset = await readImageFile(file),
+    type = imageTypeOf(file);
+  if (!convertibleImageMimes.includes(type)) return { asset };
+  const original = originalAsset(new Uint8Array(await file.arrayBuffer()), type, file.name, asset);
+  return original ? { asset, original } : { asset };
+}
 
 const DB = 'boardroom-assets',
   STORE = 'assets';

@@ -16,7 +16,7 @@ import {
   canGroup,
 } from './arrange';
 import { ArrangePanel } from './arrange-tools';
-import { applyCrop } from './images';
+import { applyCrop, drawableAsset } from './images';
 import { CropEditor } from './image-tools';
 import { setNoteEmoji, convertNote } from './notes';
 import { EmojiPicker, ConvertPanel } from './note-extras';
@@ -45,6 +45,7 @@ import { PreviewContext, PrototypePreview } from './prototype-preview';
 import { MarkdownPastePanel } from './markdown-paste';
 import { markdownToItems } from './markdown';
 import { CodeEditorDialog } from './code-block';
+import { withCodeOptions } from './code-lines';
 import { ReactionsPanel, AuthorsPanel } from './collab-extras';
 import {
   startVoting,
@@ -601,7 +602,7 @@ export function FloatingPanels() {
         (() => {
           const item = board.items.find(i => i.id === cropId),
             asset = item && assets[item.assetId!];
-          return item && asset ? (
+          return item && asset && drawableAsset(asset) ? (
             <CropEditor
               key={cropId}
               item={item}
@@ -618,10 +619,12 @@ export function FloatingPanels() {
         <CodeEditorDialog
           key={codeId}
           item={board.items.find(i => i.id === codeId)!}
-          onApply={(text, language) => {
+          onApply={(text, language, options) => {
             update({
               ...boardRef.current,
-              items: boardRef.current.items.map(i => (i.id === codeId ? { ...i, text, language } : i)),
+              items: boardRef.current.items.map(i =>
+                i.id === codeId ? { ...i, text, language, data: withCodeOptions(i.data, options) } : i,
+              ),
             });
             setCodeId(null);
           }}

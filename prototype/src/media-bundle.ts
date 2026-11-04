@@ -3,7 +3,7 @@
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import type { Zippable } from 'fflate';
 import type { Board, ImageAsset } from './model.ts';
-import { imageMimes, mediaMimes, MAX_IMAGE_BYTES, MAX_MEDIA_BYTES } from './model-ext.ts';
+import { assetByteLimit, assetMimes, MAX_MEDIA_BYTES } from './model-ext.ts';
 
 export const BUNDLE_FORMAT = 'boardroom-bundle';
 export const BUNDLE_VERSION = 1;
@@ -18,9 +18,12 @@ export const extByMime: Record<string, string> = {
   'video/mp4': 'mp4',
   'video/webm': 'webm',
   'application/pdf': 'pdf',
+  // Download-only originals of converted images (gap R2-Q3).
+  'image/svg+xml': 'svg',
+  'image/bmp': 'bmp',
 };
 export const ID = /^[A-Za-z0-9_-]{1,100}$/;
-export const MEDIA_ENTRY = /^media\/([A-Za-z0-9_-]{1,100})\.(png|jpg|gif|webp|mp4|webm|pdf)$/;
+export const MEDIA_ENTRY = /^media\/([A-Za-z0-9_-]{1,100})\.(png|jpg|gif|webp|mp4|webm|pdf|svg|bmp)$/;
 
 export type ManifestAsset = { mime: string; width: number; height: number; name: string; file: string };
 type Manifest = { format: string; version: number; assets: Record<string, ManifestAsset> };
@@ -38,13 +41,15 @@ export function bytesDataUrl(bytes: Uint8Array, mime: string): string {
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return `data:${mime};base64,${btoa(bin)}`;
 }
-const referenced = (board: { items?: unknown }) =>
+const referenced = (board: { items?: unknown }, originals = true) =>
   new Set(
     (Array.isArray(board.items) ? board.items : [])
-      .map((i: { assetId?: unknown }) => i?.assetId)
+      .flatMap((i: { assetId?: unknown; originalAssetId?: unknown }) =>
+        originals ? [i?.assetId, i?.originalAssetId] : [i?.assetId],
+      )
       .filter((id): id is string => typeof id === 'string' && !!id),
   );
-export const limitFor = (mime: string) => (imageMimes.includes(mime) ? MAX_IMAGE_BYTES : MAX_MEDIA_BYTES);
+export const limitFor = assetByteLimit;
 
 /** ZIP magic number check (local file header "PK\x03\x04"). */
 export function isBundle(bytes: Uint8Array): boolean {
@@ -123,7 +128,8 @@ export function decodeBundle(bytes: Uint8Array): {
   )
     throw new Error('Unsupported bundle format.');
   const assets = assetsFromManifest(manifest.assets, entries);
-  const missing = [...referenced(board as { items?: unknown })].filter(id => !assets[id]);
+  // A missing original (gap R2-Q3) only means its PNG is downloaded instead, so it is not reported.
+  const missing = [...referenced(board as { items?: unknown }, false)].filter(id => !assets[id]);
   return { board, assets, missing };
 }
 
@@ -135,7 +141,7 @@ export function assetsFromManifest(
   const assets: Record<string, ImageAsset> = {};
   for (const [id, m] of Object.entries(manifestAssets)) {
     if (!ID.test(id) || !m || typeof m !== 'object') throw new Error('The bundle manifest is invalid.');
-    if (![...imageMimes, ...mediaMimes].includes(m.mime))
+    if (!assetMimes.includes(m.mime))
       throw new Error(`Unsupported media type in bundle: ${String(m.mime).slice(0, 40)}`);
     if (m.file !== `media/${id}.${extByMime[m.mime]}`)
       throw new Error('The bundle manifest does not match its media files.');

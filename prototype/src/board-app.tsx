@@ -33,6 +33,7 @@ import {
   allKinds,
 } from './model';
 import type { Board, History, Item, Kind, Point, ImageAsset } from './model';
+import { isValidAsset } from './model-ext';
 import type { PeelState } from './peel-motion';
 import { textLayout } from './text-format';
 import { isShapeKind } from './shapes';
@@ -44,7 +45,7 @@ import { connectorGeometry } from './connectors';
 import { groupSelection, ungroupSelection, expandGroups, setLocked, editableIds, duplicateItems } from './arrange';
 import { createImageItem, decodeDataUrl, replaceImage, splitAssets, referencedAssets } from './images';
 import { droppedImageName, type DroppedImage } from './web-drop';
-import { loadAssets, saveAsset, pruneAssets, readImageFile } from './assets-store';
+import { loadAssets, saveAsset, pruneAssets, readImageWithOriginal } from './assets-store';
 import { wireframeItem } from './specs-media';
 import { OPEN_EDITOR_EVENT } from './widgets-media';
 import { stampChoice } from './widgets-graphics';
@@ -57,6 +58,7 @@ import type { GridData } from './grid';
 import { maybeSnapshot } from './versions';
 import { decryptBackup, isEncryptedBackup } from './encrypted-backup';
 import { askPassphrase } from './passphrase-dialog';
+import { askSheet } from './sheet-picker';
 import { recordVisit } from './activity';
 import { BASE_LAYER, assignNewToLayer, inLockedLayer, sortByLayer } from './layers';
 import { applyGridLayouts, gridOwner } from './grid-canvas';
@@ -97,7 +99,7 @@ import {
 } from './board-library';
 import type { Library, OpenTarget, SpaceInfo } from './board-library';
 import { createFromBlueprint, type Blueprint } from './blueprints';
-import { copySelection, clipboardFormats, readClipboardHtml, pastePayload } from './clipboard';
+import { copySelection, clipboardFormats, readClipboardHtml, pastePayload, cutIds } from './clipboard';
 import type { ClipPayload } from './clipboard';
 import { useCanvasGestures } from './use-canvas-gestures';
 import { useKeyboardShortcuts } from './use-keyboard-shortcuts';
@@ -427,12 +429,13 @@ function useBoardCore() {
     const it = shown.items.find(i => i.id === id);
     return it?.locked || (it && inLockedLayer(shown, it)) || gridOwner(shown, id)?.locked;
   });
-  const deleteSelection = () => {
-    if (!selected.length) return;
-    if (selected.some(id => gridOwner(boardRef.current, id)?.locked))
+  /** Delete the given objects (the selection by default) in one undo step, keeping locked ones. */
+  const deleteObjects = (chosen: string[]) => {
+    if (!chosen.length) return;
+    if (chosen.some(id => gridOwner(boardRef.current, id)?.locked))
       return display('Unlock the containing Grid to edit its objects.');
-    const ids = editableIds(boardRef.current, selected);
-    if (ids.length < selected.length) display('Locked objects were kept. Unlock them to delete.');
+    const ids = editableIds(boardRef.current, chosen);
+    if (ids.length < chosen.length) display('Locked objects were kept. Unlock them to delete.');
     if (!ids.length) return;
     const removed = detachComments(boardRef.current, removeItems(boardRef.current, ids));
     update(removed.board);
@@ -443,6 +446,7 @@ function useBoardCore() {
     setSelected(selected.filter(id => !ids.includes(id)));
     setEditing(null);
   };
+  const deleteSelection = () => deleteObjects(selected);
   /** Paste objects: repeated pastes of the same copy step down-right; otherwise at the pointer or view centre. */
   function pasteObjects(payload: ClipPayload, at?: Point) {
     if (boardRef.current.items.length + payload.items.length > 2000)
@@ -461,7 +465,10 @@ function useBoardCore() {
         ? { x: payload.bounds.x, y: payload.bounds.y }
         : (lastPointer.current ?? { x: center.x - payload.bounds.w / 2, y: center.y - payload.bounds.h / 2 }),
       target = at ?? { x: base.x + step, y: base.y + step };
-    const media = Object.entries(payload.assets ?? {}).filter(([id]) => !assetsRef.current[id]);
+    // Pasted payloads can come from any page: keep only well-formed files under the usual limits.
+    const media = Object.entries(payload.assets ?? {}).filter(
+      ([id, asset]) => !assetsRef.current[id] && /^[\w-]{1,100}$/.test(id) && isValidAsset(asset),
+    );
     for (const [id, asset] of media) saveAsset(id, asset).catch(() => {});
     if (media.length) setAssets(a => ({ ...a, ...Object.fromEntries(media) }));
     const result = pastePayload(boardRef.current, payload, target);
@@ -765,6 +772,23 @@ function useBoardCore() {
     if (message) display(message);
     return true;
   }
+  /** Store an added image file, plus the download-only original of a converted SVG or BMP (gap R2-Q3). */
+  async function storeImageFile(f: File): Promise<{ id: string; asset: ImageAsset; originalId?: string }> {
+    const { asset, original } = await readImageWithOriginal(f),
+      id = crypto.randomUUID();
+    await saveAsset(id, asset);
+    // If the original cannot be stored, the image is still added; "Download original" then saves the PNG.
+    let originalId: string | undefined;
+    if (original) {
+      const candidate = crypto.randomUUID();
+      originalId = await saveAsset(candidate, original).then(
+        () => candidate,
+        () => undefined,
+      );
+    }
+    setAssets(a => ({ ...a, [id]: asset, ...(original && originalId ? { [originalId]: original } : {}) }));
+    return { id, asset, originalId };
+  }
   async function insertImages(files: File[], at?: Point) {
     const images = files.filter(f => f.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(f.name));
     if (!images.length) {
@@ -776,11 +800,8 @@ function useBoardCore() {
       errors: string[] = [];
     for (const [index, f] of images.slice(0, 20).entries()) {
       try {
-        const asset = await readImageFile(f),
-          id = crypto.randomUUID();
-        await saveAsset(id, asset);
-        setAssets(a => ({ ...a, [id]: asset }));
-        added.push(createImageItem(id, asset, { x: center.x + index * 32, y: center.y + index * 32 }));
+        const { id, asset, originalId } = await storeImageFile(f);
+        added.push(createImageItem(id, asset, { x: center.x + index * 32, y: center.y + index * 32 }, originalId));
       } catch (error) {
         errors.push(error instanceof Error && error.message ? error.message : `"${f.name}" could not be stored.`);
       }
@@ -879,11 +900,8 @@ function useBoardCore() {
     const target = selectedItem;
     if (!target || target.type !== 'image') return;
     try {
-      const asset = await readImageFile(file),
-        id = crypto.randomUUID();
-      await saveAsset(id, asset);
-      setAssets(a => ({ ...a, [id]: asset }));
-      update(replaceImage(boardRef.current, target.id, id, asset));
+      const { id, asset, originalId } = await storeImageFile(file);
+      update(replaceImage(boardRef.current, target.id, id, asset, originalId));
       display('Image replaced. Undo restores the previous image.');
     } catch (error) {
       display((error as Error).message || 'The image could not be replaced.');
@@ -973,7 +991,8 @@ function useBoardCore() {
       if (into && /\.(csv|tsv|xlsx)$/i.test(file.name)) {
         // Spreadsheet into a Grid (gap b3-5): a new one, or the cells of the grid it was dropped on.
         const { readTableFile, importIntoGrid, gridImportNote } = await import('./table-file'),
-          rows = await readTableFile(file);
+          rows = await readTableFile(file, askSheet);
+        if (!rows) return;
         if (into !== 'grid') {
           const made = importIntoGrid(boardRef.current, into.gridId, rows);
           if (!made) return display('This grid is locked or no longer exists.');
@@ -992,13 +1011,10 @@ function useBoardCore() {
         return;
       }
       if (/\.(csv|tsv|xlsx)$/i.test(file.name)) {
-        const { csvTable, importTitle, tableFromImport } = await import('./record-import');
-        let table: string[][];
-        if (/\.xlsx$/i.test(file.name)) {
-          const { parseXlsx, OFFICE_MAX_BYTES } = await import('./office-import');
-          if (file.size > OFFICE_MAX_BYTES) throw new Error('Excel files up to 20 MB can be imported.');
-          table = parseXlsx(new Uint8Array(await file.arrayBuffer())).rows;
-        } else table = csvTable(await file.text());
+        const { importTitle, tableFromImport } = await import('./record-import'),
+          { readTableFile } = await import('./table-file'),
+          table = await readTableFile(file, askSheet);
+        if (!table) return;
         const made = tableFromImport(boardRef.current, table, importTitle(file.name), center);
         update(made.board);
         setSelected([made.item.id]);
@@ -1339,7 +1355,8 @@ function useBoardCore() {
       clipRef.current = payload;
       pasteCount.current = 0;
       clipSignature.current = '';
-      if (e.type === 'cut') deleteSelection();
+      // Cut removes exactly what was copied: a linked Mermaid frame goes with its diagram.
+      if (e.type === 'cut') deleteObjects(cutIds(boardRef.current, selected));
       else display(`Copied ${payload.items.length} ${payload.items.length === 1 ? 'object' : 'objects'}.`);
     };
     addEventListener('paste', paste);

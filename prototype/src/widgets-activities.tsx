@@ -46,6 +46,7 @@ import { StatusChip, statusAction } from './status-chip';
 import { saveBlobFile } from './widget-kit';
 import { pdfFileName } from './doc-pdf';
 import './widgets-activities.css';
+import { BrandSwatches } from './brand-kit-panel';
 
 export const DECK_EVENT = 'boardroom:present-deck';
 const uid = () => crypto.randomUUID();
@@ -310,6 +311,11 @@ function CanvasDeck({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
           />
           <span style={{ background: slide.background }} />
         </label>
+        <BrandSwatches
+          label="Brand colours for slide background"
+          value={slide.background}
+          onPick={c => set(x => updateSlide(x, slide.id, { background: c }))}
+        />
         <button
           aria-label="Duplicate slide"
           disabled={d.slides.length >= DECK_MAX}

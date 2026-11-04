@@ -407,7 +407,14 @@ export function useKeyboardShortcuts(core: BoardCore, gestures: { cancelGesture:
         // Card panel (item 115).
         e.preventDefault();
         openEditor(selectedItem.id);
-      } else if (key === 'enter' && selected.length === 1 && selectedItem && selectedItem.type !== 'pen') {
+      } else if (
+        key === 'enter' &&
+        selected.length === 1 &&
+        selectedItem &&
+        selectedItem.type !== 'pen' &&
+        // Enter on a focused toolbar button or menu item presses that control, not "open the editor".
+        !active?.closest?.('button,a,[role=button],[role=menuitem],[role=option],[role=radio],[role=tab]')
+      ) {
         e.preventDefault();
         openEditor(selectedItem.id);
       } else if (key.startsWith('arrow') && e.altKey && !mod && selected.length) {

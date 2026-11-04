@@ -6,12 +6,26 @@ import type { GridData } from './grid.ts';
 
 export const isTableFile = (name: string) => /\.(csv|tsv|xlsx)$/i.test(name);
 
-/** Rows of a CSV, TSV or XLSX file (first sheet). */
-export async function readTableFile(file: File): Promise<string[][]> {
+/** Asks which worksheet to import; resolves with its index, or null when the person cancels. */
+export type SheetChooser = (names: string[], fileName: string) => Promise<number | null>;
+
+/**
+ * Rows of a CSV, TSV or XLSX file. A workbook with several worksheets asks `choose` which one to read
+ * (gap Q16); without a chooser, or with one sheet, the first is read. Resolves with null when cancelled.
+ */
+export async function readTableFile(file: File, choose?: SheetChooser): Promise<string[][] | null> {
   if (/\.xlsx$/i.test(file.name)) {
-    const { parseXlsx, OFFICE_MAX_BYTES } = await import('./office-import.ts');
+    const { parseXlsx, xlsxSheetNames, OFFICE_MAX_BYTES } = await import('./office-import.ts');
     if (file.size > OFFICE_MAX_BYTES) throw new Error('Excel files up to 20 MB can be imported.');
-    return parseXlsx(new Uint8Array(await file.arrayBuffer())).rows;
+    const bytes = new Uint8Array(await file.arrayBuffer()),
+      names = choose ? xlsxSheetNames(bytes) : [];
+    let index = 0;
+    if (choose && names.length > 1) {
+      const picked = await choose(names, file.name);
+      if (picked === null) return null;
+      index = picked;
+    }
+    return parseXlsx(bytes, index).rows;
   }
   const { csvTable } = await import('./record-import.ts');
   return csvTable(await file.text());

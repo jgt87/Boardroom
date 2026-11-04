@@ -224,7 +224,8 @@ export function BoardsDashboard({
   onBlueprint?: (bp: Blueprint) => string | null;
   /** Save the open board and return the current library (before saving a space as a blueprint). */
   onFlush?: () => Library;
-  onImport?: (file: File) => void;
+  /** Import a backup; a library backup may add blueprints, so the list is reloaded when it settles. */
+  onImport?: (file: File) => void | Promise<unknown>;
   onBackupAll?: () => void;
   onClose: () => void;
   onMeta?: (id: string | string[], patch: { starred?: boolean; space?: string | null }) => void;
@@ -445,7 +446,7 @@ export function BoardsDashboard({
             onChange={e => {
               const f = e.target.files?.[0];
               e.target.value = '';
-              if (f) onImport(f);
+              if (f) void Promise.resolve(onImport(f)).then(() => setSavedBlueprints(loadBlueprints(parseBoard)));
             }}
           />
         )}

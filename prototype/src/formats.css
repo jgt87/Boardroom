@@ -863,3 +863,27 @@ select:focus-visible {
 .formats-menu .gallery-pin {
   top: 6px;
 }
+
+/* Worksheet picker for Excel imports (gap Q16) */
+.sheet-picker {
+  width: min(440px, 100%);
+}
+.sheet-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 14px 24px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.format-editor .sheet-picker-list button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+.sheet-picker-list button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

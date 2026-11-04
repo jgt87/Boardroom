@@ -10,6 +10,7 @@ import { reorderLayer, setHidden, renameItem } from './board-tools';
 import { LayersPanel } from './board-panels';
 import { NamedLayers } from './layers-panel';
 import { PassphraseHost } from './passphrase-dialog';
+import { SheetPickerHost } from './sheet-picker';
 import { BoardOutline } from './board-outline';
 import { useApp } from './board-app';
 import { tools } from './board-app';
@@ -296,6 +297,7 @@ export function BoardChrome() {
         </aside>
       )}
       <PassphraseHost />
+      <SheetPickerHost />
       <BoardOutline />
       <div id="sr-announcer" className="sr-only" aria-live="polite" aria-atomic="true" />
       {backView && (

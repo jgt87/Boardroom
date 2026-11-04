@@ -7,6 +7,7 @@ import { editableIds, setLocked } from './arrange';
 import { setRotation } from './interactions';
 import { canRotate } from './rotation';
 import { isShapeKind, shapeLabels } from './shapes';
+import { BrandSwatches } from './brand-kit-panel';
 import { specFor } from './widget-specs';
 import { layerLabel } from './board-tools';
 import { timeLabel } from './item-times';
@@ -339,6 +340,12 @@ export function PropertiesInspector({ board, selected, onChange, onClose, onEdit
           />
           {fill === MIXED && <small>Mixed</small>}
         </label>
+        <BrandSwatches
+          label={allText ? 'Brand colours for text colour' : 'Brand colours for fill'}
+          disabled={locked}
+          value={show(fill, v => v)}
+          onPick={c => onChange(b => setFill(b, selected, c))}
+        />
         {allTextBearing && (
           <label className="inspector-field">
             <span>Font size</span>
@@ -376,6 +383,12 @@ export function PropertiesInspector({ board, selected, onChange, onClose, onEdit
                 onChange={e => onChange(b => setStyleField(b, selected, 'borderColor', e.target.value))}
               />
             </label>
+            <BrandSwatches
+              label="Brand colours for border"
+              disabled={locked}
+              value={show(border('borderColor'), v => String(v))}
+              onPick={c => onChange(b => setStyleField(b, selected, 'borderColor', c))}
+            />
             <CommitField
               label="Border width"
               value={show(border('borderWidth'), v => String(v))}

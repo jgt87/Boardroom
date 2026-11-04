@@ -20,13 +20,12 @@ import {
   EyeOff,
   UserRound,
   ArrowLeftRight,
-  SquarePlus,
   FileDown,
   Code2,
 } from 'lucide-react';
-import { insertShapeOnConnector } from './diagram-gaps';
+import { InsertShapeOnLine } from './insert-shape-menu';
 import { ImageAdjustControls } from './image-tools';
-import { adjustImages } from './images';
+import { adjustImages, downloadableAsset } from './images';
 import { mindLayoutKinds, mindOutlineMarkdown } from './mindmap-style';
 import type { MindLayoutKind } from './mindmap-style';
 import { saveText } from './widget-kit';
@@ -43,6 +42,9 @@ import { containerOf, moveChild, removeChild } from './autolayout';
 import { applyFrameFormat } from './frame-presets';
 import { urlsIn, setPrivate, setFrameContentHidden, frameContentHidden } from './board-tools';
 import { viewFor } from './widgets';
+import { codeActions } from './code-block';
+import { statusAction } from './status-chip';
+import type { WidgetAction, WidgetCtx } from './widget-types';
 import { useApp } from './board-app';
 import { useRovingToolbar } from './use-roving-toolbar';
 import { spokenColor } from './access-tools';
@@ -57,6 +59,13 @@ import { CardBar, NoteReactButton, SwitchToCard, SwitchTypeMenu } from './card-b
 import { ColorMenu } from './color-menu';
 import { rememberColor } from './color-store';
 import { linkOf } from './mermaid-link';
+
+/** Selection-bar actions for core kinds that are not registry widgets: code blocks and record views. */
+function coreActions(item: Item, ctx: WidgetCtx): WidgetAction[] {
+  if (item.type === 'code') return codeActions(item, ctx);
+  if (['table', 'kanban', 'timeline'].includes(item.type)) return [statusAction(item, ctx)];
+  return [];
+}
 
 export function SelectionBars() {
   const {
@@ -90,7 +99,6 @@ export function SelectionBars() {
     boardRef,
     widgetCtx,
     authorName,
-    setSelected,
   } = useApp();
   const lockedBar = useRovingToolbar<HTMLDivElement>(),
     bar = useRovingToolbar<HTMLDivElement>();
@@ -191,7 +199,7 @@ export function SelectionBars() {
               </button>
               <ImageAdjustControls
                 item={selectedItem}
-                asset={assets[selectedItem.assetId!]}
+                asset={downloadableAsset(selectedItem, assets)}
                 onAdjust={change => run(b => adjustImages(b, [selectedItem.id], change))}
               />
             </>
@@ -351,28 +359,7 @@ export function SelectionBars() {
             </button>
           )}
           {selectedItem?.type === 'arrow' && selected.length === 1 && (
-            <button
-              className="icon-button"
-              aria-label="Insert shape on line"
-              title="Insert shape on line"
-              disabled={selectedItem.locked}
-              onClick={() => {
-                let shapeId = '';
-                run(
-                  b => {
-                    const next = insertShapeOnConnector(b, selectedItem.id);
-                    shapeId = next.shape.id;
-                    return next.board;
-                  },
-                  () => {
-                    setSelected([shapeId]);
-                    setEditing(shapeId);
-                  },
-                );
-              }}
-            >
-              <SquarePlus size={17} />
-            </button>
+            <InsertShapeOnLine connectorId={selectedItem.id} disabled={selectedItem.locked} />
           )}
           {selectedItem?.type === 'arrow' && selected.length === 1 && (
             <ConnectorControls item={selectedItem} onChange={connector => patch({ connector })} />
@@ -414,21 +401,22 @@ export function SelectionBars() {
           </button>
           {selectedItem &&
             selected.length === 1 &&
-            viewFor(selectedItem.type)
-              ?.actions?.(selectedItem, widgetCtx(selectedItem))
-              .map(a => (
-                <button
-                  key={a.label}
-                  className={`widget-action ${a.pressed ? 'active' : ''}`}
-                  aria-pressed={a.pressed}
-                  disabled={a.disabled}
-                  onClick={a.run}
-                  title={a.label}
-                >
-                  {a.icon}
-                  <span>{a.label}</span>
-                </button>
-              ))}
+            (
+              viewFor(selectedItem.type)?.actions?.(selectedItem, widgetCtx(selectedItem)) ??
+              coreActions(selectedItem, widgetCtx(selectedItem))
+            ).map(a => (
+              <button
+                key={a.label}
+                className={`widget-action ${a.pressed ? 'active' : ''}`}
+                aria-pressed={a.pressed}
+                disabled={a.disabled}
+                onClick={a.run}
+                title={a.label}
+              >
+                {a.icon}
+                <span>{a.label}</span>
+              </button>
+            ))}
           <CardBar />
           <SwitchToCard />
           <SwitchTypeMenu />

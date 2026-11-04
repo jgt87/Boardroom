@@ -5,7 +5,7 @@
 // E5 45-degree steps while drawing a line with Shift held.
 import type { Board, ConnectorFormat, ConnectorLabel, Item, Kind, Point, Side } from './model.ts';
 import { createItem, clone } from './model.ts';
-import { isShapeKind } from './shapes.ts';
+import { basicKinds, isShapeKind } from './shapes.ts';
 import { connectorGeometry } from './connector-geometry.ts';
 import { SELECT_GAP } from './interactions.ts';
 
@@ -129,6 +129,14 @@ export function addConnectedCopy(
     connector: { startSide: side, endSide: opposite[side] },
   };
   return { board: { ...board, items: [...board.items, connector, item] }, item, connector };
+}
+
+export type BasicKind = (typeof basicKinds)[number];
+/** The shape a connector insert offers first: its source object's kind when that is a basic shape, else a rectangle. */
+export function insertKindFor(board: Board, connectorId: string): BasicKind {
+  const c = board.items.find(i => i.id === connectorId),
+    source = c?.from ? board.items.find(i => i.id === c.from) : undefined;
+  return source && (basicKinds as readonly string[]).includes(source.type) ? (source.type as BasicKind) : 'rectangle';
 }
 
 /**

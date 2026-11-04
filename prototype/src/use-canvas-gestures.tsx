@@ -157,6 +157,7 @@ export function useCanvasGestures(core: BoardCore) {
             ((b: Bounds) => (viewPrefs.snapGrid && !shift && !alt ? snapResize(bounds, b) : b))(
               resizeBounds(bounds, g.handle ?? 'se', delta, shift !== images, alt),
             ),
+            true,
           )
         : g.board,
       guides: [],

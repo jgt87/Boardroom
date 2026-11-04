@@ -8,6 +8,7 @@ import { createItem } from './model';
 import type { WidgetCtx } from './widget-types';
 import { schemaOf } from './record-schema';
 import { chartColumns, chartFromRecords } from './specs-charts';
+import { askSheet } from './sheet-picker';
 
 export const SPREADSHEET_ACCEPT =
   '.csv,.tsv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -16,13 +17,10 @@ const spreadsheet = (f: File) => /\.(csv|tsv|xlsx)$/i.test(f.name);
 /** Read a spreadsheet file and append its rows to the view's dataset as one undo step. */
 async function importFile(item: Item, ctx: WidgetCtx, file: File) {
   try {
-    const { csvTable, importIntoDataset } = await import('./record-import');
-    let table: string[][];
-    if (/\.xlsx$/i.test(file.name)) {
-      const { parseXlsx, OFFICE_MAX_BYTES } = await import('./office-import');
-      if (file.size > OFFICE_MAX_BYTES) throw new Error('Excel files up to 20 MB can be imported.');
-      table = parseXlsx(new Uint8Array(await file.arrayBuffer())).rows;
-    } else table = csvTable(await file.text());
+    const { importIntoDataset } = await import('./record-import'),
+      { readTableFile } = await import('./table-file'),
+      table = await readTableFile(file, askSheet);
+    if (!table) return;
     let message = '';
     ctx.update(b => {
       try {

@@ -1,6 +1,7 @@
 // Library file actions (gaps C3 and C4): back up every board to one file, restore a library backup by
 // adding its boards, and import a single-board backup as a new board. File parsing lives in the pure
 // library-backup.ts (loaded on demand); this hook only stores media and talks to the app.
+// Gap R3-Q2: the library backup also carries saved space blueprints.
 // Track R3: the library backup also carries saved templates and space details, and templates can be
 // exported to and imported from their own file.
 import { parseBoard } from './model';
@@ -16,6 +17,7 @@ import {
   storeTemplates,
   type UserTemplate,
 } from './user-templates';
+import { BLUEPRINT_LIMIT, loadBlueprints, mergeBlueprints, storeBlueprints, type Blueprint } from './blueprints';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -37,7 +39,18 @@ export function useLibraryFiles() {
     if (!storeTemplates(merged.list)) return ' The templates could not be stored (browser storage is full).';
     return ` Added ${plural(merged.added, 'template')}.${merged.dropped ? ` ${plural(merged.dropped, 'older template')} made room.` : ''}`;
   };
-  /** One .boardroom file with every board (trash included), spaces, saved templates and media. */
+  /** Add restored blueprints to this browser's list (gap R3-Q2); returns a short sentence for the message. */
+  const addBlueprints = (incoming: Blueprint[]): string => {
+    if (!incoming.length) return '';
+    const merged = mergeBlueprints(loadBlueprints(parseBoard), incoming, () => crypto.randomUUID());
+    const full = merged.full
+      ? ` ${plural(merged.full, 'blueprint')} did not fit (up to ${BLUEPRINT_LIMIT} are saved); delete blueprints to make room.`
+      : '';
+    if (!merged.added) return full;
+    if (!storeBlueprints(merged.list)) return ' The blueprints could not be stored (browser storage is full).';
+    return ` Added ${plural(merged.added, 'blueprint')}.${full}`;
+  };
+  /** One .boardroom file with every board (trash included), spaces, saved templates, blueprints and media. */
   const backupAll = async () => {
     try {
       const lib = boardActions.flush();
@@ -45,14 +58,18 @@ export function useLibraryFiles() {
         import('./library-backup'),
         loadAssets().catch(() => ({}) as Record<string, ImageAsset>),
       ]);
-      const made = encodeLibrary(localStorage, lib, all, undefined, loadTemplates());
+      const made = encodeLibrary(localStorage, lib, all, undefined, loadTemplates(), loadBlueprints(parseBoard));
       saveBlob(
         new Blob([made.bytes as BlobPart], { type: 'application/zip' }),
         `boardroom-library-${new Date().toISOString().slice(0, 10)}.boardroom`,
       );
+      const extras = [
+        made.templates ? plural(made.templates, 'template') : '',
+        made.blueprints ? plural(made.blueprints, 'blueprint') : '',
+      ].filter(Boolean);
       display(
         `Backed up ${plural(made.boards, 'board')} and ${plural(made.media, 'media file')}` +
-          (made.templates ? ` with ${plural(made.templates, 'template')}.` : '.'),
+          (extras.length ? ` with ${extras.join(' and ')}.` : '.'),
       );
     } catch (err) {
       display((err as Error).message || 'The library backup could not be created.');
@@ -74,7 +91,8 @@ export function useLibraryFiles() {
         display(
           `Restored ${plural(contents.entries.length, 'board')} next to your boards.` +
             (contents.skipped ? ` ${plural(contents.skipped, 'board')} could not be read.` : '') +
-            addTemplates(contents.templates),
+            addTemplates(contents.templates) +
+            addBlueprints(contents.blueprints),
         );
       } else if (boardActions.createFrom(contents.board)) display('Backup imported as a new board.');
     } catch (err) {

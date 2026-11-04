@@ -50,6 +50,11 @@ test('connector: insert shape, crow foot heads and extra labels', async ({ page 
   await page.getByRole('button', { name: 'Close connector details' }).click();
 
   await page.getByRole('button', { name: 'Insert shape on line' }).click();
+  await page
+    .getByRole('menu', { name: 'Shape to insert' })
+    .getByRole('menuitem', { name: /Rectangle/ })
+    .first()
+    .click();
   await waitForSave(page, b => b.items.length === 5, 'split connector');
   const board = await savedBoard(page);
   const inserted = board.items.find(i => i.type === 'rectangle' && !['a', 'b'].includes(i.id));

@@ -1,6 +1,6 @@
 // Spreadsheet (.xlsx) and Word (.docx) import (gap list B15, I2). Pure: no React, no DOM.
 // Uses the public fflate package; only the few XML parts needed are decompressed, each with a size cap.
-// XLSX: the first worksheet's cell values (shared strings, inline strings, numbers, booleans, dates).
+// XLSX: the cell values of one worksheet, the first or a chosen one (shared and inline strings, numbers, booleans, dates).
 // DOCX: paragraphs to Markdown (headings, bulleted and numbered lists, bold, italic, strikethrough, tables).
 import { unzipSync } from 'fflate';
 import { DOC_MAX } from './doc-tools.ts';
@@ -115,35 +115,53 @@ export function sheetRows(xml: string, strings: string[] = [], dates: boolean[] 
   while (out.length && out[out.length - 1].every(c => !c.trim())) out.pop();
   return out;
 }
+/** Worksheets the workbook lists, in workbook order, with their part paths (gap Q16). At most 200. */
+export function workbookSheets(workbook: string, rels: string): { path: string; name: string }[] {
+  const targets = new Map<string, string>();
+  for (const r of rels.matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = attr(r[0], 'Id'),
+      target = attr(r[0], 'Target');
+    if (id && target) targets.set(id, target.startsWith('/') ? target.slice(1) : `xl/${target.replace(/^\.\//, '')}`);
+  }
+  const sheets = [...workbook.matchAll(/<sheet\b[^>]*>/g)].slice(0, 200).map((m, k) => {
+    const name = decode(attr(m[0], 'name') ?? '').slice(0, 120) || `Sheet${k + 1}`;
+    return { name, path: targets.get(attr(m[0], 'r:id') ?? '') ?? `xl/worksheets/sheet${k + 1}.xml` };
+  });
+  return sheets.length ? sheets : [{ name: 'Sheet1', path: 'xl/worksheets/sheet1.xml' }];
+}
 /** Path of the first worksheet in workbook order. */
 export function firstSheetPath(workbook: string, rels: string): { path: string; name: string } {
-  const sheet = workbook.match(/<sheet\b[^>]*>/)?.[0];
-  const name = sheet ? decode(attr(sheet, 'name') ?? 'Sheet1') : 'Sheet1',
-    id = sheet ? (attr(sheet, 'r:id') ?? '') : '';
-  for (const r of rels.matchAll(/<Relationship\b[^>]*>/g))
-    if (attr(r[0], 'Id') === id) {
-      const target = attr(r[0], 'Target') ?? '';
-      return { path: target.startsWith('/') ? target.slice(1) : `xl/${target.replace(/^\.\//, '')}`, name };
-    }
-  return { path: 'xl/worksheets/sheet1.xml', name };
+  return workbookSheets(workbook, rels)[0];
 }
-/** Rows of the first worksheet of an .xlsx file. Throws an Error with a user-readable message. */
-export function parseXlsx(bytes: Uint8Array): { sheet: string; rows: string[][] } {
-  const meta = unzipParts(
-    bytes,
-    n => ['xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/sharedStrings.xml', 'xl/styles.xml'].includes(n),
-    'Excel',
-  );
+const XLSX_META = ['xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/sharedStrings.xml', 'xl/styles.xml'];
+function xlsxMeta(bytes: Uint8Array) {
+  const meta = unzipParts(bytes, n => XLSX_META.includes(n), 'Excel');
   if (!meta['xl/workbook.xml']) throw new Error('This is not a readable Excel file.');
-  const { path, name } = firstSheetPath(meta['xl/workbook.xml'], meta['xl/_rels/workbook.xml.rels'] ?? '');
+  return meta;
+}
+/** Names of the worksheets of an .xlsx file, in workbook order. */
+export function xlsxSheetNames(bytes: Uint8Array): string[] {
+  const meta = xlsxMeta(bytes);
+  return workbookSheets(meta['xl/workbook.xml'], meta['xl/_rels/workbook.xml.rels'] ?? '').map(s => s.name);
+}
+/**
+ * Rows of one worksheet of an .xlsx file: the first, or the one at `index` in workbook order.
+ * Throws an Error with a user-readable message.
+ */
+export function parseXlsx(bytes: Uint8Array, index = 0): { sheet: string; rows: string[][] } {
+  const meta = xlsxMeta(bytes),
+    chosen = workbookSheets(meta['xl/workbook.xml'], meta['xl/_rels/workbook.xml.rels'] ?? '')[index];
+  if (!chosen) throw new Error('That worksheet is not in the file.');
+  const { path, name } = chosen,
+    which = index === 0 ? 'The first worksheet' : `The worksheet "${name}"`;
   const sheet = unzipParts(bytes, n => n === path, 'Excel')[path];
-  if (!sheet) throw new Error('The first worksheet could not be read.');
+  if (!sheet) throw new Error(`${which} could not be read.`);
   const rows = sheetRows(
     sheet,
     sharedStrings(meta['xl/sharedStrings.xml'] ?? ''),
     dateStyles(meta['xl/styles.xml'] ?? ''),
   );
-  if (!rows.length) throw new Error('The first worksheet is empty.');
+  if (!rows.length) throw new Error(`${which} is empty.`);
   return { sheet: name, rows };
 }
 

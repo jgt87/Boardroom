@@ -3,6 +3,7 @@ import { ArrowUp, ArrowDown } from 'lucide-react';
 import type { Item, RecordRow } from './model';
 import type { WidgetCtx } from './widget-types';
 import type { RecordField, RecordSchema } from './record-schema';
+import { BrandSwatches } from './brand-kit-panel';
 import {
   fieldTypes,
   formatFieldNumber,
@@ -244,6 +245,11 @@ function ProgressSettings({ field, onField }: { field: RecordField; onField: (ne
               value={r.color}
               onChange={e => hex.test(e.target.value) && setRule(k, { color: e.target.value })}
             />
+            <BrandSwatches
+              label={`Brand colours for rule ${k + 1}: ${field.name}`}
+              value={r.color}
+              onPick={c => setRule(k, { color: c })}
+            />
             <button
               aria-label={`Remove rule ${k + 1}: ${field.name}`}
               onClick={() => set({ rules: rules.filter((_, i) => i !== k) })}
@@ -291,6 +297,11 @@ function ProgressToggle({ field, set }: { field: RecordField; set: (patch: Parti
             aria-label={`Progress bar colour: ${field.name}`}
             value={field.color ?? '#4262ff'}
             onChange={e => hex.test(e.target.value) && set({ color: e.target.value })}
+          />
+          <BrandSwatches
+            label={`Brand colours for progress bar: ${field.name}`}
+            value={field.color}
+            onPick={c => set({ color: c })}
           />
           <label>
             <input
@@ -382,6 +393,11 @@ export function RecordFields({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                 aria-label={`Column colour: ${status}`}
                 value={schema.columns?.[status]?.color ?? '#f4f4f6'}
                 onChange={e => setColumn(status, { color: hex.test(e.target.value) ? e.target.value : undefined })}
+              />
+              <BrandSwatches
+                label={`Brand colours for column: ${status}`}
+                value={schema.columns?.[status]?.color}
+                onPick={c => setColumn(status, { color: c })}
               />
               <CanvasField
                 label={`Column capacity: ${status}`}

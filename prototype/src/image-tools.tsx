@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, RotateCcw, FlipHorizontal2, FlipVertical2, SunMedium, Download } from 'lucide-react';
+import { X, RotateCcw, FlipHorizontal2, FlipVertical2, SunMedium, Download, Play, Pause } from 'lucide-react';
+import { useGifStill } from './gif-still';
 import type { Crop, ImageAdjust, ImageAsset, Item } from './model';
 import {
   ADJUST_MAX,
@@ -8,13 +9,52 @@ import {
   adjustTransfer,
   clampCrop,
   cropViewBox,
+  drawableAsset,
   cropAspect,
   flipTransform,
 } from './images';
 import { saveAssetFile } from './widget-kit';
 
-/** Canvas rendering of an image object, showing only its crop region. */
+/**
+ * Canvas rendering of an image object, showing only its crop region. With reduce motion on, an animated GIF
+ * shows a still first frame and a play/pause button (gap F8 / Q2); the state lives here, inside the item,
+ * so the render cache in use-render-item never has to change.
+ */
 export function ImageBody({ item, asset }: { item: Item; asset?: ImageAsset }) {
+  const gif = useGifStill(item.assetId, asset);
+  // SVG and BMP originals are only ever downloaded, never drawn.
+  if (!asset || !drawableAsset(asset)) return <ImagePicture item={item} />;
+  return (
+    <>
+      {gif.still === undefined ? (
+        <rect width={item.w} height={item.h} fill="#f4f4f6" className="gif-pending" />
+      ) : (
+        <ImagePicture item={item} asset={asset} href={gif.still ?? asset.data} />
+      )}
+      {gif.paused !== undefined && (
+        <foreignObject className="gif-toggle" x={6} y={6} width={30} height={30} pointerEvents="all">
+          <button
+            type="button"
+            className="gif-toggle-button"
+            aria-label={gif.paused ? 'Play animation' : 'Pause animation'}
+            title={gif.paused ? 'Play animation' : 'Pause animation'}
+            aria-pressed={!gif.paused}
+            onPointerDown={e => e.stopPropagation()}
+            onDoubleClick={e => e.stopPropagation()}
+            onClick={e => {
+              e.stopPropagation();
+              gif.toggle();
+            }}
+          >
+            {gif.paused ? <Play size={14} aria-hidden="true" /> : <Pause size={14} aria-hidden="true" />}
+          </button>
+        </foreignObject>
+      )}
+    </>
+  );
+}
+
+function ImagePicture({ item, asset, href }: { item: Item; asset?: ImageAsset; href?: string }) {
   if (!asset)
     return (
       <>
@@ -37,7 +77,7 @@ export function ImageBody({ item, asset }: { item: Item; asset?: ImageAsset }) {
       preserveAspectRatio="none"
       overflow="hidden"
     >
-      <image href={asset.data} width={asset.width} height={asset.height} preserveAspectRatio="none" />
+      <image href={href ?? asset.data} width={asset.width} height={asset.height} preserveAspectRatio="none" />
     </svg>
   );
   const body =

@@ -193,7 +193,11 @@ export function resizeBounds(b: Bounds, handle: Handle, delta: Point, aspect = f
   }
   return { x: left, y: top, w: right - left, h: bottom - top };
 }
-export function resizeItems(board: Board, ids: string[], before: Bounds, after: Bounds): Board {
+/**
+ * Scale objects from box `before` to box `after`. With `keepTurned` (a selection box in board axes), rotated objects
+ * keep their shape instead of stretching along their own axes by the board-axis factors.
+ */
+export function resizeItems(board: Board, ids: string[], before: Bounds, after: Bounds, keepTurned = false): Board {
   const selected = new Set(ids),
     sx = after.w / Math.max(before.w, 1),
     sy = after.h / Math.max(before.h, 1);
@@ -201,6 +205,22 @@ export function resizeItems(board: Board, ids: string[], before: Bounds, after: 
     ...board,
     items: board.items.map(i => {
       if (!selected.has(i.id)) return i;
+      if (keepTurned && i.rotation && i.type !== 'arrow') {
+        // A rotated object stays a rotated rectangle (no skew): its centre follows the selection, and each of its
+        // own axes stretches by the length the selection's scale gives that axis.
+        const a = (i.rotation * Math.PI) / 180,
+          cos = Math.cos(a),
+          sin = Math.sin(a),
+          lw = Math.hypot(sx * cos, sy * sin),
+          lh = Math.hypot(sx * sin, sy * cos),
+          cx = after.x + (i.x + i.w / 2 - before.x) * sx,
+          cy = after.y + (i.y + i.h / 2 - before.y) * sy,
+          w = Math.max(1, i.w * lw),
+          h = Math.max(1, i.h * lh);
+        const turned = { ...i, x: cx - w / 2, y: cy - h / 2, w, h };
+        if (i.points) turned.points = i.points.map(p => ({ x: p.x * lw, y: p.y * lh }));
+        return turned;
+      }
       const resized = {
         ...i,
         x: after.x + (i.x - before.x) * sx,
@@ -216,6 +236,15 @@ export function resizeItems(board: Board, ids: string[], before: Bounds, after: 
       return resized;
     }),
   };
+}
+/**
+ * CSS cursor for a resize handle of an object turned by `rotation` degrees: the handle's direction after the turn,
+ * rounded to the nearest of the eight resize cursors (which come in four axis pairs).
+ */
+export function resizeCursor(handle: Handle, rotation = 0): string {
+  const base: Record<Handle, number> = { e: 0, se: 45, s: 90, sw: 135, w: 180, nw: 225, n: 270, ne: 315 };
+  const step = (((Math.round((base[handle] + rotation) / 45) % 4) + 4) % 4) as 0 | 1 | 2 | 3;
+  return `${['ew', 'nwse', 'ns', 'nesw'][step]}-resize`;
 }
 export function handlePoint(bounds: Bounds, handle: Handle): Point {
   return {

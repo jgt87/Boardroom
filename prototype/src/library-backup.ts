@@ -1,13 +1,15 @@
 // Whole-library backup (gap C3) and backup-file reading for "import as a new board" (gap C4).
 // A library backup is a ZIP like the single-board bundle (media-bundle.ts): library.json holds the
-// format marker, the index details and the media manifest; boards/<id>.json holds each stored board;
-// media/<assetId>.<ext> holds raw media bytes. Restoring adds boards and never replaces existing ones.
+// format marker, the index details, the media manifest and (optionally) saved templates and blueprints;
+// boards/<id>.json holds each stored board; media/<assetId>.<ext> holds raw media bytes (SVG and BMP originals
+// included). Restoring adds boards and blueprints and never replaces existing ones.
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import type { Zippable } from 'fflate';
 import type { Board, ImageAsset } from './model.ts';
 import { assetRefsAcrossBoards, boardKey, cleanSpace, spaceInfoOf } from './board-library.ts';
 import type { BoardMeta, KeyValueStore, Library, SpaceInfo } from './board-library.ts';
 import { validTemplates, type UserTemplate } from './user-templates.ts';
+import { BLUEPRINT_LIMIT, BLUEPRINT_MAX_BYTES, validBlueprints, type Blueprint } from './blueprints.ts';
 import {
   assetsFromManifest,
   dataUrlBytes,
@@ -38,6 +40,8 @@ type LibraryManifest = {
   /** Optional (track R3): space emoji and descriptions, and the saved templates of this browser. */
   spaceInfo?: Record<string, SpaceInfo>;
   templates?: UserTemplate[];
+  /** Optional (gap R3-Q2): the saved space blueprints of this browser. Older backups have none. */
+  blueprints?: Blueprint[];
 };
 export type LibraryEntry = { id: string; board: Board; meta: Partial<BoardMeta> };
 export type BackupContents =
@@ -49,17 +53,22 @@ export type BackupContents =
       skipped: number;
       spaceInfo: Record<string, SpaceInfo>;
       templates: UserTemplate[];
+      blueprints: Blueprint[];
     }
   | { kind: 'board'; board: Board; assets: Record<string, ImageAsset> };
 
-/** Bundle every stored board (trash included), the index details, saved templates and all referenced media. */
+/**
+ * Bundle every stored board (trash included), the index details, saved templates, saved blueprints and all
+ * referenced media.
+ */
 export function encodeLibrary(
   kv: KeyValueStore,
   lib: Library,
   assets: Record<string, ImageAsset>,
   now = new Date().toISOString(),
   templates: UserTemplate[] = [],
-): { bytes: Uint8Array; boards: number; media: number; templates: number } {
+  blueprints: Blueprint[] = [],
+): { bytes: Uint8Array; boards: number; media: number; templates: number; blueprints: number } {
   const files: Zippable = {};
   const manifest: LibraryManifest = {
     format: LIBRARY_FORMAT,
@@ -76,6 +85,8 @@ export function encodeLibrary(
   }
   if (Object.keys(info).length) manifest.spaceInfo = info;
   if (templates.length) manifest.templates = templates;
+  const saved = blueprints.filter(b => !b.builtIn).slice(0, BLUEPRINT_LIMIT);
+  if (saved.length) manifest.blueprints = saved;
   for (const b of lib.boards) {
     const raw = kv.getItem(boardKey(b.id));
     if (!raw || !ID.test(b.id)) continue;
@@ -100,6 +111,7 @@ export function encodeLibrary(
     boards: manifest.boards.length,
     media: Object.keys(manifest.assets).length,
     templates: templates.length,
+    blueprints: saved.length,
   };
 }
 
@@ -207,7 +219,9 @@ export function decodeLibrary(
       if (clean && (i.emoji || i.description)) spaceInfo[clean] = i;
     }
   const templates = validTemplates(manifest.templates);
-  return { kind: 'library', entries: out, spaces, assets, skipped, spaceInfo, templates };
+  // Blueprints are checked like stored ones, each within the size a saved blueprint may have (gap R3-Q2).
+  const blueprints = validBlueprints(manifest.blueprints, parse, BLUEPRINT_MAX_BYTES);
+  return { kind: 'library', entries: out, spaces, assets, skipped, spaceInfo, templates, blueprints };
 }
 
 /** Read any backup file: a library backup, a single-board .boardroom bundle or a JSON board (with embedded media). */

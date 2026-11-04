@@ -3,16 +3,37 @@
 // Image bytes live in IndexedDB (see assets-store.ts); JSON backups embed them under `assets`.
 import type { Board, Crop, ImageAdjust, ImageAsset, Item } from './model.ts';
 import { createItem } from './model.ts';
-import { imageMimes, MAX_IMAGE_BYTES } from './model-ext.ts';
+import { assetByteLimit, imageMimes, MAX_IMAGE_BYTES, MAX_SVG_BYTES, originalImageMimes } from './model-ext.ts';
 
+export { MAX_SVG_BYTES };
 /**
  * Formats that are converted to PNG when added (gap b5-8). SVG is never placed in the page as markup: it is
- * decoded as an image (which runs no scripts and loads nothing external) and drawn to a canvas.
+ * decoded as an image (which runs no scripts and loads nothing external) and drawn to a canvas. The file as
+ * added is kept beside the PNG as a download-only original (gap R2-Q3).
  */
-export const convertibleImageMimes = ['image/svg+xml', 'image/bmp'];
+export const convertibleImageMimes = originalImageMimes;
 export const IMAGE_ACCEPT = [...imageMimes, ...convertibleImageMimes, '.svg', '.bmp'].join(',');
-/** Largest SVG source accepted. */
-export const MAX_SVG_BYTES = 5_000_000;
+/** Whether a file of `mime` and `size` bytes is kept as the original of its PNG conversion. */
+export const keepsOriginal = (mime: string, size: number) =>
+  originalImageMimes.includes(mime) && size > 0 && size <= assetByteLimit(mime);
+/** Whether an asset may be drawn on the board. Kept SVG and BMP originals never are; they are only downloaded. */
+export const drawableAsset = (asset: Pick<ImageAsset, 'mime'> | undefined) =>
+  !!asset && !originalImageMimes.includes(asset.mime);
+/**
+ * The file "Download original" saves for an image: the SVG or BMP it was converted from when that is kept
+ * (gap R2-Q3), otherwise its stored picture.
+ */
+export function downloadableAsset(
+  item: Pick<Item, 'assetId' | 'originalAssetId'>,
+  assets: Record<string, ImageAsset>,
+): ImageAsset | undefined {
+  const original = item.originalAssetId ? assets[item.originalAssetId] : undefined;
+  if (original && originalImageMimes.includes(original.mime)) return original;
+  return item.assetId ? assets[item.assetId] : undefined;
+}
+/** Asset ids an item refers to: its picture or media file and, for converted images, the original file. */
+export const itemAssetIds = (i: Pick<Item, 'assetId' | 'originalAssetId'>): string[] =>
+  [i.assetId, i.originalAssetId].filter((id): id is string => !!id);
 /** The image type of a file from its MIME type, or from its extension when the type is missing. */
 export function imageTypeOf(file: { type: string; name?: string }): string {
   const t = file.type === 'image/x-ms-bmp' ? 'image/bmp' : file.type;
@@ -91,6 +112,32 @@ export function downscaleSize(
   const k = Math.min(1, max / Math.max(width, height, 1));
   return { width: Math.max(1, Math.round(width * k)), height: Math.max(1, Math.round(height * k)) };
 }
+/** A base64 data URL of `bytes`. */
+export function base64DataUrl(bytes: Uint8Array, mime: string): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:${mime};base64,${btoa(bin)}`;
+}
+/**
+ * The download-only original of a converted SVG or BMP file (gap R2-Q3), sized like its PNG conversion.
+ * Null when the type is not converted or the file is over the stored-file limit for its type.
+ */
+export function originalAsset(
+  bytes: Uint8Array,
+  mime: string,
+  name: string,
+  converted: Pick<ImageAsset, 'width' | 'height'>,
+): ImageAsset | null {
+  if (!keepsOriginal(mime, bytes.length)) return null;
+  const ext = mime === 'image/bmp' ? 'bmp' : 'svg';
+  return {
+    mime,
+    data: base64DataUrl(bytes, mime),
+    width: converted.width,
+    height: converted.height,
+    name: (name || `Image.${ext}`).slice(0, 200),
+  };
+}
 /** MIME type and bytes of a data URL (base64 or percent-encoded). */
 export function decodeDataUrl(url: string): { mime: string; bytes: Uint8Array } {
   const comma = url.indexOf(','),
@@ -114,6 +161,8 @@ const extensions: Record<string, string> = {
   'video/mp4': 'mp4',
   'video/webm': 'webm',
   'application/pdf': 'pdf',
+  'image/svg+xml': 'svg',
+  'image/bmp': 'bmp',
 };
 /** File name to download a stored asset under: its own name, with an extension that matches its type. */
 export function originalFileName(asset: Pick<ImageAsset, 'name' | 'mime'>, fallback = 'file'): string {
@@ -182,10 +231,15 @@ export function fitImage(width: number, height: number, max = 480): { w: number;
   const scale = Math.min(1, max / Math.max(width, height, 1));
   return { w: Math.max(20, Math.round(width * scale)), h: Math.max(20, Math.round(height * scale)) };
 }
-export function createImageItem(assetId: string, asset: ImageAsset, center: { x: number; y: number }): Item {
+export function createImageItem(
+  assetId: string,
+  asset: ImageAsset,
+  center: { x: number; y: number },
+  originalAssetId?: string,
+): Item {
   const size = fitImage(asset.width, asset.height),
     item = createItem('image', center.x - size.w / 2, center.y - size.h / 2);
-  return { ...item, ...size, assetId, text: asset.name.slice(0, 200) };
+  return { ...item, ...size, assetId, ...(originalAssetId ? { originalAssetId } : {}), text: asset.name.slice(0, 200) };
 }
 export function clampCrop(c: Crop): Crop {
   const w = Math.min(1, Math.max(0.01, c.w)),
@@ -212,7 +266,13 @@ export function applyCrop(board: Board, id: string, crop: Crop | null, asset: Im
   };
 }
 /** Replace the picture while preserving placement (position, width, layer, links and group). */
-export function replaceImage(board: Board, id: string, assetId: string, asset: ImageAsset): Board {
+export function replaceImage(
+  board: Board,
+  id: string,
+  assetId: string,
+  asset: ImageAsset,
+  originalAssetId?: string,
+): Board {
   return {
     ...board,
     items: board.items.map(i => {
@@ -220,6 +280,8 @@ export function replaceImage(board: Board, id: string, assetId: string, asset: I
       const h = (i.w * asset.height) / asset.width,
         next: Item = { ...i, assetId, h, y: i.y + (i.h - h) / 2, text: asset.name.slice(0, 200) };
       delete next.crop;
+      if (originalAssetId) next.originalAssetId = originalAssetId;
+      else delete next.originalAssetId;
       return next;
     }),
   };
@@ -228,8 +290,8 @@ export function replaceImage(board: Board, id: string, assetId: string, asset: I
 export function cropViewBox(asset: ImageAsset, crop: Crop = FULL_CROP): string {
   return `${crop.x * asset.width} ${crop.y * asset.height} ${crop.w * asset.width} ${crop.h * asset.height}`;
 }
-/** Every asset referenced by the board (images, video and PDF). */
-export const referencedAssets = (board: Board) => new Set(board.items.filter(i => i.assetId).map(i => i.assetId!));
+/** Every asset referenced by the board (images, video, PDF and the originals of converted images). */
+export const referencedAssets = (board: Board) => new Set(board.items.flatMap(itemAssetIds));
 /** Portable backup: embed the image data that the board references. */
 export function withAssets(board: Board, assets: Record<string, ImageAsset>): Board {
   const used = [...referencedAssets(board)].filter(id => assets[id]);
@@ -246,6 +308,8 @@ export function splitAssets(
   const assets = board.assets ?? {},
     next = { ...board };
   delete next.assets;
-  const missing = [...referencedAssets(next)].filter(id => !assets[id] && !known[id]).length;
+  // A missing original only means "Download original" falls back to the PNG, so it is not counted.
+  const shown = new Set(next.items.filter(i => i.assetId).map(i => i.assetId!)),
+    missing = [...shown].filter(id => !assets[id] && !known[id]).length;
   return { board: next, assets, missing };
 }

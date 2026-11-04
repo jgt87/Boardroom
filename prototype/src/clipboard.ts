@@ -5,6 +5,7 @@ import type { Board, GroupDef, ImageAsset, Item, RecordRow } from './model.ts';
 import { clone, endpoints } from './model.ts';
 import type { GridData } from './grid.ts';
 import { expandLinked, remapMermaidNode } from './mermaid-link-rules.ts';
+import { editableIds } from './arrange.ts';
 
 export const CLIP_FORMAT = 'boardroom-objects';
 export type ClipPayload = {
@@ -56,12 +57,13 @@ export function copySelection(
   }
   const media: Record<string, ImageAsset> = {};
   let used = 0;
-  for (const i of items)
-    if (i.assetId && assets[i.assetId] && !media[i.assetId]) {
-      const size = assets[i.assetId].data.length;
+  // Shown pictures and media first; the kept originals of converted SVG/BMP images (gap R2-Q3) use what is left.
+  for (const id of [...items.map(i => i.assetId), ...items.map(i => i.originalAssetId)])
+    if (id && assets[id] && !media[id]) {
+      const size = assets[id].data.length;
       if (used + size > assetBudget) continue;
       used += size;
-      media[i.assetId] = assets[i.assetId];
+      media[id] = assets[id];
     }
   const xs = items.flatMap(i => [i.x, i.x + (i.type === 'arrow' ? i.w : Math.max(0, i.w))]),
     ys = items.flatMap(i => [i.y, i.y + (i.type === 'arrow' ? i.h : Math.max(0, i.h))]);
@@ -85,6 +87,23 @@ export function copySelection(
     assets: media,
     bounds: { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y },
   };
+}
+/**
+ * Objects a cut deletes: the selection plus, for each editable frame linked to Mermaid code, its diagram (the
+ * same objects the copy took), so pasting does not duplicate the shapes. Plain frames keep their contents, as
+ * on Delete; a locked linked frame keeps its diagram.
+ */
+export function cutIds(board: Board, ids: string[]): string[] {
+  const editable = new Set(editableIds(board, ids));
+  return [
+    ...new Set([
+      ...ids,
+      ...expandLinked(
+        board,
+        ids.filter(id => editable.has(id)),
+      ),
+    ]),
+  ];
 }
 const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

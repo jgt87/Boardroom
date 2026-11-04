@@ -3,13 +3,23 @@
 // model and repaint, so the stored data never depends on what the browser's own editing produces.
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bold, Italic, Underline, Strikethrough, Baseline, Highlighter, Link as LinkIcon } from 'lucide-react';
+import {
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  Baseline,
+  Highlighter,
+  Link as LinkIcon,
+  RemoveFormatting,
+} from 'lucide-react';
 import type { Item } from './model';
 import { formatStyle, textLayout } from './text-format';
 import {
   activeSpans,
   applyStyle,
   cleanMentionName,
+  clearStyles,
   fromRuns,
   linkAt,
   replaceRange,
@@ -297,6 +307,14 @@ export function CanvasTextEditor({
     const m = model();
     show({ text: m.text, spans: toggleStyle(m.text, m.spans, s.start, s.end, key) }, s.start, s.end);
   };
+  /** Clear formatting (Ctrl+\): styles go from the selection, or from all the text when nothing is selected. */
+  const clearFormatting = () => {
+    const s = selection();
+    if (!rich || !s) return;
+    setPalette(null);
+    const m = model();
+    show({ text: m.text, spans: clearStyles(m.text, m.spans, s.start, s.end) }, s.start, s.end);
+  };
   const setColor = (key: 'color' | 'highlight', value: string | undefined) => {
     const s = selection();
     setPalette(null);
@@ -445,6 +463,11 @@ export function CanvasTextEditor({
       if (!e.shiftKey && key === 'k') {
         e.preventDefault();
         openLink();
+        return;
+      }
+      if (!e.shiftKey && (e.key === '\\' || e.code === 'Backslash')) {
+        e.preventDefault();
+        clearFormatting();
         return;
       }
     }
@@ -634,6 +657,19 @@ export function CanvasTextEditor({
                   }}
                 >
                   <LinkIcon size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Clear formatting"
+                  title="Clear formatting (Ctrl+\)"
+                  {...keepSelection}
+                  onClick={e => {
+                    e.stopPropagation();
+                    clearFormatting();
+                  }}
+                >
+                  <RemoveFormatting size={15} />
                 </button>
                 {palette && (
                   <SwatchRow

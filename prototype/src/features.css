@@ -776,20 +776,39 @@
 .code-body {
   margin: 0;
   padding: 10px 12px;
-  display: flex;
-  gap: 12px;
+  display: block;
   font-size: 13px;
   line-height: 1.5;
   overflow: hidden;
   flex: 1;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   tab-size: 2;
 }
-.code-gutter {
-  color: #646776;
+.code-body > code {
+  display: block;
+  font: inherit;
+}
+/* One row per source line (gap D14): the number is pseudo-element content, so it is never selected or copied,
+   and the row's left padding keeps wrapped continuation lines clear of the gutter. */
+.code-line {
+  display: block;
+  position: relative;
+  min-height: 1.5em;
+}
+.code-body.with-line-numbers .code-line {
+  padding-left: calc(var(--code-gutter, 2ch) + 12px);
+}
+.code-body.with-line-numbers .code-line::before {
+  content: attr(data-line);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--code-gutter, 2ch);
   text-align: right;
+  color: #646776;
   user-select: none;
-  min-width: 1.5em;
+  pointer-events: none;
 }
 .code-editor {
   width: min(900px, 100%);
@@ -1071,4 +1090,26 @@
 .search-replace-toggle.active {
   color: var(--blue);
   background: #edf0ff;
+}
+
+/* Reduce motion: play/pause on an animated GIF shown as a still frame (gap F8 / Q2) */
+.gif-toggle-button {
+  width: 28px;
+  height: 28px;
+  margin: 1px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(24, 24, 32, 0.72);
+  color: #fff;
+  cursor: pointer;
+}
+.gif-toggle-button:hover {
+  background: rgba(24, 24, 32, 0.88);
+}
+.gif-toggle-button:focus-visible {
+  outline: 2px solid var(--accent, #4262ff);
+  outline-offset: 1px;
 }

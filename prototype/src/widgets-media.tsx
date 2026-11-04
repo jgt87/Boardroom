@@ -44,6 +44,7 @@ import { PREVIEW_EVENT } from './prototype-preview';
 import { statusAction } from './status-chip';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import './widgets-media.css';
+import { BrandSwatches } from './brand-kit-panel';
 
 /** Fired by widget actions that need main.tsx to open the widget's Editor: detail { id }. */
 export const OPEN_EDITOR_EVENT = 'boardroom:open-widget-editor';
@@ -1447,6 +1448,7 @@ function ScreenEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onCl
           onChange={e => setBackground(e.target.value)}
         />
       </label>
+      <BrandSwatches label="Brand colours for screen background" value={background} onPick={setBackground} />
     </Dialog>
   );
 }

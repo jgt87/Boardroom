@@ -21,6 +21,7 @@ import {
 } from './grid';
 import type { GridData } from './grid';
 import { Dialog, setData } from './widget-kit';
+import { BrandSwatches } from './brand-kit-panel';
 import { CanvasField, canvasControl } from './canvas-fields';
 import { gridMetrics, GRID_HEADER, setGridResizeMode } from './grid-canvas';
 import { GridAxisHandle } from './grid-axis-handle';
@@ -543,6 +544,7 @@ export function GridEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx;
               onChange={e => style({ color: e.target.value.toLowerCase() === '#25252c' ? undefined : e.target.value })}
             />
           </label>
+          <BrandSwatches label="Brand colours for cell text" value={curStyle.color} onPick={c => style({ color: c })} />
         </span>
         <label className="w-inline">
           Cell colour
@@ -555,6 +557,11 @@ export function GridEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx;
             }
           />
         </label>
+        <BrandSwatches
+          label="Brand colours for cell"
+          value={g.colors?.[`${cur.r},${cur.c}`]}
+          onPick={c => setG(setCellColor(g, cur.r, cur.c, c))}
+        />
       </div>
       <div ref={table} className="w-grid-edit">
         <GridTable
