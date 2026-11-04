@@ -1,8 +1,10 @@
 import type { Item, RecordRow } from './model';
 import type { WidgetCtx } from './widget-types';
 import { KanbanView, TimelineView } from './record-views';
+import type { KanbanLane } from './record-views';
 import { CanvasField, canvasControl } from './canvas-fields';
-import { deleteRecord, recordsError } from './records';
+import { addChildRecord, deleteRecord, indentRecord, outdentRecord, recordTree, recordsError } from './records';
+import { RecordSavedViews } from './record-saved-views';
 import { schemaOf, validateRecordValues } from './record-schema';
 import { RecordFields, RecordFieldInput } from './record-fields';
 import { createItem } from './model';
@@ -11,6 +13,7 @@ import { RecordCardHandle, RECORD_CARD_MIME } from './record-card-handle';
 import { RecordLayoutMenu } from './record-layout-menu';
 import { useState } from 'react';
 import { RecordControls } from './record-controls';
+import { RecordImportControls, recordFileDrop } from './record-import-controls';
 import {
   queryRecords,
   groupedRecords,
@@ -19,7 +22,13 @@ import {
   mergeRecordSubset,
   recordValue,
   withRecordValue,
+  calculateRecords,
+  formatCalc,
+  numericRecordFields,
+  recordCalcs,
+  recordCalcNames,
 } from './record-query';
+import type { RecordCalc } from './record-query';
 
 export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const rows = ctx.board.datasets?.[item.datasetId!] ?? [];
@@ -32,10 +41,45 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const config = item.recordView ?? {},
     [search, setSearch] = useState(''),
     [selection, setSelection] = useState<string[]>([]);
-  const visible = queryRecords(rows, config, search),
-    selectable = visible.filter(
-      r => view !== 'table' || !config.group || !config.hiddenGroups?.includes(String(recordValue(r, config.group))),
-    ),
+  const visible = queryRecords(rows, config, search, schema);
+  // Grouping: row groups in Table and Timeline, swimlanes in Kanban (never the Kanban column field).
+  const groupExclude =
+    view === 'kanban'
+      ? [
+          'status',
+          ...(group ? [`field:${group.id}`] : []),
+          ...schema.fields.filter(f => f.type === 'formula').map(f => `field:${f.id}`),
+        ]
+      : [];
+  const groupField = config.group && !groupExclude.includes(config.group) ? config.group : undefined;
+  const groupOf = (r: RecordRow) => String(recordValue(r, groupField!, schema));
+  const groups = groupedRecords(visible, groupField, schema);
+  const hiddenGroup = (value: string) => !!groupField && !!config.hiddenGroups?.includes(value);
+  const toggleGroup = (value: string) =>
+    onView({
+      ...config,
+      hiddenGroups: config.hiddenGroups?.includes(value)
+        ? config.hiddenGroups.filter(v => v !== value)
+        : [...(config.hiddenGroups ?? []), value],
+    });
+  const groupLabel = (value: string) => {
+    const f = groupField?.startsWith('field:') ? schema.fields.find(f => `field:${f.id}` === groupField) : undefined;
+    return value === ''
+      ? 'Unassigned'
+      : f?.type === 'checkbox'
+        ? `${f.name}: ${value === 'true' ? 'Yes' : 'No'}`
+        : value;
+  };
+  const entries = groups.flatMap(g => [
+    ...(groupField ? [{ kind: 'group' as const, value: g.value, count: g.rows.length }] : []),
+    ...(!hiddenGroup(g.value)
+      ? (view === 'table'
+          ? recordTree(g.rows, config.collapsed)
+          : g.rows.map(row => ({ row, depth: 0, children: 0, collapsed: false }))
+        ).map((entry, _k, tree) => ({ kind: 'record' as const, record: entry.row, entry, tree }))
+      : []),
+  ]);
+  const selectable = entries.flatMap(e => (e.kind === 'record' ? [e.record] : [])),
     visibleIds = new Set(selectable.map(r => r.id));
   const selected = selection.filter(id => visibleIds.has(id));
   const onView = (next: typeof config) => {
@@ -45,12 +89,13 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       items: b.items.map(i => (i.id === item.id && !i.locked ? { ...i, recordView: next } : i)),
     }));
   };
-  const entries = groupedRecords(visible, config.group).flatMap(g => [
-    ...(config.group ? [{ kind: 'group' as const, value: g.value, count: g.rows.length }] : []),
-    ...(!(config.group && config.hiddenGroups?.includes(g.value))
-      ? g.rows.map(record => ({ kind: 'record' as const, record }))
-      : []),
-  ]);
+  /** Swimlanes: every option of a select field (or every status) plus any other value in use. */
+  const kanbanLanes = (): KanbanLane[] => {
+    const f = schema.fields.find(f => `field:${f.id}` === groupField),
+      base = groupField === 'status' ? statuses : f?.type === 'select' ? ['', ...f.options!] : [];
+    const values = [...new Set([...base, ...groups.map(g => g.value)])];
+    return values.map(value => ({ value, label: groupLabel(value), hidden: hiddenGroup(value) }));
+  };
   const createCard = (id: string) =>
     ctx.update(b => {
       const source = b.items.find(i => i.id === item.id);
@@ -87,6 +132,41 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       return { ...b, datasets: { ...b.datasets, [item.datasetId!]: next } };
     });
   };
+  const tryChange = (next: () => RecordRow[]) => {
+    try {
+      change(next());
+    } catch (error) {
+      ctx.display((error as Error).message);
+    }
+  };
+  const toggleCollapsed = (id: string) =>
+    onView({
+      ...config,
+      collapsed: config.collapsed?.includes(id)
+        ? config.collapsed.filter(v => v !== id)
+        : [...(config.collapsed ?? []), id],
+    });
+  const addChild = (parent: RecordRow) => {
+    tryChange(() =>
+      addChildRecord(rows, parent.id, {
+        id: crypto.randomUUID(),
+        title: 'New task',
+        status: parent.status,
+        assignee: '',
+        start: '',
+        end: '',
+      }),
+    );
+    if (config.collapsed?.includes(parent.id)) toggleCollapsed(parent.id);
+  };
+  const setCalc = (field: string, calc: RecordCalc | '') => {
+    const calcs = { ...config.calcs };
+    if (calc) calcs[field] = calc;
+    else delete calcs[field];
+    const next: typeof config = { ...config, calcs };
+    if (!Object.keys(calcs).length) delete next.calcs;
+    onView(next);
+  };
   const patch = (id: string, value: Partial<RecordRow>) =>
     change(rows.map(r => (r.id === id ? { ...r, ...value } : r)));
   const add = () =>
@@ -109,7 +189,9 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       event.preventDefault();
       event.stopPropagation();
       const moved =
-        config.group && groupValue !== undefined ? withRecordValue(row, config.group, groupValue, schema) : row;
+        groupField && groupValue !== undefined && String(recordValue(row, groupField, schema)) !== groupValue
+          ? withRecordValue(row, groupField, groupValue, schema)
+          : row;
       if (before === row.id) {
         if (moved !== row) change(rows.map(r => (r.id === row.id ? moved : r)));
         return;
@@ -166,35 +248,45 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                   <button
                     disabled={!!item.locked}
                     aria-expanded={!config.hiddenGroups?.includes(entry.value)}
-                    onClick={() =>
-                      onView({
-                        ...config,
-                        hiddenGroups: config.hiddenGroups?.includes(entry.value)
-                          ? config.hiddenGroups.filter(v => v !== entry.value)
-                          : [...(config.hiddenGroups ?? []), entry.value],
-                      })
-                    }
+                    onClick={() => toggleGroup(entry.value)}
                   >
                     {entry.value || 'Unassigned'} ({entry.count})
                   </button>
                 </th>
               </tr>
             );
-          const r = entry.record;
+          const r = entry.record,
+            { depth, children } = entry.entry;
           return (
             <tr
               key={r.id}
               data-record={r.id}
+              data-depth={depth || undefined}
               onDragOver={dragOver}
-              onDrop={event => dropRecord(event, r.id, config.group ? String(recordValue(r, config.group)) : undefined)}
+              onDrop={event => dropRecord(event, r.id, groupField ? groupOf(r) : undefined)}
             >
               <td>
-                {recordAction?.(r)}
-                <CanvasField
-                  value={r.title}
-                  label={`Record title: ${r.title}`}
-                  onCommit={title => patch(r.id, { title })}
-                />
+                <span className="record-tree-cell" style={{ paddingLeft: Math.min(depth, 12) * 16 }}>
+                  {children ? (
+                    <button
+                      {...canvasControl}
+                      className="record-tree-toggle"
+                      aria-expanded={!entry.entry.collapsed}
+                      aria-label={`${entry.entry.collapsed ? 'Expand' : 'Collapse'} child records: ${r.title}`}
+                      onClick={() => toggleCollapsed(r.id)}
+                    >
+                      {entry.entry.collapsed ? '▸' : '▾'}
+                    </button>
+                  ) : (
+                    depth > 0 && <span className="record-tree-spacer" aria-hidden="true" />
+                  )}
+                  {recordAction?.(r)}
+                  <CanvasField
+                    value={r.title}
+                    label={`Record title: ${r.title}`}
+                    onCommit={title => patch(r.id, { title })}
+                  />
+                </span>
               </td>
               <td>
                 <select
@@ -239,6 +331,8 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                     field={f}
                     value={r.values?.[f.id]}
                     title={r.title}
+                    row={r}
+                    schema={schema}
                     onChange={value => patch(r.id, { values: { ...r.values, [f.id]: value } })}
                   />
                 </td>
@@ -260,25 +354,97 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                 </>
               )}
               <td>
-                <button
-                  {...canvasControl}
-                  aria-label={`Delete record: ${r.title}`}
-                  onClick={() => change(deleteRecord(rows, r.id))}
-                >
-                  Delete
-                </button>
+                <span className="record-row-actions">
+                  <button
+                    {...canvasControl}
+                    aria-label={`Add child record: ${r.title}`}
+                    title="Add a child record"
+                    onClick={() => addChild(r)}
+                  >
+                    + Child
+                  </button>
+                  <button
+                    {...canvasControl}
+                    aria-label={`Indent record: ${r.title}`}
+                    title="Make this a child of the record above"
+                    onClick={() => tryChange(() => indentRecord(rows, entry.tree, r.id))}
+                  >
+                    →
+                  </button>
+                  {r.parent && (
+                    <button
+                      {...canvasControl}
+                      aria-label={`Outdent record: ${r.title}`}
+                      title="Move this record up one level"
+                      onClick={() => tryChange(() => outdentRecord(rows, r.id))}
+                    >
+                      ←
+                    </button>
+                  )}
+                  <button
+                    {...canvasControl}
+                    aria-label={`Delete record: ${r.title}`}
+                    title={children ? 'Delete; child records move up one level' : undefined}
+                    onClick={() => change(deleteRecord(rows, r.id))}
+                  >
+                    Delete
+                  </button>
+                </span>
               </td>
             </tr>
           );
         })}
       </tbody>
+      <tfoot>
+        <tr className="record-calc-row">
+          <th scope="row">
+            {visible.length} {visible.length === 1 ? 'record' : 'records'}
+          </th>
+          <td colSpan={4} />
+          {fields.map(f => {
+            const id = `field:${f.id}`,
+              numeric = numericRecordFields(schema).includes(id),
+              calc = config.calcs?.[id];
+            return (
+              <td key={f.id}>
+                <select
+                  {...canvasControl}
+                  aria-label={`Calculation: ${f.name}`}
+                  value={calc ?? ''}
+                  onChange={e => setCalc(id, e.target.value as RecordCalc | '')}
+                >
+                  <option value="">None</option>
+                  {recordCalcs
+                    .filter(c => numeric || c === 'count')
+                    .map(c => (
+                      <option key={c} value={c}>
+                        {recordCalcNames[c]}
+                      </option>
+                    ))}
+                </select>
+                {calc && (
+                  <span className="record-calc-value" data-calc={f.id}>
+                    {formatCalc(calculateRecords(visible, id, calc, schema))}
+                  </span>
+                )}
+              </td>
+            );
+          })}
+          <td colSpan={(relations ? 2 : 0) + 1} />
+        </tr>
+      </tfoot>
     </table>
   );
   return (
-    <div className="rich-object canvas-interactive canvas-records" onDoubleClick={e => e.stopPropagation()}>
+    <div
+      className="rich-object canvas-interactive canvas-records"
+      onDoubleClick={e => e.stopPropagation()}
+      {...recordFileDrop(item, ctx)}
+    >
       <div className="rich-title canvas-widget-header">
         <span>{item.text || 'Records'}</span>
         <div {...canvasControl} className="canvas-view-switch" role="group" aria-label="Record layout">
+          {view === 'table' && <RecordImportControls item={item} ctx={ctx} />}
           <RecordFields item={item} ctx={ctx} />
           <RecordLayoutMenu item={item} ctx={ctx} />
         </div>
@@ -295,6 +461,8 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         count={visible.length}
         total={rows.length}
         table={view === 'table'}
+        layout={view as 'table' | 'kanban' | 'timeline'}
+        groupExclude={groupExclude}
         locked={!!item.locked}
         selected={selected.length}
         onClear={() => setSelection([])}
@@ -329,7 +497,9 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
             return { ...b, items: [...b.items, ...cards] };
           })
         }
-      />
+      >
+        <RecordSavedViews item={item} ctx={ctx} view={config} onView={onView} />
+      </RecordControls>
       <div
         className="canvas-record-body"
         data-record-format={item.id}
@@ -383,6 +553,12 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                       )
               }
               recordAction={recordAction}
+              columnSettings={group ? undefined : schema.columns}
+              capacity={schema.capacity}
+              lanes={groupField ? kanbanLanes() : undefined}
+              laneOf={groupField ? groupOf : undefined}
+              withLane={groupField ? (r, lane) => withRecordValue(r, groupField, lane, schema) : undefined}
+              onToggleLane={item.locked ? undefined : toggleGroup}
               cardFields={r =>
                 fields.map(f => (
                   <label className="record-custom-field" key={f.id}>
@@ -391,6 +567,8 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                       field={f}
                       value={r.values?.[f.id]}
                       title={r.title}
+                      row={rows.find(row => row.id === r.id) ?? r}
+                      schema={schema}
                       onChange={value => patch(r.id, { values: { ...r.values, [f.id]: value } })}
                     />
                   </label>
@@ -399,14 +577,26 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
             />
           ) : view === 'timeline' ? (
             <TimelineView
-              rows={visible}
+              rows={selectable}
               allRows={rows}
               onAllRows={item.locked ? undefined : change}
               settings={config.timeline}
               onSettings={timeline => onView({ ...config, timeline })}
               onError={ctx.display}
-              onRows={item.locked ? undefined : next => change(mergeRecordSubset(rows, visible, next))}
+              onRows={item.locked ? undefined : next => change(mergeRecordSubset(rows, selectable, next))}
               recordAction={recordAction}
+              groups={
+                groupField
+                  ? groups.map(g => ({
+                      value: g.value,
+                      label: groupLabel(g.value),
+                      hidden: hiddenGroup(g.value),
+                      count: g.rows.length,
+                    }))
+                  : undefined
+              }
+              groupOf={groupField ? groupOf : undefined}
+              onToggleGroup={item.locked ? undefined : toggleGroup}
             />
           ) : (
             table

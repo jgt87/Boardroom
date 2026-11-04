@@ -16,6 +16,21 @@ export function renderMarkdown(md: string): string {
   let heading = 0;
   const marked = new Marked({ gfm: true, breaks: false, async: false });
   marked.use({
+    // `++text++` is underline (item 115); Markdown has no native underline.
+    extensions: [
+      {
+        name: 'underline',
+        level: 'inline',
+        start: (src: string) => src.indexOf('++'),
+        tokenizer(this: any, src: string) {
+          const m = /^\+\+(?=\S)([\s\S]*?\S)\+\+/.exec(src);
+          return m ? { type: 'underline', raw: m[0], tokens: this.lexer.inlineTokens(m[1]) } : undefined;
+        },
+        renderer(this: any, token: any) {
+          return `<u>${this.parser.parseInline(token.tokens)}</u>`;
+        },
+      },
+    ],
     renderer: {
       html(token: Tokens.HTML | Tokens.Tag) {
         return escapeHtml(token.text);

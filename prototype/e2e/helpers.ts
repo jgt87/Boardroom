@@ -118,7 +118,9 @@ export async function openTools(page: Page, category?: string) {
 }
 export async function chooseTool(page: Page, label: string) {
   await page
-    .locator('.gallery-items > button', { has: page.locator('strong', { hasText: new RegExp(`^${label}$`) }) })
+    .locator('.gallery-items > button, .gallery-items .gallery-pick', {
+      has: page.locator('strong', { hasText: new RegExp(`^${label}$`) }),
+    })
     .click();
 }
 

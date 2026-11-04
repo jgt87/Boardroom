@@ -20,21 +20,34 @@ import {
   EyeOff,
   UserRound,
   ArrowLeftRight,
+  SquarePlus,
+  FileDown,
 } from 'lucide-react';
+import { insertShapeOnConnector } from './diagram-gaps';
+import { mindLayoutKinds, mindOutlineMarkdown } from './mindmap-style';
+import type { MindLayoutKind } from './mindmap-style';
+import { saveText } from './widget-kit';
 import type { Item, FrameFormat } from './model';
 import { TextControls } from './text-format';
 import { NoteSizeControl } from './sticky-tools';
 import { ConnectorControls, swapConnectorEnds } from './connectors';
 import { isShapeKind, shapeLabels } from './shapes';
 import { BorderControls } from './shape-tools';
-import { expandGroups } from './arrange';
+import { reorderZ } from './arrange';
 import { FrameControls } from './presentation';
+import { FacilitationActions } from './facilitation-actions';
 import { containerOf, moveChild, removeChild } from './autolayout';
 import { applyFrameFormat } from './frame-presets';
 import { urlsIn, setPrivate, setFrameContentHidden, frameContentHidden } from './board-tools';
 import { viewFor } from './widgets';
 import { useApp } from './board-app';
 import { manualMindNodes, mindStyleOf } from './mindmap-style';
+const mindLayoutLabels: Record<MindLayoutKind, string> = {
+  right: 'Grow right',
+  both: 'Both sides',
+  down: 'Top down',
+};
+import { CardBar, NoteReactButton, SwitchToCard, SwitchTypeMenu } from './card-bar';
 
 export function SelectionBars() {
   const {
@@ -68,6 +81,7 @@ export function SelectionBars() {
     boardRef,
     widgetCtx,
     authorName,
+    setSelected,
   } = useApp();
   return (
     <>
@@ -194,11 +208,50 @@ export function SelectionBars() {
                 const autoLayout = mindStyleOf(selectedItem).autoLayout === false;
                 patch({
                   data: { ...selectedItem.data, autoLayout },
-                  ...(!autoLayout ? { nodes: manualMindNodes(selectedItem.nodes ?? []) } : {}),
+                  ...(!autoLayout
+                    ? { nodes: manualMindNodes(selectedItem.nodes ?? [], mindStyleOf(selectedItem).layout) }
+                    : {}),
                 });
               }}
             >
               Auto layout {mindStyleOf(selectedItem).autoLayout ? 'on' : 'off'}
+            </button>
+          )}
+          {selectedItem?.type === 'mindmap' && selected.length === 1 && (
+            <select
+              aria-label="Mind map layout"
+              title="Mind map layout"
+              disabled={selectedItem.locked || mindStyleOf(selectedItem).autoLayout === false}
+              value={mindStyleOf(selectedItem).layout}
+              onChange={e => patch({ data: { ...selectedItem.data, layout: e.target.value as MindLayoutKind } })}
+            >
+              {mindLayoutKinds.map(k => (
+                <option key={k} value={k}>
+                  {mindLayoutLabels[k]}
+                </option>
+              ))}
+            </select>
+          )}
+          {selectedItem?.type === 'mindmap' && selected.length === 1 && (
+            <button
+              className="icon-button"
+              aria-label="Export outline as Markdown"
+              title="Export outline as Markdown"
+              onClick={() =>
+                saveText(
+                  mindOutlineMarkdown(selectedItem.nodes ?? []),
+                  `${
+                    (selectedItem.nodes?.find(n => n.parent === null)?.text || 'mind-map')
+                      .trim()
+                      .replace(/[^\w-]+/g, '-')
+                      .replace(/^-+|-+$/g, '')
+                      .slice(0, 60) || 'mind-map'
+                  }.md`,
+                  'text/markdown',
+                )
+              }
+            >
+              <FileDown size={17} />
             </button>
           )}
           {selectedItem?.type === 'note' && selected.length === 1 && (
@@ -264,6 +317,30 @@ export function SelectionBars() {
             </button>
           )}
           {selectedItem?.type === 'arrow' && selected.length === 1 && (
+            <button
+              className="icon-button"
+              aria-label="Insert shape on line"
+              title="Insert shape on line"
+              disabled={selectedItem.locked}
+              onClick={() => {
+                let shapeId = '';
+                run(
+                  b => {
+                    const next = insertShapeOnConnector(b, selectedItem.id);
+                    shapeId = next.shape.id;
+                    return next.board;
+                  },
+                  () => {
+                    setSelected([shapeId]);
+                    setEditing(shapeId);
+                  },
+                );
+              }}
+            >
+              <SquarePlus size={17} />
+            </button>
+          )}
+          {selectedItem?.type === 'arrow' && selected.length === 1 && (
             <ConnectorControls item={selectedItem} onChange={connector => patch({ connector })} />
           )}
           {selectedItem?.type === 'arrow' && selected.length === 1 && (
@@ -318,8 +395,13 @@ export function SelectionBars() {
                   <span>{a.label}</span>
                 </button>
               ))}
+          <CardBar />
+          <SwitchToCard />
+          <SwitchTypeMenu />
+          <NoteReactButton />
           {selectedItem &&
             selected.length === 1 &&
+            selectedItem.type !== 'card' &&
             viewFor(selectedItem.type)?.Editor &&
             !viewFor(selectedItem.type)?.textEdit && (
               <button className="widget-action" onClick={() => openEditor(selectedItem.id)}>
@@ -377,6 +459,7 @@ export function SelectionBars() {
               </button>
             </>
           )}
+          <FacilitationActions />
           {selectedItem &&
             selected.length === 1 &&
             ['image', 'video', 'pdf', 'icon', 'qr'].includes(selectedItem.type) && (
@@ -466,34 +549,16 @@ export function SelectionBars() {
           <button
             className="icon-button"
             aria-label="Bring to front"
-            title="Bring to front"
-            onClick={() => {
-              const ids = expandGroups(board, selected);
-              update({
-                ...board,
-                items: [
-                  ...board.items.filter(i => !ids.includes(i.id)),
-                  ...board.items.filter(i => ids.includes(i.id)),
-                ],
-              });
-            }}
+            title="Bring to front (PgUp)"
+            onClick={() => update(reorderZ(board, selected, 'front'))}
           >
             <MoveUp size={17} />
           </button>
           <button
             className="icon-button"
             aria-label="Send to back"
-            title="Send to back"
-            onClick={() => {
-              const ids = expandGroups(board, selected);
-              update({
-                ...board,
-                items: [
-                  ...board.items.filter(i => ids.includes(i.id)),
-                  ...board.items.filter(i => !ids.includes(i.id)),
-                ],
-              });
-            }}
+            title="Send to back (PgDn)"
+            onClick={() => update(reorderZ(board, selected, 'back'))}
           >
             <MoveDown size={17} />
           </button>

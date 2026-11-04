@@ -11,6 +11,12 @@ export type ViewPrefs = {
   undoControls: boolean;
   /** Do Not Disturb (item 108): mute the timer sound and reaction animations. */
   dnd: boolean;
+  /** Snap moved objects to the 40 px grid (gap D2). */
+  snapGrid: boolean;
+  /** Grid drawn as lines or dots (gap D2). */
+  gridStyle: 'lines' | 'dots';
+  /** Extra tools pinned to the creation toolbar (gap F12): object kinds, in order. */
+  pinned: string[];
 };
 export const VIEW_PREFS_KEY = 'boardroom.view.v1';
 export const defaultViewPrefs: ViewPrefs = {
@@ -23,10 +29,13 @@ export const defaultViewPrefs: ViewPrefs = {
   comments: true,
   undoControls: true,
   dnd: false,
+  snapGrid: false,
+  gridStyle: 'lines',
+  pinned: [],
 };
 
 /** Parse stored preferences, falling back to defaults for anything missing or invalid. */
-export function parseViewPrefs(raw: string | null | undefined): ViewPrefs {
+export function parseViewPrefs(raw: string | null | undefined, systemReducedMotion = false): ViewPrefs {
   try {
     const v = raw ? JSON.parse(raw) : null;
     return {
@@ -35,19 +44,34 @@ export function parseViewPrefs(raw: string | null | undefined): ViewPrefs {
       spellcheck: typeof v?.spellcheck === 'boolean' ? v.spellcheck : defaultViewPrefs.spellcheck,
       navigation: v?.navigation === 'mouse' || v?.navigation === 'auto' ? v.navigation : 'trackpad',
       singleKeys: typeof v?.singleKeys === 'boolean' ? v.singleKeys : defaultViewPrefs.singleKeys,
-      reduceMotion: typeof v?.reduceMotion === 'boolean' ? v.reduceMotion : defaultViewPrefs.reduceMotion,
+      // Until the person chooses, follow the operating system's reduced-motion setting (gap F8).
+      reduceMotion: typeof v?.reduceMotion === 'boolean' ? v.reduceMotion : systemReducedMotion,
       comments: typeof v?.comments === 'boolean' ? v.comments : defaultViewPrefs.comments,
       undoControls: typeof v?.undoControls === 'boolean' ? v.undoControls : defaultViewPrefs.undoControls,
       dnd: typeof v?.dnd === 'boolean' ? v.dnd : defaultViewPrefs.dnd,
+      snapGrid: typeof v?.snapGrid === 'boolean' ? v.snapGrid : defaultViewPrefs.snapGrid,
+      gridStyle: v?.gridStyle === 'dots' ? 'dots' : 'lines',
+      pinned: Array.isArray(v?.pinned)
+        ? [
+            ...new Set((v.pinned as unknown[]).filter((k): k is string => typeof k === 'string' && k.length <= 40)),
+          ].slice(0, 12)
+        : [],
     };
   } catch {
-    return { ...defaultViewPrefs };
+    return { ...defaultViewPrefs, reduceMotion: systemReducedMotion };
   }
 }
 
+const systemReduce = () => {
+  try {
+    return !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+};
 export function loadViewPrefs(): ViewPrefs {
   try {
-    return parseViewPrefs(localStorage.getItem(VIEW_PREFS_KEY));
+    return parseViewPrefs(localStorage.getItem(VIEW_PREFS_KEY), systemReduce());
   } catch {
     return { ...defaultViewPrefs };
   }

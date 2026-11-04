@@ -4,6 +4,7 @@ import { useApp } from './board-app';
 import { catalog, formatTools } from './tool-catalog';
 import { matchCommands, type Command } from './commands';
 import { undo, redo } from './model';
+import { connectItems, pendingConnection } from './switch-type';
 
 type Runnable = Command & { run: () => void };
 
@@ -25,6 +26,11 @@ export function CommandPalette() {
     setInspector,
     viewPrefs,
     setViewPrefs,
+    selected,
+    boardRef,
+    update,
+    setSelected,
+    display,
   } = app;
   const [query, setQuery] = useState(''),
     [active, setActive] = useState(0);
@@ -78,6 +84,47 @@ export function CommandPalette() {
       { id: 'props', label: 'Properties', group: 'View', keywords: 'inspector', run: () => setInspector(true) },
       { id: 'timer', label: 'Timer', group: 'Facilitation', run: () => setTimerOn(true) },
       { id: 'shortcuts', label: 'Keyboard shortcuts', group: 'Help', shortcut: '?', run: () => setHelp(true) },
+      // Keyboard connect (gap F9): choose a start object, Tab to another and connect.
+      {
+        id: 'connect-start',
+        label: 'Start connection here',
+        group: 'Connect',
+        keywords: 'connector line arrow from',
+        run: () => {
+          if (selected.length !== 1) return display('Select one object to connect from.');
+          pendingConnection.from = selected[0];
+          display('Connection started. Select another object and choose "Connect to this object".');
+        },
+      },
+      {
+        id: 'connect-end',
+        label: 'Connect to this object',
+        group: 'Connect',
+        keywords: 'connector line arrow to finish',
+        run: () => {
+          const from = pendingConnection.from;
+          if (!from || !boardRef.current.items.some(i => i.id === from))
+            return display('Choose "Start connection here" on another object first.');
+          if (selected.length !== 1) return display('Select one object to connect to.');
+          const r = connectItems(boardRef.current, [from, selected[0]]);
+          pendingConnection.from = null;
+          if (!r.connectors.length) return display('Those objects are already connected.');
+          update(r.board);
+          setSelected(r.connectors.map(c => c.id));
+        },
+      },
+      {
+        id: 'connect-chain',
+        label: 'Connect selected objects in order',
+        group: 'Connect',
+        keywords: 'connector chain flow',
+        run: () => {
+          const r = connectItems(boardRef.current, selected);
+          if (!r.connectors.length) return display('Select two or more objects to connect.');
+          update(r.board);
+          display(`Added ${r.connectors.length} connector${r.connectors.length === 1 ? '' : 's'}.`);
+        },
+      },
     ];
     return [...actions, ...unique];
   }, [
@@ -95,6 +142,11 @@ export function CommandPalette() {
     setInspector,
     setTimerOn,
     setHelp,
+    selected,
+    boardRef,
+    update,
+    setSelected,
+    display,
   ]);
   const results = matchCommands(commands, query, 40);
   const choose = (c: Runnable | undefined) => {

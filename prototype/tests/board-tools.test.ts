@@ -267,7 +267,7 @@ test('50 CSV escaping, accessibility checks and templates', () => {
   assert.ok(contrastRatio('#000000', '#ffffff') > 20);
   const issues = checkAccessibility(
     board(
-      { ...createItem('note', 0, 0, '#25252a'), text: 'dark' },
+      { ...createItem('note', 0, 0, '#7a7a7a'), text: 'mid grey: low contrast with dark or white text' },
       { ...createItem('image', 0, 0), assetId: 'x' },
       { ...createItem('text', 0, 0), text: 'tiny', format: { fontSize: 10 } },
     ),

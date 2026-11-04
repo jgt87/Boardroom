@@ -14,7 +14,7 @@ export function ImageBody({ item, asset }: { item: Item; asset?: ImageAsset }) {
         </text>
       </>
     );
-  return (
+  const body = (
     <svg
       width={item.w}
       height={item.h}
@@ -24,6 +24,45 @@ export function ImageBody({ item, asset }: { item: Item; asset?: ImageAsset }) {
     >
       <image href={asset.data} width={asset.width} height={asset.height} preserveAspectRatio="none" />
     </svg>
+  );
+  const s = item.style;
+  if (!s) return body;
+  // Border, corner radius and circle crop (gap D11). The clip path lives inside the object's own group,
+  // so exports that clone the canvas carry it along.
+  const circle = s.mask === 'circle',
+    r = circle ? 0 : Math.min(s.radius ?? 0, item.w / 2, item.h / 2),
+    width = s.borderWidth ?? 0,
+    clipId = `image-clip-${item.id}`,
+    outline = (props: React.SVGProps<SVGRectElement> & React.SVGProps<SVGEllipseElement>) =>
+      circle ? (
+        <ellipse cx={item.w / 2} cy={item.h / 2} rx={item.w / 2} ry={item.h / 2} {...props} />
+      ) : (
+        <rect width={item.w} height={item.h} rx={r} {...props} />
+      );
+  return (
+    <>
+      {(circle || r > 0) && (
+        <defs>
+          <clipPath id={clipId}>{outline({})}</clipPath>
+        </defs>
+      )}
+      <g clipPath={circle || r > 0 ? `url(#${clipId})` : undefined}>{body}</g>
+      {width > 0 &&
+        outline({
+          fill: 'none',
+          stroke: s.borderColor ?? '#2d2d34',
+          strokeWidth: width,
+          strokeOpacity: s.borderOpacity ?? 1,
+          strokeDasharray:
+            s.borderStyle === 'dashed'
+              ? `${width * 4} ${width * 2}`
+              : s.borderStyle === 'dotted'
+                ? `0 ${width * 2.5}`
+                : undefined,
+          strokeLinecap: s.borderStyle === 'dotted' ? 'round' : undefined,
+          pointerEvents: 'none',
+        })}
+    </>
   );
 }
 

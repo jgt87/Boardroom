@@ -1,6 +1,13 @@
 import { expandGroups } from './arrange';
 import React from 'react';
 import { selectionBounds, handles, handlePoint, SELECT_GAP, anchorSides, anchorPoint } from './interactions';
+import { canRotate } from './rotation';
+import type { Item } from './model';
+
+/** SVG rotate() suffix that turns a world-space overlay with a rotated object (gap D1). */
+const rotateAbout = (i: Item) => (i.rotation ? ` rotate(${i.rotation} ${i.x + i.w / 2} ${i.y + i.h / 2})` : '');
+/** Screen-pixel distance of the rotate handle above the selection outline. */
+const ROTATE_GAP = 44;
 import { dimensionLabel } from './view-prefs';
 import { connectorGeometry, ConnectorMarkers } from './connectors';
 import { bendHandles } from './connector-geometry';
@@ -10,6 +17,21 @@ import { EyeOff } from 'lucide-react';
 import { useApp } from './board-app';
 import { useRenderItem } from './use-render-item';
 import { RECORD_CARD_MIME } from './record-card-handle';
+import { mermaidItem } from './smart-paste';
+import { TOOL_MIME } from './formats';
+import { ESTIMATE_MIME, estimatePatch, patchCards } from './card-tools';
+import { inHiddenLayer } from './layers';
+import { describeItem, stepInOrder } from './navigation';
+import { announce } from './announce';
+import { addConnectedCopy, canQuickConnect, quickConnectPoint } from './diagram-gaps';
+
+/** True while a drag that started in this page is in progress (so canvas text drops ignore it). */
+let pageDrag = false;
+if (typeof document !== 'undefined') {
+  document.addEventListener('dragstart', () => (pageDrag = true), true);
+  document.addEventListener('dragend', () => (pageDrag = false), true);
+  document.addEventListener('drop', () => setTimeout(() => (pageDrag = false)), true);
+}
 import { syncedCard } from './record-canvas';
 import { createItem } from './model';
 
@@ -30,9 +52,13 @@ export function CanvasSurface() {
     gesture,
     guides,
     insertImages,
+    insertText,
+    insertMedia,
+    placeAt,
     marquee,
     openEditor,
     pointerDown,
+    pointerCancel,
     pointerMove,
     pointerUp,
     previewStart,
@@ -54,17 +80,20 @@ export function CanvasSurface() {
     tool,
     lastPointer,
     setContextMenu,
+    renderAll,
+    setEditing,
+    display,
   } = useApp();
   const { renderItem } = useRenderItem();
   // Large boards: only render objects near the visible area (selected and edited objects always render).
   const view = React.useMemo(() => {
-    if (shown.items.length < 400) return null;
+    if (renderAll || shown.items.length < 400) return null;
     const w = size.w / camera.z,
       h = size.h / camera.z,
       x = -camera.x / camera.z,
       y = -camera.y / camera.z;
     return { x: x - w * 0.5, y: y - h * 0.5, r: x + w * 1.5, b: y + h * 1.5 };
-  }, [shown.items.length, camera, size]);
+  }, [renderAll, shown.items.length, camera, size]);
   const inView = (i: (typeof shown.items)[number]) => {
     if (!view || selected.includes(i.id) || editing === i.id) return true;
     if (i.type === 'arrow') {
@@ -82,10 +111,33 @@ export function CanvasSurface() {
   };
   return (
     <>
+      {/* Skip link (gap F4): jumps keyboard users from the toolbars to the first object on the board. */}
+      <button
+        className="skip-link"
+        onClick={() => {
+          const first = stepInOrder(boardRef.current, undefined);
+          svg.current?.focus();
+          if (!first) return announce('The board is empty.');
+          setSelected([first]);
+          announce(describeItem(boardRef.current.items.find(i => i.id === first)!) + '. Tab moves to the next object.');
+        }}
+      >
+        Skip to first object
+      </button>
       <svg
         ref={svg}
         onDragOver={e => {
-          if ([...e.dataTransfer.types].some(t => t === 'Files' || t === RECORD_CARD_MIME)) e.preventDefault();
+          if (
+            [...e.dataTransfer.types].some(
+              t =>
+                t === 'Files' ||
+                t === RECORD_CARD_MIME ||
+                t === TOOL_MIME ||
+                t === ESTIMATE_MIME ||
+                (!pageDrag && (t === 'text/uri-list' || t === 'text/plain')),
+            )
+          )
+            e.preventDefault();
         }}
         onDrop={e => {
           const record = e.dataTransfer.getData(RECORD_CARD_MIME);
@@ -109,12 +161,65 @@ export function CanvasSurface() {
             }
             return;
           }
+          // Estimate chip dropped on a card (gap G12).
+          const estimate = e.dataTransfer.getData(ESTIMATE_MIME);
+          if (estimate) {
+            e.preventDefault();
+            const id = (e.target as Element).closest?.('[data-item]')?.getAttribute('data-item'),
+              patch = estimatePatch(estimate),
+              target = id ? boardRef.current.items.find(i => i.id === id) : undefined;
+            if (!patch || target?.type !== 'card') return display('Drop the estimate on a card.');
+            update(patchCards(boardRef.current, [target.id], patch));
+            setSelected([target.id]);
+            return;
+          }
+          const tool = e.dataTransfer.getData(TOOL_MIME);
+          if (tool) {
+            // A tool dragged from the toolbar or tool gallery (gap F12).
+            e.preventDefault();
+            if (tool.length <= 40) placeAt(tool, toWorld(e.clientX, e.clientY));
+            return;
+          }
           const files = [...e.dataTransfer.files];
-          if (!files.length) return;
+          if (!files.length) {
+            // Links and text dragged from other apps (gap B7). Drags that start inside the page (Kanban cards,
+            // table rows, selected text) or that a widget already handled are left alone.
+            if (e.defaultPrevented || pageDrag) return;
+            const uri = e.dataTransfer
+              .getData('text/uri-list')
+              .split(/\r?\n/)
+              .find(l => l && !l.startsWith('#'));
+            const text = uri || e.dataTransfer.getData('text/plain');
+            if (text && insertText(text, toWorld(e.clientX, e.clientY))) e.preventDefault();
+            return;
+          }
           e.preventDefault();
           const diagrams = files.filter(f => /\.(drawio|xml)$/i.test(f.name));
-          const documents = files.filter(f => /\.(md|markdown|pptx)$/i.test(f.name));
-          const images = files.filter(f => !diagrams.includes(f) && !documents.includes(f));
+          const documents = files.filter(f => /\.(md|markdown|pptx|docx|csv|tsv|xlsx)$/i.test(f.name));
+          const mermaid = files.filter(f => /\.(mmd|mermaid)$/i.test(f.name));
+          const media = files.filter(
+            f => /^(video\/|application\/pdf$)/.test(f.type) || /\.(pdf|mp4|webm|mov)$/i.test(f.name),
+          );
+          const images = files.filter(
+            f => !diagrams.includes(f) && !documents.includes(f) && !mermaid.includes(f) && !media.includes(f),
+          );
+          // Mermaid files and PDF or video files (gap list B8, B9).
+          for (const [k, f] of mermaid.slice(0, 5).entries()) {
+            const p = toWorld(e.clientX, e.clientY);
+            void f.text().then(code =>
+              update({
+                ...boardRef.current,
+                items: [...boardRef.current.items, mermaidItem(code, { x: p.x + k * 40, y: p.y + k * 40 })],
+              }),
+            );
+          }
+          for (const [k, f] of media.slice(0, 5).entries()) {
+            const p = toWorld(e.clientX, e.clientY);
+            void insertMedia(f, f.type === 'application/pdf' || /\.pdf$/i.test(f.name) ? 'pdf' : 'video', {
+              x: p.x + k * 40,
+              y: p.y + k * 40,
+            });
+          }
           for (const [k, f] of documents.slice(0, 5).entries()) {
             const p = toWorld(e.clientX, e.clientY);
             void importDocument(f, { x: p.x + k * 40, y: p.y + k * 40 });
@@ -131,7 +236,7 @@ export function CanvasSurface() {
         onDoubleClick={e => {
           if (
             (e.target as Element).closest(
-              '[data-resize],[data-connector-end],[data-bend],video,iframe,.mindmap-canvas-editor',
+              '[data-resize],[data-rotate],[data-connector-end],[data-bend],video,iframe,.mindmap-canvas-editor',
             ) ||
             tool !== 'select' ||
             previewStart
@@ -177,7 +282,7 @@ export function CanvasSurface() {
           setContextMenu({ x: e.clientX, y: e.clientY, world, onItem: !!id });
         }}
         onPointerUp={pointerUp}
-        onPointerCancel={cancelGesture}
+        onPointerCancel={pointerCancel}
         onLostPointerCapture={() => {
           if (gesture.current) cancelGesture();
         }}
@@ -192,7 +297,11 @@ export function CanvasSurface() {
             x={camera.x % (40 * camera.z)}
             y={camera.y % (40 * camera.z)}
           >
-            <path d={`M ${40 * camera.z} 0 L 0 0 0 ${40 * camera.z}`} fill="none" stroke="#e4e4e8" strokeWidth=".7" />
+            {viewPrefs.gridStyle === 'dots' ? (
+              <circle cx={1} cy={1} r={Math.max(0.8, Math.min(1.6, camera.z * 1.2))} fill="#c8c8d0" />
+            ) : (
+              <path d={`M ${40 * camera.z} 0 L 0 0 0 ${40 * camera.z}`} fill="none" stroke="#e4e4e8" strokeWidth=".7" />
+            )}
           </pattern>
           <filter id="note-shadow" x="-10%" y="-10%" width="130%" height="140%">
             <feDropShadow dx="0" dy="3" stdDeviation="3" floodOpacity=".09" />
@@ -216,7 +325,7 @@ export function CanvasSurface() {
             ...shown.items.filter(i => i.type === 'screen'),
             ...shown.items.filter(i => i.type !== 'frame' && i.type !== 'screen'),
           ]
-            .filter(i => !i.hidden && !covered.has(i.id) && inView(i))
+            .filter(i => !i.hidden && !inHiddenLayer(shown, i) && !covered.has(i.id) && inView(i))
             .map(renderItem)}
           {shown.items
             .filter(i => frameContentHidden(i) && !i.hidden)
@@ -274,9 +383,60 @@ export function CanvasSurface() {
         </g>
         {selectionBounds(shown.items, selected) &&
           (() => {
-            const b = selectionBounds(shown.items, selected)!;
+            // A single rotated object keeps its handles on its own (rotated) outline (gap D1).
+            const turned = selected.length === 1 && selectedItem?.rotation ? selectedItem : null,
+              b = turned
+                ? { x: turned.x, y: turned.y, w: turned.w, h: turned.h }
+                : selectionBounds(shown.items, selected)!,
+              rotatable =
+                selected.length > 1
+                  ? selected.some(id => {
+                      const i = shown.items.find(n => n.id === id);
+                      return !!i && canRotate(i);
+                    })
+                  : !!selectedItem && canRotate(selectedItem),
+              // Diagonally out from the top-right corner, clear of the "+" quick-connect handles (gaps D1, E1).
+              top = {
+                x: b.x + b.w + (SELECT_GAP + ROTATE_GAP * 0.6) / camera.z,
+                y: b.y - (SELECT_GAP + ROTATE_GAP * 0.6) / camera.z,
+              };
             return (
-              <g className="selection" transform={`translate(${camera.x} ${camera.y}) scale(${camera.z})`}>
+              <g
+                className="selection"
+                transform={`translate(${camera.x} ${camera.y}) scale(${camera.z})${turned ? rotateAbout(turned) : ''}`}
+              >
+                {!editing && !selectionLocked && rotatable && (
+                  <g className="rotate-handle">
+                    <line
+                      x1={top.x}
+                      y1={top.y}
+                      x2={b.x + b.w + SELECT_GAP / camera.z}
+                      y2={b.y - SELECT_GAP / camera.z}
+                      stroke="#9a9aa3"
+                      strokeWidth={1 / camera.z}
+                      strokeDasharray={`${2 / camera.z} ${2 / camera.z}`}
+                      pointerEvents="none"
+                    />
+                    <circle
+                      data-rotate="1"
+                      cx={top.x}
+                      cy={top.y}
+                      r={7 / camera.z}
+                      fill="white"
+                      stroke="#4262ff"
+                      strokeWidth={1.5 / camera.z}
+                    >
+                      <title>Rotate (Shift snaps to 15°)</title>
+                    </circle>
+                    <path
+                      d={`M${top.x - 3 / camera.z},${top.y - 1 / camera.z} A${3 / camera.z},${3 / camera.z} 0 1 0 ${top.x},${top.y - 3 / camera.z}`}
+                      fill="none"
+                      stroke="#4262ff"
+                      strokeWidth={1.2 / camera.z}
+                      pointerEvents="none"
+                    />
+                  </g>
+                )}
                 {selected.length > 1 && (
                   <rect
                     x={b.x - SELECT_GAP / camera.z}
@@ -353,6 +513,51 @@ export function CanvasSurface() {
                           fill="#4262ff"
                           stroke="#ffffff"
                           strokeWidth={1 / camera.z}
+                          pointerEvents="none"
+                        />
+                      </g>
+                    );
+                  })}
+                {!editing &&
+                  !selectionLocked &&
+                  selected.length === 1 &&
+                  selectedItem &&
+                  canQuickConnect(selectedItem) &&
+                  anchorSides.map(side => {
+                    // Quick connect (gap E1): "+" further out than the connection dot adds a connected copy.
+                    const p = quickConnectPoint(b, side, camera.z),
+                      r = 9 / camera.z,
+                      arm = 4 / camera.z;
+                    return (
+                      <g
+                        key={`quick-${side}`}
+                        className="quick-connect"
+                        data-quick-connect={side}
+                        role="button"
+                        aria-label={`Add connected copy ${side}`}
+                        style={{ cursor: 'pointer' }}
+                        onPointerDown={e => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                        }}
+                        onClick={e => {
+                          e.stopPropagation();
+                          try {
+                            const next = addConnectedCopy(boardRef.current, selectedItem.id, side);
+                            update(next.board);
+                            setSelected([next.item.id]);
+                            setEditing(next.item.id);
+                          } catch (error) {
+                            display((error as Error).message);
+                          }
+                        }}
+                      >
+                        <circle cx={p.x} cy={p.y} r={r} fill="#ffffff" stroke="#4262ff" strokeWidth={1.5 / camera.z} />
+                        <path
+                          d={`M${p.x - arm} ${p.y} H${p.x + arm} M${p.x} ${p.y - arm} V${p.y + arm}`}
+                          stroke="#4262ff"
+                          strokeWidth={1.8 / camera.z}
+                          strokeLinecap="round"
                           pointerEvents="none"
                         />
                       </g>
@@ -442,7 +647,7 @@ export function CanvasSurface() {
             return (
               <g
                 className="connect-target"
-                transform={`translate(${camera.x} ${camera.y}) scale(${camera.z})`}
+                transform={`translate(${camera.x} ${camera.y}) scale(${camera.z})${rotateAbout(target)}`}
                 pointerEvents="none"
               >
                 <rect x={b.x} y={b.y} width={b.w} height={b.h} fill="#00000014" />

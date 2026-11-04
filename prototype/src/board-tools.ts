@@ -4,6 +4,8 @@
 // NavigatSidebar; ComputeLineWidget LINE_JUMP/relativePosition; BoardExport PDF/PNG/JPG/CSV.
 import type { Board, Item, Point, RecordRow, CommentThread, VotingResult } from './model.ts';
 import { isShapeKind } from './shapes.ts';
+import { starterItems, starterNames } from './starter-templates.ts';
+import type { StarterName } from './starter-templates.ts';
 
 const uid = () => crypto.randomUUID();
 
@@ -157,18 +159,40 @@ export function urlsIn(text: string): string[] {
 }
 
 // ---- 41 Dot voting ---------------------------------------------------------------------------------
-export function startVoting(board: Board, targets: string[], budget: number): Board {
+/** Options (gap G5): `minutes` ends the session automatically; `onePerObject` caps each object at one vote. */
+export type VotingOptions = { minutes?: number; onePerObject?: boolean };
+export function startVoting(
+  board: Board,
+  targets: string[],
+  budget: number,
+  options: VotingOptions = {},
+  now = Date.now(),
+): Board {
   const ids = targets.filter(id => board.items.some(i => i.id === id && i.type !== 'arrow'));
   if (!ids.length) throw new Error('Select objects to vote on, or vote on the whole board.');
   if (!Number.isInteger(budget) || budget < 1 || budget > 100) throw new Error('Choose between 1 and 100 votes.');
-  return { ...board, voting: { active: true, budget, targets: ids, votes: {}, startedAt: new Date().toISOString() } };
+  const { minutes, onePerObject } = options;
+  if (minutes !== undefined && (!Number.isFinite(minutes) || minutes <= 0 || minutes > 240))
+    throw new Error('Choose a voting time between 1 and 240 minutes.');
+  const voting: NonNullable<Board['voting']> = {
+    active: true,
+    budget,
+    targets: ids,
+    votes: {},
+    startedAt: new Date(now).toISOString(),
+  };
+  if (minutes) voting.endsAt = new Date(now + minutes * 60000).toISOString();
+  if (onePerObject) voting.onePerObject = true;
+  return { ...board, voting };
 }
 export const votesUsed = (board: Board) => Object.values(board.voting?.votes ?? {}).reduce((s, v) => s + v, 0);
-export function castVote(board: Board, id: string, delta: 1 | -1): Board {
+export function castVote(board: Board, id: string, delta: 1 | -1, now = Date.now()): Board {
   const v = board.voting;
   if (!v?.active) throw new Error('No voting session is running.');
+  if (v.endsAt && Date.parse(v.endsAt) <= now) throw new Error('Voting time is over.');
   if (!v.targets.includes(id)) throw new Error('This object is not part of the vote.');
   const current = v.votes[id] ?? 0;
+  if (delta > 0 && v.onePerObject && current >= 1) throw new Error('Only one vote per object in this session.');
   if (delta > 0 && votesUsed(board) >= v.budget)
     throw new Error(`All ${v.budget} votes are used. Remove a vote to move it.`);
   if (delta < 0 && current === 0) return board;
@@ -522,7 +546,8 @@ export function checkAccessibility(board: Board): A11yIssue[] {
       issues.push({ id: i.id, kind: 'alt', message: `${label}: add a text description.` });
     const textOn = i.type === 'note' || isShapeKind(i.type);
     if (textOn && i.text.trim() && /^#[0-9a-f]{6}$/i.test(i.fill)) {
-      const r = contrastRatio('#22232b', i.fill);
+      // Compare with the text colour the renderer actually uses (white on dark fills).
+      const r = contrastRatio(readableTextOn(i.fill), i.fill);
       if (r < 4.5)
         issues.push({
           id: i.id,
@@ -545,19 +570,36 @@ export function checkAccessibility(board: Board): A11yIssue[] {
         kind: 'small-text',
         message: `${label}: ${i.format.fontSize} px text may be hard to read.`,
       });
-    if (i.type === 'arrow' && i.connector?.width !== undefined && i.connector.width < 2 && /^#f/i.test(i.fill))
-      issues.push({ id: i.id, kind: 'contrast', message: `${label}: thin, light line may be hard to see.` });
+    // Non-text contrast (gap F7): lines, pen strokes and shape borders need 3:1 against the board background.
+    const bg = /^#[0-9a-f]{6}$/i.test(board.background ?? '') ? board.background! : '#ffffff';
+    const stroke =
+      i.type === 'arrow' || i.type === 'pen'
+        ? i.fill
+        : isShapeKind(i.type) && i.style?.borderWidth && i.style.borderColor && contrastRatio(i.fill, bg) < 3
+          ? i.style.borderColor
+          : undefined;
+    if (stroke && /^#[0-9a-f]{6}$/i.test(stroke) && contrastRatio(stroke, bg) < 3)
+      issues.push({
+        id: i.id,
+        kind: 'contrast',
+        message: `${label}: ${i.type === 'arrow' ? 'line' : i.type === 'pen' ? 'drawing' : 'outline'} contrast ${contrastRatio(stroke, bg).toFixed(1)}:1 against the board is below 3:1.`,
+      });
+    // Containers need a title so they can be found and announced (gap F7).
+    if (['frame', 'table', 'kanban', 'timeline'].includes(i.type) && !i.text.trim() && !(i.name ?? '').trim())
+      issues.push({ id: i.id, kind: 'empty', message: `Untitled ${i.type}: add a title.` });
   }
   return issues;
 }
-export type TemplateName = 'Retrospective' | 'SWOT' | 'Weekly plan' | 'Flowchart';
-export const templateNames: TemplateName[] = ['Retrospective', 'SWOT', 'Weekly plan', 'Flowchart'];
+export type TemplateName = 'Retrospective' | 'SWOT' | 'Weekly plan' | 'Flowchart' | StarterName;
+/** Gallery templates: the original four, then the starter templates (gap list I5). */
+export const templateNames: TemplateName[] = ['Retrospective', 'SWOT', 'Weekly plan', 'Flowchart', ...starterNames];
 /** Starter content for the template gallery, laid out from `at`. `make` is createItem. */
 export function templateItems(
   name: TemplateName,
   at: Point,
   make: (type: Item['type'], x: number, y: number, fill?: string) => Item,
 ): Item[] {
+  if ((starterNames as string[]).includes(name)) return starterItems(name as StarterName, at, make);
   const t = (s: string, x: number, y: number, w = 300) => ({
     ...make('text', at.x + x, at.y + y),
     text: s,

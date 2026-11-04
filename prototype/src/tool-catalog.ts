@@ -41,6 +41,7 @@ export const catalog: Record<string, CatalogEntry[]> = {
     e('Pen', 'pen'),
     e('Sticky note', 'note'),
     e('Card', 'card', 'Organize and assign work'),
+    e('Chart', 'chart', 'Show numbers as a bar, line or pie chart'),
     e('Code block', 'code'),
     e('Comment', 'comment'),
     e('Flip card', 'flipcard'),

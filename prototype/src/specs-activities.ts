@@ -3,6 +3,7 @@
 // catalogue lists Engage activities → Open-ended. Both run on this device only.
 import type { Board, Item, WidgetKind } from './model.ts';
 import type { WidgetSpec } from './widget-types.ts';
+import { validateItemStatus } from './board-settings.ts';
 
 export const slideLayouts = ['title', 'content', 'section', 'two', 'quote', 'blank', 'activity'] as const;
 export type SlideLayout = (typeof slideLayouts)[number];
@@ -256,7 +257,10 @@ export const activitySpecs: WidgetSpec[] = [
         current: 0,
       } satisfies DeckData,
     }),
-    validate: i => validateDeck(data<DeckData>(i)),
+    validate: i => {
+      validateDeck(data<DeckData>(i));
+      validateItemStatus(i.data);
+    },
     searchText: i => data<DeckData>(i).slides.map(slideText).join(' '),
   },
   {

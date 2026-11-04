@@ -3,6 +3,8 @@ import type { Item, ConnectorFormat, ConnectorHead, Point, Board, Side } from '.
 import { endpoints } from './model';
 import { canConnect, addBend, removeBend, resetBends, setBendPoint, DEFAULT_CLEARANCE } from './connector-geometry';
 import { bendsToPoints } from './routing';
+import { pointAlong } from './board-tools';
+import { addConnectorLabel, updateConnectorLabel, removeConnectorLabel, MAX_CONNECTOR_LABELS } from './diagram-gaps';
 import { X, Plus, Trash2, RotateCcw } from 'lucide-react';
 export { connectorGeometry } from './connector-geometry';
 export function ConnectorControls({ item, onChange }: { item: Item; onChange: (format: ConnectorFormat) => void }) {
@@ -13,6 +15,11 @@ export function ConnectorControls({ item, onChange }: { item: Item; onChange: (f
     ['open', 'Open arrow'],
     ['circle', 'Circle'],
     ['diamond', 'Diamond'],
+    ['one', 'One (ERD)'],
+    ['many', 'Many (ERD)'],
+    ['zero-one', 'Zero or one (ERD)'],
+    ['zero-many', 'Zero or many (ERD)'],
+    ['one-many', 'One or many (ERD)'],
   ];
   return (
     <div className="connector-controls" aria-label="Connector formatting">
@@ -88,7 +95,78 @@ export function ConnectorMarkers() {
           )}
         </marker>
       ))}
+      {crowHeads.map(([head, d, circleX]) => (
+        <marker
+          key={head}
+          id={`connector-head-${head}`}
+          viewBox="0 0 20 20"
+          refX="20"
+          refY="10"
+          markerWidth="9"
+          markerHeight="9"
+          orient="auto-start-reverse"
+        >
+          <path d={d} fill="none" stroke="context-stroke" strokeWidth="2.2" strokeLinecap="round" />
+          {circleX !== undefined && (
+            <circle cx={circleX} cy="10" r="3.6" fill="#ffffff" stroke="context-stroke" strokeWidth="2.2" />
+          )}
+        </marker>
+      ))}
     </>
+  );
+}
+/** ERD crow's-foot heads (gap E3): outline path in a 20 x 20 box pointing right, and an optional "zero" circle. */
+const crowHeads: [ConnectorHead, string, number?][] = [
+  ['one', 'M15 3 V17 M10 3 V17'],
+  ['many', 'M20 3 L8 10 L20 17'],
+  ['zero-one', 'M15 3 V17', 7],
+  ['zero-many', 'M20 3 L11 10 L20 17', 5],
+  ['one-many', 'M20 3 L11 10 L20 17 M7 3 V17'],
+];
+/** Extra labels along a connector (gap E4); `at` is a fraction along the drawn path. Edited in the details panel. */
+export function ConnectorLabels({ item, nodes }: { item: Item; nodes: Point[] }) {
+  const labels = item.connector?.labels;
+  if (!labels?.length || nodes.length < 2) return null;
+  return (
+    <g pointerEvents="none">
+      {labels
+        .filter(l => l.text.trim())
+        .map(l => {
+          const p = pointAlong(nodes, l.at),
+            width = Math.min(200, Math.max(40, l.text.length * 7 + 16)),
+            height = 26;
+          return (
+            <foreignObject
+              key={l.id}
+              data-connector-label={l.id}
+              x={p.x - width / 2}
+              y={p.y - height / 2}
+              width={width}
+              height={height}
+            >
+              <div
+                className="object-text connector-caption"
+                title={l.text}
+                style={{
+                  background: '#fff',
+                  borderRadius: 4,
+                  padding: '3px 6px',
+                  fontSize: 13,
+                  fontFamily: 'Arial',
+                  color: '#25252c',
+                  textAlign: 'center',
+                  lineHeight: 1.3,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {l.text}
+              </div>
+            </foreignObject>
+          );
+        })}
+    </g>
   );
 }
 const sideOptions: [string, string][] = [
@@ -216,8 +294,99 @@ export function ConnectorDetails({
           </button>
         </div>
       </form>
+      <LabelsEditor item={item} onRoute={onRoute} />
       <RouteEditor item={item} board={board} onRoute={onRoute} />
     </aside>
+  );
+}
+/** Extra labels along the line (gap E4). Each change is one undo step. */
+function LabelsEditor({ item, onRoute }: { item: Item; onRoute: (change: (b: Board) => Board) => void }) {
+  const labels = item.connector?.labels ?? [];
+  const [error, setError] = useState('');
+  const run = (change: (b: Board) => Board) => {
+    try {
+      onRoute(change);
+      setError('');
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+  return (
+    <section className="route-editor" aria-label="Extra labels">
+      <h3>More labels</h3>
+      {labels.length > 0 && (
+        <ol className="bend-list">
+          {labels.map((l, index) => (
+            <li key={l.id}>
+              <input
+                aria-label={`Extra label ${index + 1} text`}
+                key={`t${l.text}`}
+                defaultValue={l.text}
+                maxLength={200}
+                onBlur={e => {
+                  if (e.target.value !== l.text)
+                    run(b => updateConnectorLabel(b, item.id, l.id, { text: e.target.value }));
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                  }
+                }}
+              />
+              <label>
+                At
+                <input
+                  aria-label={`Extra label ${index + 1} position`}
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={5}
+                  key={`a${l.at}`}
+                  defaultValue={Math.round(l.at * 100)}
+                  onBlur={e => {
+                    const n = Number(e.target.value);
+                    if (e.target.value.trim() !== '' && Number.isFinite(n) && n / 100 !== l.at)
+                      run(b => updateConnectorLabel(b, item.id, l.id, { at: n / 100 }));
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.currentTarget.blur();
+                    }
+                  }}
+                />
+                %
+              </label>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`Remove extra label ${index + 1}`}
+                onClick={() => run(b => removeConnectorLabel(b, item.id, l.id))}
+              >
+                <Trash2 size={15} />
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+      {error && (
+        <p role="alert" className="format-error">
+          {error}
+        </p>
+      )}
+      <div className="note-details-actions">
+        <button
+          type="button"
+          disabled={labels.length >= MAX_CONNECTOR_LABELS}
+          onClick={() => run(b => addConnectorLabel(b, item.id, 'Label', labels.length % 2 ? 0.75 : 0.25))}
+        >
+          <Plus size={15} />
+          Add label
+        </button>
+      </div>
+      <p>Positions run from 0% at the start to 100% at the end of the line.</p>
+    </section>
   );
 }
 /** Routing options and the keyboard-accessible bend editor. Each change is one undo step. */

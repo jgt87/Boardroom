@@ -1,8 +1,17 @@
 import React, { useState } from 'react';
 import type { Item, ShapeStyle } from './model';
-import { shapePacks, shapeLabels, shapePath, shapeDetail, shapeSizes, textBox } from './shapes';
+import {
+  shapePacks,
+  shapeLabels,
+  shapePath,
+  shapeDetail,
+  shapeSizes,
+  textBox,
+  cornerRadius,
+  radiusKinds,
+} from './shapes';
 import type { ShapeKind } from './shapes';
-import { Minus, MoveUpRight, CornerUpRight, Network } from 'lucide-react';
+import { Minus, MoveUpRight, CornerUpRight, Network, Circle } from 'lucide-react';
 
 export const DEFAULT_BORDER = {
   borderColor: '#2d2d34',
@@ -56,11 +65,17 @@ export function ShapeBody({ item }: { item: Item & { type: ShapeKind } }) {
   // Original shapes keep their native SVG elements so existing exports stay identical.
   const body =
     item.type === 'rectangle' ? (
-      <rect width={item.w} height={item.h} rx="4" fill={item.fill} {...common} />
+      <rect
+        width={item.w}
+        height={item.h}
+        rx={item.style?.radius === undefined ? '4' : cornerRadius('rectangle', item.w, item.h, item.style.radius)}
+        fill={item.fill}
+        {...common}
+      />
     ) : item.type === 'ellipse' ? (
       <ellipse cx={item.w / 2} cy={item.h / 2} rx={item.w / 2} ry={item.h / 2} fill={item.fill} {...common} />
     ) : (
-      <path d={shapePath(item.type, item.w, item.h)} fill={item.fill} {...common} />
+      <path d={shapePath(item.type, item.w, item.h, item.style?.radius)} fill={item.fill} {...common} />
     );
   return (
     <>
@@ -105,7 +120,8 @@ export function BorderControls({
   mixed: boolean;
   onChange: (style: ShapeStyle) => void;
 }) {
-  const b = borderOf(item);
+  // Images start without a border (gap D11).
+  const b = item.type === 'image' ? { ...DEFAULT_BORDER, borderWidth: 0, ...item.style } : borderOf(item);
   return (
     <div className="border-controls" aria-label="Shape border">
       <label className="color-chip" title="Border color">
@@ -155,12 +171,54 @@ export function BorderControls({
             </option>
           ))}
       </select>
+      {(radiusKinds.includes(item.type) || item.type === 'image') && (
+        <RadiusSlider item={item} onChange={radius => onChange({ radius })} />
+      )}
+      {item.type === 'image' && (
+        <button
+          className={`icon-button ${item.style?.mask === 'circle' ? 'active' : ''}`}
+          aria-label="Circle crop"
+          aria-pressed={item.style?.mask === 'circle'}
+          title="Circle crop"
+          onClick={() => onChange({ mask: item.style?.mask === 'circle' ? undefined : 'circle' })}
+        >
+          <Circle size={16} />
+        </button>
+      )}
       {mixed && (
         <span className="mixed-hint" title="Selected shapes have different borders; changes apply to all">
           Mixed
         </span>
       )}
     </div>
+  );
+}
+
+/** Corner radius slider (gaps D8, D11). Commits once when released, so one drag is one undo step. */
+function RadiusSlider({ item, onChange }: { item: Item; onChange: (radius: number) => void }) {
+  const value = Math.round(item.style?.radius ?? cornerRadius(item.type, Infinity, Infinity)),
+    [draft, setDraft] = useState<number | null>(null),
+    max = Math.max(1, Math.round(Math.min(item.w, item.h) / 2));
+  const commit = () => {
+    if (draft !== null && draft !== value) onChange(draft);
+    setDraft(null);
+  };
+  return (
+    <label className="radius-control" title="Corner radius">
+      <span>Radius</span>
+      <input
+        type="range"
+        aria-label="Corner radius"
+        min={0}
+        max={max}
+        step={1}
+        value={Math.min(draft ?? value, max)}
+        onChange={e => setDraft(Number(e.target.value))}
+        onPointerUp={commit}
+        onKeyUp={commit}
+        onBlur={commit}
+      />
+    </label>
   );
 }
 

@@ -43,6 +43,8 @@ export type WidgetCtx = {
   /** Show a transient status message. */
   display: (message: string) => void;
   preview?: PreviewState;
+  /** Open this item's focus editor (the card panel for cards). */
+  openEditor?: () => void;
 };
 
 export type WidgetAction = {

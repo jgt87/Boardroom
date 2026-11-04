@@ -1,6 +1,7 @@
 import { shapeEdge, shapeSizes, isShapeKind, shapeKinds } from './shapes.ts';
 import type { ShapeKind } from './shapes.ts';
 import { validateExtensions } from './model-ext.ts';
+import { rotatePoint } from './rotation.ts';
 import { widgetSizes, specFor } from './widget-specs.ts';
 export type WidgetKind =
   | 'drawio'
@@ -35,7 +36,8 @@ export type WidgetKind =
   | 'people'
   | 'usercard'
   | 'shortcut'
-  | 'stickypad';
+  | 'stickypad'
+  | 'chart';
 export const widgetKinds: WidgetKind[] = [
   'drawio',
   'card',
@@ -70,6 +72,7 @@ export const widgetKinds: WidgetKind[] = [
   'usercard',
   'shortcut',
   'stickypad',
+  'chart',
 ];
 export type Kind =
   | 'note'
@@ -116,8 +119,45 @@ export type RecordRow = {
   points?: number;
   description?: string;
   values?: import('./record-schema.ts').RecordValues;
+  /** Parent record id in the same dataset (validated in records.ts recordsError). */
+  parent?: string;
 };
-export type MindNode = { id: string; parent: string | null; text: string; position?: Point };
+/** `collapsed` hides the topic's descendants; `color` overrides the branch colour (gap E7). */
+export type MindNode = {
+  id: string;
+  parent: string | null;
+  text: string;
+  position?: Point;
+  collapsed?: boolean;
+  color?: string;
+};
+/** Fonts offered for text (gap D14). Values are font ids; `fontStack` maps them to CSS font stacks. */
+export const fontFamilies = [
+  'Arial',
+  'Georgia',
+  'monospace',
+  'Verdana',
+  'Trebuchet MS',
+  'Times New Roman',
+  'Rounded',
+  'Handwriting',
+] as const;
+export type FontFamily = (typeof fontFamilies)[number];
+/** CSS font stack for a font id: only fonts that ship with common operating systems, no downloads. */
+export const fontStack = (f: FontFamily | undefined): string =>
+  f === 'Rounded'
+    ? "ui-rounded, 'Arial Rounded MT Bold', 'Segoe UI', Arial, sans-serif"
+    : f === 'Handwriting'
+      ? "'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive"
+      : f === 'Times New Roman'
+        ? "'Times New Roman', Times, serif"
+        : f === 'Trebuchet MS'
+          ? "'Trebuchet MS', Arial, sans-serif"
+          : f === 'Verdana'
+            ? 'Verdana, Geneva, sans-serif'
+            : f === 'monospace'
+              ? "ui-monospace, Consolas, 'Courier New', monospace"
+              : (f ?? 'Arial');
 export type TextFormat = {
   background?: string;
   highlight?: string;
@@ -127,7 +167,7 @@ export type TextFormat = {
   fontWeight?: number;
   /** Vertical text offset in world pixels; positive values move down. */
   baselineOffsetY?: number;
-  fontFamily?: 'Arial' | 'Georgia' | 'monospace';
+  fontFamily?: FontFamily;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
@@ -136,7 +176,22 @@ export type TextFormat = {
   list?: 'none' | 'bullet' | 'number';
 };
 export type Point = { x: number; y: number };
-export type ConnectorHead = 'none' | 'arrow' | 'open' | 'circle' | 'diamond';
+/** `one`, `many`, `zero-one`, `zero-many` and `one-many` are ERD crow's-foot heads (gap E3). */
+export const connectorHeads = [
+  'none',
+  'arrow',
+  'open',
+  'circle',
+  'diamond',
+  'one',
+  'many',
+  'zero-one',
+  'zero-many',
+  'one-many',
+] as const;
+export type ConnectorHead = (typeof connectorHeads)[number];
+/** Extra connector label at fraction `at` (0 to 1) along the path (gap E4). */
+export type ConnectorLabel = { id: string; text: string; at: number };
 export type Side = 'top' | 'right' | 'bottom' | 'left';
 /** Manual bend in the start-to-end frame: u along the line, v perpendicular (both as fractions of its length). */
 export type Bend = { u: number; v: number };
@@ -155,12 +210,18 @@ export type ConnectorFormat = {
   endSide?: Side;
   jumps?: boolean;
   labelAt?: number;
+  /** Labels in addition to the main caption (`Item.text`). */
+  labels?: ConnectorLabel[];
 };
 export type ShapeStyle = {
   borderColor?: string;
   borderWidth?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   borderOpacity?: number;
+  /** Corner radius in world units for rectangles, rounded rectangles and images (gaps D8, D11). */
+  radius?: number;
+  /** Image mask: 'circle' clips an image to the ellipse inscribed in its box (gap D11). */
+  mask?: 'circle';
 };
 export type Crop = { x: number; y: number; w: number; h: number };
 export type FrameFormat = { preset: string; orientation: 'portrait' | 'landscape' };
@@ -209,6 +270,12 @@ export type Item = {
   linkTo?: string;
   /** Text alternative for images and media (accessibility checker). */
   alt?: string;
+  /** Layer id (gap D9); missing means the base layer. */
+  layer?: string;
+  /** Emoji reactions on a sticky note with their counts (gap D13). */
+  reactions?: Record<string, number>;
+  /** Clockwise rotation in degrees around the box centre, in [0, 360) (gap D1). */
+  rotation?: number;
 };
 export type CommentThread = {
   id: string;
@@ -216,16 +283,30 @@ export type CommentThread = {
   x: number;
   y: number;
   resolved?: boolean;
-  messages: { id: string; text: string; at: string }[];
+  /** Pinned threads are listed first (gap G9). */
+  pinned?: boolean;
+  messages: CommentMessage[];
 };
+/** `editedAt` marks an edited message; `reactions` holds distinct emoji reactions (gap G9). */
+export type CommentMessage = { id: string; text: string; at: string; editedAt?: string; reactions?: string[] };
 export type VotingSession = {
   active: boolean;
   budget: number;
   targets: string[];
   votes: Record<string, number>;
   startedAt: string;
+  /** ISO time at which the session ends automatically (gap G5). */
+  endsAt?: string;
+  /** At most one vote per object (gap G5). */
+  onePerObject?: boolean;
 };
-export type VotingResult = { endedAt: string; budget: number; totals: { id: string; label: string; votes: number }[] };
+export type VotingResult = {
+  endedAt: string;
+  budget: number;
+  totals: { id: string; label: string; votes: number }[];
+  /** User-given name for a stored result (gap G5). */
+  name?: string;
+};
 export type Board = {
   version: 1;
   title: string;
@@ -239,12 +320,22 @@ export type Board = {
   voting?: VotingSession;
   votingResults?: VotingResult[];
   privateMode?: { all: boolean; frames: string[] };
+  /** Named layers bottom to top (gap D9); see layers.ts. */
+  layers?: import('./layers.ts').Layer[];
+  /** Frame whose area is the board's thumbnail on the dashboard (gap C13). */
+  thumbnailFrame?: string;
+  /** View-only board (gap C16): editing is refused until it is turned off. */
+  viewOnly?: boolean;
+  /** Card tag colours by tag name (item 115); tags without an entry use the default colour. */
+  tagColors?: Record<string, string>;
   /** Show sticky note authors (item 85). */
   showAuthors?: boolean;
   /** Board settings (item 103): canvas colour, the view new visitors open at, and a status. */
   background?: string;
   startView?: { x: number; y: number; z: number };
-  status?: 'draft' | 'in-progress' | 'review' | 'approved';
+  status?: 'draft' | 'in-progress' | 'review' | 'approved' | 'done' | 'outdated';
+  /** Short board description (shown in Details and on dashboard cards). */
+  description?: string;
 };
 export type History = { past: Board[]; current: Board; future: Board[] };
 export const colors = [
@@ -266,6 +357,32 @@ export const colors = [
   '#166534',
   '#1f1f23',
 ];
+/** Spoken names for palette colours (gap F10); other colours fall back to their hex code. */
+export const colorNames: Record<string, string> = {
+  '#fff49b': 'Light yellow',
+  '#ffe36e': 'Yellow',
+  '#ffb879': 'Orange',
+  '#ffa0a7': 'Red',
+  '#f7c5ef': 'Pink',
+  '#d3b7f6': 'Violet',
+  '#a8cdff': 'Light blue',
+  '#8ce3eb': 'Cyan',
+  '#a9e8bb': 'Light green',
+  '#d1ec9c': 'Lime',
+  '#ffffff': 'White',
+  '#e4e4e7': 'Grey',
+  '#3d5afe': 'Blue',
+  '#1e3a8a': 'Dark blue',
+  '#166534': 'Dark green',
+  '#1f1f23': 'Black',
+  '#25252a': 'Black',
+  '#4262ff': 'Blue',
+  '#e5484d': 'Red',
+  '#2f9e44': 'Green',
+  '#f59f00': 'Amber',
+  '#7048e8': 'Purple',
+};
+export const colorName = (hex: string) => colorNames[hex.toLowerCase()] ?? hex;
 export const clone = <T>(value: T): T => structuredClone(value);
 export const newBoard = (): Board => ({ version: 1, title: 'My first board', items: [] });
 export function createItem(type: Kind, x: number, y: number, fill = colors[0]): Item {
@@ -377,6 +494,14 @@ export function center(i: Item): Point {
   return { x: i.x + i.w / 2, y: i.y + i.h / 2 };
 }
 export function edge(item: Item, toward: Point): Point {
+  // Rotated objects (gap D1): solve on the unrotated outline, then turn the point back.
+  if (item.rotation) {
+    const c = center(item);
+    return rotatePoint(flatEdge(item, rotatePoint(toward, c, -item.rotation)), c, item.rotation);
+  }
+  return flatEdge(item, toward);
+}
+function flatEdge(item: Item, toward: Point): Point {
   if (isShapeKind(item.type) && !['rectangle', 'ellipse', 'diamond'].includes(item.type))
     return shapeEdge(item.type, item, toward);
   const c = center(item),
@@ -403,7 +528,15 @@ export const sideVector: Record<Side, Point> = {
 export function sideAnchor(item: Item, side: Side, offset = 0): Point {
   const c = center(item),
     v = sideVector[side];
-  return edge(item, { x: c.x + (v.x ? v.x * item.w : offset), y: c.y + (v.y ? v.y * item.h : offset) });
+  // The face is in the object's own frame, so a rotated object keeps its 'top' with it.
+  return edge(
+    item,
+    rotatePoint(
+      { x: c.x + (v.x ? v.x * item.w : offset), y: c.y + (v.y ? v.y * item.h : offset) },
+      c,
+      item.rotation ?? 0,
+    ),
+  );
 }
 /** Faces used by each endpoint. A self-loop defaults to leaving right and returning on top. */
 export function connectorSides(i: Item): [Side | undefined, Side | undefined] {
@@ -503,7 +636,7 @@ export function parseBoard(raw: unknown): Board {
       ids.has(i.id) ||
       !kinds.includes(i.type) ||
       typeof i.text !== 'string' ||
-      i.text.length > 6000 ||
+      i.text.length > (i.type === 'card' ? 20000 : 6000) ||
       !/^#[0-9a-f]{6}$/i.test(i.fill)
     )
       throw new Error('The board contains an invalid object.');
@@ -537,9 +670,7 @@ export function parseBoard(raw: unknown): Board {
       if (
         (c.width !== undefined && (!Number.isFinite(c.width) || c.width < 1 || c.width > 12)) ||
         (c.dash !== undefined && !['solid', 'dashed', 'dotted'].includes(c.dash)) ||
-        [c.startHead, c.endHead].some(
-          h => h !== undefined && !['none', 'arrow', 'open', 'circle', 'diamond'].includes(h),
-        )
+        [c.startHead, c.endHead].some(h => h !== undefined && !(connectorHeads as readonly string[]).includes(h))
       )
         throw new Error('Invalid connector styling.');
     }
@@ -566,7 +697,7 @@ export function parseBoard(raw: unknown): Board {
         (f.fontSize !== undefined &&
           f.fontSize !== 'auto' &&
           (typeof f.fontSize !== 'number' || !Number.isFinite(f.fontSize) || f.fontSize < 10 || f.fontSize > 96)) ||
-        (f.fontFamily !== undefined && !['Arial', 'Georgia', 'monospace'].includes(f.fontFamily)) ||
+        (f.fontFamily !== undefined && !(fontFamilies as readonly string[]).includes(f.fontFamily)) ||
         (f.align !== undefined && !['left', 'center', 'right'].includes(f.align)) ||
         (f.list !== undefined && !['none', 'bullet', 'number'].includes(f.list)) ||
         [f.bold, f.italic, f.underline].some(v => v !== undefined && typeof v !== 'boolean')
@@ -613,7 +744,9 @@ export function validateMindNodes(nodes: unknown): asserts nodes is MindNode[] {
             ![n.position.x, n.position.y].every(
               v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 100000,
             ))) ||
-        (n.parent !== null && typeof n.parent !== 'string'),
+        (n.parent !== null && typeof n.parent !== 'string') ||
+        (n.collapsed !== undefined && typeof n.collapsed !== 'boolean') ||
+        (n.color !== undefined && (typeof n.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(n.color))),
     ) ||
     new Set(nodes.map(n => n.id)).size !== nodes.length ||
     nodes.filter(n => n.parent === null).length !== 1

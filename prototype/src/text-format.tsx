@@ -15,6 +15,7 @@ import {
   Ellipsis,
 } from 'lucide-react';
 import type { Item, TextFormat } from './model';
+import { fontFamilies, fontStack } from './model';
 import { fitText, wrappedLineCount } from './text-layout';
 let measuring: CanvasRenderingContext2D | null = null;
 const layoutCache = new Map<string, { size: number; lines: number; height: number }>();
@@ -35,7 +36,7 @@ function measureLayout(item: Item) {
   measuring ??= document.createElement('canvas').getContext('2d');
   const measure = (text: string, size: number) => {
     if (!measuring) return text.length * size * 0.6;
-    measuring.font = `${f.italic ? 'italic ' : ''}${f.fontWeight ?? (f.bold ? 700 : 400)} ${size}px ${f.fontFamily ?? 'Arial'}`;
+    measuring.font = `${f.italic ? 'italic ' : ''}${f.fontWeight ?? (f.bold ? 700 : 400)} ${size}px ${fontStack(f.fontFamily)}`;
     return measuring.measureText(text).width;
   };
   const text = formattedText(item),
@@ -49,7 +50,7 @@ export function formatStyle(item: Item): React.CSSProperties {
   const f = item.format ?? {};
   return {
     fontSize: textLayout(item).size,
-    fontFamily: f.fontFamily ?? 'Arial',
+    fontFamily: fontStack(f.fontFamily),
     fontWeight: f.fontWeight ?? (f.bold ? 700 : 400),
     fontStyle: f.italic ? 'italic' : 'normal',
     textDecoration:
@@ -162,15 +163,15 @@ export function TextControls({
     <div className={`text-controls ${compact ? 'compact' : ''}`} aria-label="Text formatting">
       <select
         aria-label="Font family"
-        style={{ fontFamily: f.fontFamily ?? 'Arial' }}
+        style={{ fontFamily: fontStack(f.fontFamily) }}
         value={f.fontFamily ?? 'Arial'}
         onChange={e => set({ fontFamily: e.target.value as TextFormat['fontFamily'] })}
       >
-        <option style={{ fontFamily: 'Arial' }}>Arial</option>
-        <option style={{ fontFamily: 'Georgia' }}>Georgia</option>
-        <option value="monospace" style={{ fontFamily: 'monospace' }}>
-          Monospace
-        </option>
+        {fontFamilies.map(ff => (
+          <option key={ff} value={ff} style={{ fontFamily: fontStack(ff) }}>
+            {ff === 'monospace' ? 'Monospace' : ff}
+          </option>
+        ))}
       </select>
       <select
         aria-label="Font size"

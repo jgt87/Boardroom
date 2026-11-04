@@ -1,13 +1,24 @@
 import { SlidersHorizontal } from 'lucide-react';
 import { Layers, Check, CloudOff, Search as SearchIcon, MonitorPlay, Users, Upload, Play } from 'lucide-react';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLatest } from './use-latest';
 import { presentationFrames } from './navigation';
 import { IMAGE_ACCEPT, withAssets } from './images';
 import { setPrivate } from './board-tools';
 import { useApp } from './board-app';
 import { BoardMenu, BoardStatusChip, useDismiss } from './board-menu';
-import { addTemplate, loadTemplates, makeTemplate, storeTemplates } from './user-templates';
+import {
+  addTemplate,
+  loadTemplates,
+  makeSelectionTemplate,
+  makeTemplate,
+  selectionTemplateName,
+  storeTemplates,
+} from './user-templates';
 import { useExporters } from './use-exporters';
+import { canEncrypt, encryptBackup } from './encrypted-backup';
+import { askPassphrase } from './passphrase-dialog';
+import { useLibraryFiles } from './use-library-files';
 
 export function TopBar() {
   const {
@@ -51,9 +62,25 @@ export function TopBar() {
     setInspector,
     startPresenting,
   } = useApp();
-  const exportRef = useRef<HTMLDivElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null),
+    newBoardFile = useRef<HTMLInputElement>(null);
+  const libraryFiles = useLibraryFiles();
   useDismiss(menu, exportRef, () => setMenu(false));
-  const { exportCsv, exportPdf, exportRaster, exportSvg, exportBundle } = useExporters();
+  const { exportCsv, exportTextCsv, exportPdf, exportRaster, exportSvg, exportBundle, copyImage, exportHtml } =
+    useExporters();
+  const [scale, setScale] = useState(2);
+  // Ctrl+Shift+C copies the selection (or board) as an image (gap B11).
+  const copyRef = useLatest(copyImage);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.altKey || e.key.toLowerCase() !== 'c') return;
+      if ((e.target as HTMLElement)?.closest?.('input,textarea,select,[contenteditable=true]')) return;
+      e.preventDefault();
+      void copyRef.current();
+    };
+    addEventListener('keydown', key);
+    return () => removeEventListener('keydown', key);
+  }, [copyRef]);
   return (
     <>
       <header className="board-header floating">
@@ -76,6 +103,11 @@ export function TopBar() {
           onChange={e => update({ ...boardRef.current, title: e.target.value })}
         />
         <BoardStatusChip />
+        {board.viewOnly && (
+          <span className="board-status view-only" title="Editing is off. Turn it on in Main menu → Board → View only.">
+            View only
+          </span>
+        )}
         <BoardMenu />
         <div className="menu-anchor export-anchor" ref={exportRef}>
           <button
@@ -96,23 +128,71 @@ export function TopBar() {
               >
                 Save board as JSON<span>Editable text backup with media</span>
               </button>
+              {canEncrypt() && (
+                <button
+                  onClick={async () => {
+                    setMenu(false);
+                    const pass = await askPassphrase('Save encrypted backup', true);
+                    if (!pass) return;
+                    try {
+                      const locked = await encryptBackup(JSON.stringify(withAssets(board, assets)), pass);
+                      download(JSON.stringify(locked), 'boardroom-encrypted.json', 'application/json');
+                    } catch (err) {
+                      display((err as Error).message);
+                    }
+                  }}
+                >
+                  Save encrypted backup<span>JSON locked with a passphrase</span>
+                </button>
+              )}
               <button onClick={exportBundle}>
                 Save board with media<span>Compact .boardroom file for large boards</span>
               </button>
               <button onClick={exportSvg}>
                 Export as SVG<span>Vector image</span>
               </button>
-              <button onClick={() => exportRaster('image/png')}>
-                Export as PNG<span>{selected.length ? 'Selection' : 'Whole board'}, 2× scale</span>
+              <button onClick={exportHtml}>
+                Export as web page<span>Read-only HTML copy with pan and zoom</span>
               </button>
-              <button onClick={() => exportRaster('image/jpeg')}>
+              <label className="export-scale">
+                Image size
+                <select aria-label="Image size" value={scale} onChange={e => setScale(Number(e.target.value))}>
+                  <option value={1}>Small (1×)</option>
+                  <option value={2}>Medium (2×)</option>
+                  <option value={4}>Large (4×)</option>
+                </select>
+              </label>
+              <button onClick={() => exportRaster('image/png', scale)}>
+                Export as PNG
+                <span>
+                  {selected.length ? 'Selection' : 'Whole board'}, {scale}× scale
+                </span>
+              </button>
+              <button
+                onClick={() => {
+                  setMenu(false);
+                  void copyImage();
+                }}
+              >
+                Copy as image<span>{selected.length ? 'Selection' : 'Whole board'} · Ctrl Shift C</span>
+              </button>
+              <button onClick={() => exportRaster('image/jpeg', scale)}>
                 Export as JPG<span>{selected.length ? 'Selection' : 'Whole board'}, white background</span>
               </button>
               <button onClick={exportPdf}>
-                Export as PDF<span>One page per frame</span>
+                Export as PDF
+                <span>
+                  {selected.some(id => board.items.find(i => i.id === id)?.type === 'frame')
+                    ? 'Selected frames'
+                    : 'One page per slide'}
+                </span>
               </button>
               <button onClick={exportCsv}>
-                Export records as CSV<span>Selected or first record view</span>
+                Export to spreadsheet (CSV)<span>Selected cards, or records</span>
+              </button>
+              <button onClick={exportTextCsv}>
+                Export text as CSV
+                <span>{selected.length ? 'Selection' : 'Whole board'}: notes, shapes, text, cards</span>
               </button>
               <button
                 onClick={() => {
@@ -128,6 +208,28 @@ export function TopBar() {
               >
                 Save board as template<span>Reuse it from Templates; media not included</span>
               </button>
+              {selected.length > 0 && (
+                <button
+                  onClick={() => {
+                    setMenu(false);
+                    const made = makeSelectionTemplate(
+                      board,
+                      selected,
+                      selectionTemplateName(board, selected),
+                      crypto.randomUUID(),
+                      new Date(),
+                    );
+                    if ('error' in made) return display(made.error);
+                    display(
+                      storeTemplates(addTemplate(loadTemplates(), made))
+                        ? `Saved "${made.name}" (${made.count} object${made.count === 1 ? '' : 's'}) to My templates.`
+                        : 'This browser has no room to store the template.',
+                    );
+                  }}
+                >
+                  Save selection as template<span>Selected objects and the contents of selected frames</span>
+                </button>
+              )}
               <button
                 onClick={() => {
                   file.current?.click();
@@ -135,6 +237,22 @@ export function TopBar() {
                 }}
               >
                 Import backup<span>JSON or .boardroom; replaces the board</span>
+              </button>
+              <button
+                onClick={() => {
+                  newBoardFile.current?.click();
+                  setMenu(false);
+                }}
+              >
+                Import as new board<span>Keeps this board; library backups add all their boards</span>
+              </button>
+              <button
+                onClick={() => {
+                  setMenu(false);
+                  void libraryFiles.backupAll();
+                }}
+              >
+                Back up all boards<span>Every board, its media and spaces in one file</span>
               </button>
             </div>
           )}
@@ -288,6 +406,18 @@ export function TopBar() {
         hidden
         accept=".json,application/json,.boardroom,application/zip"
         onChange={importFile}
+      />
+      <input
+        type="file"
+        ref={newBoardFile}
+        hidden
+        aria-label="Choose a backup to import as a new board"
+        accept=".json,application/json,.boardroom,application/zip"
+        onChange={e => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) void libraryFiles.importFile(f);
+        }}
       />
       <input
         type="file"

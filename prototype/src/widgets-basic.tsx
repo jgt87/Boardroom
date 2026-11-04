@@ -1,14 +1,16 @@
 // Registry entries for essential and facilitation widgets (items 21-23, 27-29, 43-44).
 import './widgets-basic.css';
-import { RotateCcw, Repeat2, Shuffle } from 'lucide-react';
+import { RotateCcw, Repeat2, Sheet } from 'lucide-react';
 import type { WidgetView } from './widget-types';
 import { stampKinds } from './specs-basic';
 import type { StampKind } from './specs-basic';
-import { cardStatuses, pollTotal, resetPoll, spin } from './facilitation-widgets';
-import { schemaOf } from './record-schema';
-import type { CardData, PollData, SpinnerData } from './facilitation-widgets';
+import { pollTotal, resetPoll } from './facilitation-widgets';
+import type { PollData } from './facilitation-widgets';
 import { CardEditor, CardRender, FlipEditor, FlipRender } from './widgets-cards';
-import { data, patchItem, setData } from './widget-kit';
+import { data, patchItem, saveText, setData } from './widget-kit';
+import { toCsv } from './csv';
+import { gridRows } from './grid';
+import type { GridData } from './grid';
 import { GridEditor, GridRender } from './widgets-grid';
 import {
   DividerRender,
@@ -30,6 +32,7 @@ import {
   ScaleRender,
   SpinnerEditor,
   SpinnerRender,
+  spinnerActions,
 } from './widgets-facilitation';
 
 const cycle = <T,>(list: readonly T[], v: T) => list[(list.indexOf(v) + 1) % list.length];
@@ -40,23 +43,7 @@ export const basicViews: WidgetView[] = [
     mode: 'html',
     Render: CardRender,
     Editor: CardEditor,
-    actions: (item, ctx) => {
-      const d = data<CardData>(item);
-      return [
-        {
-          label: `Status: ${d.status}`,
-          icon: <Repeat2 size={16} />,
-          run: () =>
-            setData(ctx, item.id, {
-              ...d,
-              status: cycle(
-                item.recordRef ? schemaOf(ctx.board, item.recordRef.datasetId).statuses : cardStatuses,
-                d.status,
-              ),
-            }),
-        },
-      ];
-    },
+    // Status, assignee, dates, tags and CSV live in the card bar (card-bar.tsx), which also handles many cards.
   },
   {
     kind: 'flipcard',
@@ -75,7 +62,21 @@ export const basicViews: WidgetView[] = [
       ];
     },
   },
-  { kind: 'grid', mode: 'html', interactive: true, Render: GridRender, Editor: GridEditor },
+  {
+    kind: 'grid',
+    mode: 'html',
+    interactive: true,
+    Render: GridRender,
+    Editor: GridEditor,
+    actions: item => [
+      {
+        label: 'Export CSV',
+        icon: <Sheet size={16} />,
+        run: () =>
+          saveText('\uFEFF' + toCsv(gridRows(item.data as GridData)), `${(item.name || 'grid').slice(0, 60)}.csv`),
+      },
+    ],
+  },
   {
     kind: 'divider',
     mode: 'svg',
@@ -112,14 +113,33 @@ export const basicViews: WidgetView[] = [
     Render: StampRender,
     Editor: StampEditor,
     actions: (item, ctx) => {
-      const k = data<{ stamp: StampKind }>(item).stamp,
-        n = cycle(stampKinds, k);
+      const d = data<{ stamp: StampKind; count?: number }>(item),
+        k = d.stamp,
+        n = cycle(stampKinds, k),
+        count = d.count ?? 1;
       return [
         {
           label: `Next stamp (${stampLabels[n]})`,
           icon: <Repeat2 size={16} />,
-          run: () => setData(ctx, item.id, { stamp: n }, { fill: stampColors[n] }),
+          run: () => setData(ctx, item.id, { ...d, stamp: n }, { fill: stampColors[n] }),
         },
+        // Sticker counter (gap D13).
+        {
+          label: `+1 (${count})`,
+          run: () => setData(ctx, item.id, { ...d, count: Math.min(999, count + 1) }),
+        },
+        ...(count > 1
+          ? [
+              {
+                label: 'Reset count',
+                run: () => {
+                  const next = { ...d };
+                  delete next.count;
+                  setData(ctx, item.id, next);
+                },
+              },
+            ]
+          : []),
       ];
     },
   },
@@ -146,19 +166,7 @@ export const basicViews: WidgetView[] = [
     mode: 'html',
     Render: SpinnerRender,
     Editor: SpinnerEditor,
-    actions: (item, ctx) => [
-      {
-        label: 'Spin',
-        icon: <Shuffle size={16} />,
-        run: () => {
-          try {
-            setData(ctx, item.id, spin(data<SpinnerData>(item)));
-          } catch (e) {
-            ctx.display((e as Error).message);
-          }
-        },
-      },
-    ],
+    actions: spinnerActions,
   },
   { kind: 'scale', mode: 'html', Render: ScaleRender, Editor: ScaleEditor, interactive: true },
 ];

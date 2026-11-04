@@ -27,8 +27,19 @@ export type BoardMeta = {
   /** Optional space (folder) the board is filed under, and whether it is starred (item 107). */
   space?: string;
   starred?: boolean;
+  /** Board status and description copied from the board, for dashboard chips, filters and search. */
+  status?: string;
+  description?: string;
+  /** Set while the board is in the trash; its stored data is kept until it is purged. */
+  deletedAt?: string;
+  /** 2 once status and description have been copied from the stored board (older indexes lack them). */
+  v?: 2;
 };
-export type Library = { version: 1; activeId: string; boards: BoardMeta[] };
+/**
+ * `spaces` lists spaces created explicitly, so an empty space is kept; spaces named only by boards
+ * (older indexes) still count. Every new field is optional, so older indexes load unchanged.
+ */
+export type Library = { version: 1; activeId: string; boards: BoardMeta[]; spaces?: string[] };
 
 export const INDEX_KEY = 'boardroom.boards.v1';
 export const LEGACY_KEY = 'boardroom.document.v1';
@@ -37,7 +48,13 @@ const uid = () => crypto.randomUUID();
 
 /** Up to 60 of the largest objects, normalised to the board bounds (0..1), for dashboard thumbnails. */
 export function previewOf(board: Board): PreviewShape[] {
-  const shapes = board.items.filter(i => !i.hidden && i.type !== 'pen');
+  // A chosen thumbnail frame (gap C13) limits the preview to that frame's area.
+  const f = board.thumbnailFrame
+    ? board.items.find(i => i.id === board.thumbnailFrame && i.type === 'frame')
+    : undefined;
+  const inFrame = (i: Item) =>
+    !f || (i.x < f.x + f.w && i.x + Math.abs(i.w) > f.x && i.y < f.y + f.h && i.y + Math.abs(i.h) > f.y);
+  const shapes = board.items.filter(i => !i.hidden && i.type !== 'pen' && inFrame(i));
   if (!shapes.length) return [];
   const box = (i: Item) =>
     i.type === 'arrow'
@@ -62,14 +79,34 @@ export function previewOf(board: Board): PreviewShape[] {
       kind: i.type === 'note' ? 'note' : i.type === 'frame' ? 'frame' : i.type === 'arrow' ? 'line' : 'shape',
     }));
 }
-const metaFor = (id: string, board: Board, now: string, createdAt = now): BoardMeta => ({
-  id,
-  title: board.title || 'Untitled board',
-  createdAt,
-  updatedAt: now,
-  items: board.items.length,
-  preview: previewOf(board),
-});
+export const DESCRIPTION_MAX = 1000;
+/** Copy the board's status and description onto its index entry (removing them when absent). */
+function withBoardFacts(meta: BoardMeta, board: { status?: unknown; description?: unknown }): BoardMeta {
+  const m: BoardMeta = { ...meta, v: 2 };
+  if (typeof board.status === 'string' && board.status) m.status = board.status;
+  else delete m.status;
+  if (typeof board.description === 'string' && board.description.trim())
+    m.description = board.description.slice(0, DESCRIPTION_MAX);
+  else delete m.description;
+  return m;
+}
+const metaFor = (id: string, board: Board, now: string, createdAt = now): BoardMeta =>
+  withBoardFacts(
+    {
+      id,
+      title: board.title || 'Untitled board',
+      createdAt,
+      updatedAt: now,
+      items: board.items.length,
+      preview: previewOf(board),
+    },
+    board,
+  );
+/** Boards not in the trash, in index order. */
+export const liveBoards = (lib: Library) => lib.boards.filter(b => !b.deletedAt);
+/** Boards in the trash, most recently deleted first. */
+export const trashedBoards = (lib: Library) =>
+  lib.boards.filter(b => b.deletedAt).sort((a, b) => Date.parse(b.deletedAt!) - Date.parse(a.deletedAt!));
 function readIndex(kv: KeyValueStore): Library | null {
   try {
     const raw = kv.getItem(INDEX_KEY);
@@ -90,20 +127,72 @@ export const cleanSpace = (name: string) =>
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, SPACE_MAX);
-/** Distinct spaces in use, alphabetically. */
+/** Distinct spaces (created ones and those used by boards outside the trash), alphabetically. */
 export const spacesOf = (lib: Library) =>
-  [...new Set(lib.boards.map(b => b.space).filter((s): s is string => !!s))].sort((a, b) => a.localeCompare(b));
-/** File a board under a space ('' or null removes it) and/or star it. Index-only; board data is untouched. */
+  [
+    ...new Set([
+      ...(lib.spaces ?? []).map(cleanSpace).filter(Boolean),
+      ...liveBoards(lib)
+        .map(b => b.space)
+        .filter((s): s is string => !!s),
+    ]),
+  ].sort((a, b) => a.localeCompare(b));
+const withSpaces = (lib: Library, spaces: string[]): Library => {
+  const next = { ...lib };
+  if (spaces.length) next.spaces = [...new Set(spaces)];
+  else delete next.spaces;
+  return next;
+};
+/** Create an empty space. Throws when the name is empty or already used. */
+export function createSpace(kv: KeyValueStore, lib: Library, name: string): Library {
+  const clean = cleanSpace(name);
+  if (!clean) throw new Error('Give the space a name.');
+  if (spacesOf(lib).some(s => s.toLowerCase() === clean.toLowerCase())) throw new Error('That space already exists.');
+  const next = withSpaces(lib, [...(lib.spaces ?? []), clean]);
+  writeIndex(kv, next);
+  return next;
+}
+/** Rename a space; its boards (trashed ones included) move with it. Renaming onto an existing space merges them. */
+export function renameSpace(kv: KeyValueStore, lib: Library, from: string, to: string): Library {
+  const clean = cleanSpace(to);
+  if (!clean) throw new Error('Give the space a name.');
+  const listed = (lib.spaces ?? []).filter(s => s !== from && s !== clean);
+  const next = withSpaces({ ...lib, boards: lib.boards.map(b => (b.space === from ? { ...b, space: clean } : b)) }, [
+    ...listed,
+    clean,
+  ]);
+  writeIndex(kv, next);
+  return next;
+}
+/** Delete a space. Its boards stay and move to "No space". */
+export function deleteSpace(kv: KeyValueStore, lib: Library, name: string): Library {
+  const next = withSpaces(
+    {
+      ...lib,
+      boards: lib.boards.map(b => {
+        if (b.space !== name) return b;
+        const m = { ...b };
+        delete m.space;
+        return m;
+      }),
+    },
+    (lib.spaces ?? []).filter(s => s !== name),
+  );
+  writeIndex(kv, next);
+  return next;
+}
+/** File boards under a space ('' or null removes it) and/or star them. Index-only; board data is untouched. */
 export function setBoardMeta(
   kv: KeyValueStore,
   lib: Library,
-  id: string,
+  id: string | string[],
   patch: { space?: string | null; starred?: boolean },
 ): Library {
+  const ids = new Set(Array.isArray(id) ? id : [id]);
   const next: Library = {
     ...lib,
     boards: lib.boards.map(b => {
-      if (b.id !== id) return b;
+      if (!ids.has(b.id)) return b;
       const m = { ...b };
       if (patch.space !== undefined) {
         const s = patch.space ? cleanSpace(patch.space) : '';
@@ -151,7 +240,9 @@ export function openLibrary(
     writeIndex(kv, lib);
     return { library: lib, board, error };
   }
-  if (!lib.boards.some(b => b.id === lib!.activeId)) lib = { ...lib, activeId: lib.boards[0]?.id ?? uid() };
+  lib = purgeTrash(kv, lib, TRASH_DAYS, now);
+  lib = backfillFacts(kv, lib);
+  if (!liveBoards(lib).some(b => b.id === lib!.activeId)) lib = { ...lib, activeId: liveBoards(lib)[0]?.id ?? uid() };
   const stored = kv.getItem(boardKey(lib.activeId));
   const source = legacy && legacy !== stored ? legacy : stored;
   try {
@@ -178,6 +269,7 @@ export function saveActive(kv: KeyValueStore, lib: Library, board: Board, now = 
   const meta = metaFor(lib.activeId, board, now, old?.createdAt);
   if (old?.space) meta.space = old.space;
   if (old?.starred) meta.starred = true;
+  if (old?.deletedAt) meta.deletedAt = old.deletedAt;
   const next: Library = { ...lib, boards: [meta, ...lib.boards.filter(b => b.id !== lib.activeId)] };
   writeIndex(kv, next);
   return next;
@@ -210,7 +302,7 @@ export function createBoard(
   const id = uid();
   kv.setItem(boardKey(id), JSON.stringify(board));
   kv.setItem(LEGACY_KEY, JSON.stringify(board));
-  const next: Library = { version: 1, activeId: id, boards: [metaFor(id, board, now), ...lib.boards] };
+  const next: Library = { ...lib, version: 1, activeId: id, boards: [metaFor(id, board, now), ...lib.boards] };
   writeIndex(kv, next);
   return { library: next, id };
 }
@@ -234,21 +326,25 @@ export function renameBoard(
   writeIndex(kv, next);
   return next;
 }
-/** Copy a board (new id, " copy" title). The current active board stays active. */
+/** Copy a board (new id, the given title or a " copy" title, same space). The current active board stays active. */
 export function duplicateBoard(
   kv: KeyValueStore,
   lib: Library,
   id: string,
   parse: (raw: unknown) => Board,
   now = new Date().toISOString(),
+  title?: string,
 ): { library: Library; id: string } {
   const source = loadBoard(kv, id, parse),
     copyId = uid(),
-    board = { ...source, title: `${source.title || 'Untitled board'} copy`.slice(0, 200) };
+    board = { ...source, title: (title?.trim() || `${source.title || 'Untitled board'} copy`).slice(0, 200) };
   kv.setItem(boardKey(copyId), JSON.stringify(board));
   const index = lib.boards.findIndex(b => b.id === id);
   const boards = [...lib.boards];
-  boards.splice(index + 1, 0, metaFor(copyId, board, now));
+  const meta = metaFor(copyId, board, now),
+    space = lib.boards[index]?.space;
+  if (space) meta.space = space;
+  boards.splice(index + 1, 0, meta);
   const next: Library = { ...lib, boards };
   writeIndex(kv, next);
   return { library: next, id: copyId };
@@ -263,20 +359,222 @@ export function deleteBoard(
   now = new Date().toISOString(),
 ): { library: Library; board?: Board } {
   kv.removeItem(boardKey(id));
-  let next: Library = { ...lib, boards: lib.boards.filter(b => b.id !== id) };
+  kv.removeItem(`boardroom.versions.${id}`);
+  const next: Library = { ...lib, boards: lib.boards.filter(b => b.id !== id) };
   if (id !== lib.activeId) {
     writeIndex(kv, next);
     return { library: next };
   }
-  if (!next.boards.length) {
-    const created = createBoard(kv, next, blank(), now);
-    return { library: created.library, board: blank() };
-  }
-  next = { ...next, activeId: next.boards[0].id };
-  const opened = switchTo(kv, next, next.activeId, parse);
-  return { library: opened.library, board: opened.board };
+  return activateFallback(kv, next, parse, blank, now);
 }
-/** Asset ids referenced by any stored board, so shared image/video/PDF storage is never pruned too early. */
+/** After the active board left the library: open the most recent live board, or a new blank one. */
+function activateFallback(
+  kv: KeyValueStore,
+  lib: Library,
+  parse: (raw: unknown) => Board,
+  blank: () => Board,
+  now: string,
+): { library: Library; board: Board } {
+  for (const candidate of liveBoards(lib)) {
+    try {
+      const opened = switchTo(kv, { ...lib, activeId: candidate.id }, candidate.id, parse);
+      return { library: opened.library, board: opened.board };
+    } catch {
+      // Unreadable or missing data: try the next board.
+    }
+  }
+  const board = blank(),
+    created = createBoard(kv, lib, board, now);
+  return { library: created.library, board };
+}
+
+export const TRASH_DAYS = 30;
+/**
+ * Move boards to the trash; their stored data is kept until purged. Trashing the active board opens
+ * the most recent remaining board, or a new blank one.
+ */
+export function trashBoards(
+  kv: KeyValueStore,
+  lib: Library,
+  ids: string[],
+  parse: (raw: unknown) => Board,
+  blank: () => Board,
+  now = new Date().toISOString(),
+): { library: Library; board?: Board } {
+  const set = new Set(ids);
+  const next: Library = {
+    ...lib,
+    boards: lib.boards.map(b => (set.has(b.id) && !b.deletedAt ? { ...b, deletedAt: now } : b)),
+  };
+  if (!set.has(lib.activeId)) {
+    writeIndex(kv, next);
+    return { library: next };
+  }
+  return activateFallback(kv, next, parse, blank, now);
+}
+/** Take boards out of the trash, back into their space. */
+export function restoreBoards(kv: KeyValueStore, lib: Library, ids: string[]): Library {
+  const set = new Set(ids);
+  const next: Library = {
+    ...lib,
+    boards: lib.boards.map(b => {
+      if (!set.has(b.id) || !b.deletedAt) return b;
+      const m = { ...b };
+      delete m.deletedAt;
+      return m;
+    }),
+  };
+  writeIndex(kv, next);
+  return next;
+}
+/** Permanently delete trashed boards (data and index entry). Boards outside the trash are left alone. */
+export function purgeBoards(kv: KeyValueStore, lib: Library, ids: string[]): Library {
+  const wanted = new Set(ids),
+    gone = new Set(lib.boards.filter(b => b.deletedAt && wanted.has(b.id)).map(b => b.id));
+  if (!gone.size) return lib;
+  for (const id of gone) {
+    kv.removeItem(boardKey(id));
+    kv.removeItem(`boardroom.versions.${id}`);
+  }
+  const next: Library = { ...lib, boards: lib.boards.filter(b => !gone.has(b.id)) };
+  writeIndex(kv, next);
+  return next;
+}
+/** Purge boards that have been in the trash for `days` days or longer (unreadable dates count as expired). */
+export function purgeTrash(
+  kv: KeyValueStore,
+  lib: Library,
+  days = TRASH_DAYS,
+  now = new Date().toISOString(),
+): Library {
+  const cutoff = Date.parse(now) - days * 86_400_000;
+  const expired = lib.boards.filter(b => b.deletedAt && !(Date.parse(b.deletedAt) > cutoff)).map(b => b.id);
+  return expired.length ? purgeBoards(kv, lib, expired) : lib;
+}
+/** Days left before a trashed board is purged (0 when due). */
+export const daysLeftInTrash = (deletedAt: string, now = Date.now(), days = TRASH_DAYS) =>
+  Math.max(0, Math.ceil((Date.parse(deletedAt) + days * 86_400_000 - now) / 86_400_000) || 0);
+/** Copy status and description from stored boards into index entries written by older versions. */
+function backfillFacts(kv: KeyValueStore, lib: Library): Library {
+  if (lib.boards.every(b => b.v === 2)) return lib;
+  const next: Library = {
+    ...lib,
+    boards: lib.boards.map(b => {
+      if (b.v === 2) return b;
+      try {
+        const raw = JSON.parse(kv.getItem(boardKey(b.id)) ?? 'null');
+        return raw && typeof raw === 'object' ? withBoardFacts(b, raw) : b;
+      } catch {
+        return b;
+      }
+    }),
+  };
+  try {
+    writeIndex(kv, next);
+  } catch {
+    // Storage full: the details are copied again next time.
+  }
+  return next;
+}
+
+/**
+ * Store boards without opening them (import as a new board, restore a library backup). A suggested id
+ * is kept when it is free, otherwise the board gets a new one. Saved index details (space, star, dates,
+ * trash) are kept when valid. Returns the ids used, in entry order.
+ */
+export function addBoards(
+  kv: KeyValueStore,
+  lib: Library,
+  entries: { board: Board; id?: string; meta?: Partial<BoardMeta> }[],
+  now = new Date().toISOString(),
+): { library: Library; ids: string[] } {
+  const taken = new Set(lib.boards.map(b => b.id)),
+    added: BoardMeta[] = [],
+    ids: string[] = [];
+  const iso = (v: unknown) => (typeof v === 'string' && Number.isFinite(Date.parse(v)) ? v : undefined);
+  for (const { board, id: wanted, meta: m } of entries) {
+    const id = wanted && /^[A-Za-z0-9_-]{1,100}$/.test(wanted) && !taken.has(wanted) ? wanted : uid();
+    taken.add(id);
+    kv.setItem(boardKey(id), JSON.stringify(board));
+    const updated = iso(m?.updatedAt) ?? now;
+    const meta = metaFor(id, board, updated, iso(m?.createdAt) ?? updated);
+    const space = typeof m?.space === 'string' ? cleanSpace(m.space) : '';
+    if (space) meta.space = space;
+    if (m?.starred === true) meta.starred = true;
+    const deleted = iso(m?.deletedAt);
+    if (deleted) meta.deletedAt = deleted;
+    added.push(meta);
+    ids.push(id);
+  }
+  const next: Library = {
+    ...lib,
+    boards: [...added.filter(b => !b.deletedAt), ...lib.boards, ...added.filter(b => b.deletedAt)],
+  };
+  writeIndex(kv, next);
+  return { library: next, ids };
+}
+
+/** Lower-case searchable text of a board: title, description, item text and short strings in widget data. */
+export function boardContentText(board: { title?: unknown; description?: unknown; items?: unknown }): string {
+  const parts: string[] = [];
+  const add = (v: unknown) => {
+    if (typeof v === 'string' && v.trim() && v.length <= 20000) parts.push(v);
+  };
+  add(board.title);
+  add(board.description);
+  for (const raw of Array.isArray(board.items) ? board.items : []) {
+    const i = raw as { text?: unknown; data?: unknown } | null;
+    add(i?.text);
+    if (i?.data && typeof i.data === 'object' && !Array.isArray(i.data))
+      for (const v of Object.values(i.data as Record<string, unknown>))
+        if (typeof v === 'string' && v.length <= 2000) add(v);
+  }
+  return parts
+    .join('\n')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .toLowerCase();
+}
+export type ContentCache = Map<string, { stamp: string; text: string }>;
+/**
+ * Boards outside the trash whose content matches `query`, each with a short excerpt around the first
+ * match. Board text is read from storage once per saved version and kept in `cache`.
+ */
+export function searchBoardContent(
+  kv: KeyValueStore,
+  lib: Library,
+  query: string,
+  cache: ContentCache = new Map(),
+): Map<string, string> {
+  const q = query.trim().toLowerCase(),
+    out = new Map<string, string>();
+  if (!q) return out;
+  for (const b of liveBoards(lib)) {
+    let entry = cache.get(b.id);
+    if (!entry || entry.stamp !== b.updatedAt) {
+      let text = '';
+      try {
+        text = boardContentText(JSON.parse(kv.getItem(boardKey(b.id)) ?? 'null') ?? {});
+      } catch {
+        // Unreadable board: nothing to match.
+      }
+      entry = { stamp: b.updatedAt, text };
+      cache.set(b.id, entry);
+    }
+    const at = entry.text.indexOf(q);
+    if (at < 0) continue;
+    const start = Math.max(0, at - 30),
+      end = Math.min(entry.text.length, at + q.length + 30),
+      excerpt = entry.text.slice(start, end).replace(/\s+/g, ' ').trim();
+    out.set(b.id, `${start ? '…' : ''}${excerpt}${end < entry.text.length ? '…' : ''}`);
+  }
+  return out;
+}
+
+/**
+ * Asset ids referenced by any stored board (trashed boards included, until they are purged), so shared
+ * image/video/PDF storage is never pruned too early.
+ */
 export function assetRefsAcrossBoards(kv: KeyValueStore, lib: Library): Set<string> {
   const out = new Set<string>();
   for (const b of lib.boards) {

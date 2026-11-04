@@ -3,6 +3,7 @@
 // presentation-related modules in the 205-file audit.
 import type { Board, Item, Kind, Point } from './model.ts';
 import { itemBounds } from './interactions.ts';
+import { isShapeKind } from './shapes.ts';
 import { widgetSearchText } from './widget-specs.ts';
 import type { Bounds } from './interactions.ts';
 
@@ -193,6 +194,7 @@ export function searchBoard(
       { field: i.type === 'arrow' ? 'label' : 'text', text: i.text },
       ...(i.tags ?? []).map(t => ({ field: 'tag' as const, text: t, prefix: '#' })),
       ...(i.nodes ?? []).map(n => ({ field: 'topic' as const, text: n.text })),
+      ...(i.connector?.labels ?? []).map(l => ({ field: 'label' as const, text: l.text })),
     ];
     const extra = widgetSearchText(i);
     if (extra) fields.push({ field: 'text', text: extra });
@@ -253,6 +255,33 @@ export function presentationFrames(board: Board): Item[] {
   const listed = (board.presentation ?? []).map(id => byId.get(id)).filter(Boolean) as Item[];
   return [...listed, ...frames.filter(f => !listed.includes(f))];
 }
+/** Presenter notes stored on a frame (gap G1). */
+export const frameNotes = (frame: Item): string => (typeof frame.data?.notes === 'string' ? frame.data.notes : '');
+/** Frame hidden from the presentation (gap G2): it stays in the order but is skipped when presenting. */
+export const isHiddenSlide = (frame: Item): boolean => frame.type === 'frame' && !!frame.data?.skipInPresentation;
+/** Frames shown when presenting: the presentation order without hidden frames. */
+export const slideFrames = (board: Board): Item[] => presentationFrames(board).filter(f => !isHiddenSlide(f));
+/** Set or clear (undefined, '' or false) keys of a frame's `data`; an empty `data` is removed. Locked frames refuse. */
+export function setFrameData(board: Board, id: string, patch: Record<string, unknown>): Board {
+  const frame = board.items.find(i => i.id === id);
+  if (!frame || frame.type !== 'frame') throw new Error('Select a frame first.');
+  if (frame.locked) throw new Error('Unlock the frame first.');
+  const data: Record<string, unknown> = { ...frame.data };
+  for (const [k, v] of Object.entries(patch))
+    if (v === undefined || v === '' || v === false) delete data[k];
+    else data[k] = v;
+  const next: Item = { ...frame };
+  if (Object.keys(data).length) next.data = data;
+  else delete next.data;
+  return { ...board, items: board.items.map(i => (i.id === id ? next : i)) };
+}
+export const FRAME_NOTES_LIMIT = 10000;
+export function setFrameNotes(board: Board, id: string, notes: string): Board {
+  if (notes.length > FRAME_NOTES_LIMIT) throw new Error('Presenter notes are limited to 10,000 characters.');
+  return setFrameData(board, id, { notes: notes.trim() ? notes : undefined });
+}
+export const setHiddenSlide = (board: Board, id: string, hidden: boolean) =>
+  setFrameData(board, id, { skipInPresentation: hidden });
 /** Move a frame earlier/later in the presentation; stores the complete order. */
 export function moveInPresentation(board: Board, id: string, delta: number): Board {
   const order = presentationFrames(board).map(f => f.id),
@@ -269,4 +298,140 @@ export function fitFrame(frame: Item, size: { w: number; h: number }, margin = 4
     Math.min(8, (size.w - margin * 2) / Math.max(frame.w, 1), (size.h - margin * 2 - 64) / Math.max(frame.h, 1)),
   );
   return { z, x: size.w / 2 - (frame.x + frame.w / 2) * z, y: (size.h - 64) / 2 - (frame.y + frame.h / 2) * z };
+}
+
+/** Kind groups offered by the search type filter (gap D4). */
+export const searchKindGroups: { id: string; label: string; match: (k: Kind) => boolean }[] = [
+  { id: 'all', label: 'All objects', match: () => true },
+  { id: 'note', label: 'Sticky notes', match: k => k === 'note' },
+  { id: 'text', label: 'Text', match: k => k === 'text' },
+  { id: 'card', label: 'Cards', match: k => k === 'card' },
+  { id: 'frame', label: 'Frames', match: k => k === 'frame' },
+  { id: 'arrow', label: 'Connectors', match: k => k === 'arrow' },
+  { id: 'shape', label: 'Shapes', match: k => isShapeKind(k) },
+];
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/**
+ * Replace every exact occurrence of `find` (case-insensitive unless `matchCase`) in object text, connector
+ * labels and mind-map topics of `ids`. Locked objects are skipped; fuzzy search matches are never replaced.
+ */
+export function replaceText(
+  board: Board,
+  ids: string[],
+  find: string,
+  replacement: string,
+  matchCase = false,
+): { board: Board; count: number; objects: number } {
+  if (!find) return { board, count: 0, objects: 0 };
+  const wanted = new Set(ids),
+    re = new RegExp(escapeRegExp(find), matchCase ? 'g' : 'gi');
+  let count = 0,
+    objects = 0;
+  const swap = (text: string) =>
+    text.replace(re, () => {
+      count++;
+      return replacement;
+    });
+  const items = board.items.map(i => {
+    if (!wanted.has(i.id) || i.locked) return i;
+    const before = count;
+    const text = swap(i.text).slice(0, i.type === 'card' ? 20000 : 6000);
+    const nodes = i.nodes?.map(n => ({ ...n, text: swap(n.text).slice(0, 6000) }));
+    if (count === before) return i;
+    objects++;
+    return { ...i, text, ...(nodes ? { nodes } : {}) };
+  });
+  return { board: objects ? { ...board, items } : board, count, objects };
+}
+
+// ---- Keyboard object navigation (gap F1, F2) -------------------------------------------------
+const navigable = (i: Item) => !i.hidden && i.type !== 'arrow' && i.type !== 'pen';
+/**
+ * Objects in reading order: rows top to bottom (objects whose tops are within half the smaller
+ * height of each other share a row), then left to right.
+ */
+export function readingOrder(board: Board): string[] {
+  const items = board.items.filter(navigable).sort((a, b) => a.y - b.y || a.x - b.x);
+  const rows: Item[][] = [];
+  for (const i of items) {
+    const row = rows[rows.length - 1];
+    if (row && Math.abs(i.y - row[0].y) <= Math.min(i.h, row[0].h) / 2) row.push(i);
+    else rows.push([i]);
+  }
+  return rows.flatMap(r => r.sort((a, b) => a.x - b.x)).map(i => i.id);
+}
+/** Next (or previous) object in reading order, wrapping; the first object when nothing is selected. */
+export function stepInOrder(board: Board, current: string | undefined, back = false): string | undefined {
+  const order = readingOrder(board);
+  if (!order.length) return undefined;
+  const at = current ? order.indexOf(current) : -1;
+  if (at < 0) return back ? order[order.length - 1] : order[0];
+  return order[(at + (back ? -1 : 1) + order.length) % order.length];
+}
+export type Direction = 'left' | 'right' | 'up' | 'down';
+/** Nearest object whose centre lies in the given direction (within a 45° cone first, then a half plane). */
+export function nearestInDirection(board: Board, fromId: string, dir: Direction): string | undefined {
+  const from = board.items.find(i => i.id === fromId);
+  if (!from) return undefined;
+  const cx = from.x + from.w / 2,
+    cy = from.y + from.h / 2;
+  let best: { id: string; score: number } | undefined;
+  for (const i of board.items) {
+    if (i.id === fromId || !navigable(i)) continue;
+    const dx = i.x + i.w / 2 - cx,
+      dy = i.y + i.h / 2 - cy;
+    const along = dir === 'right' ? dx : dir === 'left' ? -dx : dir === 'down' ? dy : -dy,
+      across = dir === 'left' || dir === 'right' ? Math.abs(dy) : Math.abs(dx);
+    if (along <= 0) continue;
+    // Prefer objects inside the cone; penalise sideways distance.
+    const score = along + across * (across > along ? 4 : 2);
+    if (!best || score < best.score) best = { id: i.id, score };
+  }
+  return best?.id;
+}
+/** Spoken description of one object for screen readers (gap F3). */
+export function describeItem(i: Item): string {
+  const kind = i.type === 'note' ? 'Sticky note' : i.type === 'arrow' ? 'Connector' : i.type;
+  const text = (i.alt || i.name || i.text || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+  return [kind[0].toUpperCase() + kind.slice(1), text || 'no text', i.locked ? 'locked' : '']
+    .filter(Boolean)
+    .join(', ');
+}
+/** Short board summary: counts by kind (gap F3, Alt+S). */
+export function boardSummary(board: Board): string {
+  const counts = new Map<string, number>();
+  for (const i of board.items) if (!i.hidden) counts.set(i.type, (counts.get(i.type) ?? 0) + 1);
+  if (!counts.size) return `${board.title || 'Board'} is empty.`;
+  const parts = [...counts]
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `${n} ${k === 'note' ? 'sticky note' : k === 'arrow' ? 'connector' : k}${n === 1 ? '' : 's'}`);
+  return `${board.title || 'Board'}: ${board.items.filter(i => !i.hidden).length} objects — ${parts.join(', ')}.`;
+}
+/** First object inside a frame in reading order (gap F2: Ctrl+Shift+Down enters a frame). */
+export function firstInFrame(board: Board, frameId: string): string | undefined {
+  const f = board.items.find(i => i.id === frameId && i.type === 'frame');
+  if (!f) return undefined;
+  const inside = new Set(
+    board.items
+      .filter(i => i.id !== f.id && i.x >= f.x && i.y >= f.y && i.x + i.w <= f.x + f.w && i.y + i.h <= f.y + f.h)
+      .map(i => i.id),
+  );
+  return readingOrder(board).find(id => inside.has(id));
+}
+/** Smallest frame containing an object (gap F2: Ctrl+Shift+Up leaves to the frame). */
+export function frameAroundItem(board: Board, id: string): string | undefined {
+  const i = board.items.find(x => x.id === id);
+  if (!i) return undefined;
+  return board.items
+    .filter(
+      f =>
+        f.type === 'frame' &&
+        f.id !== id &&
+        i.x >= f.x &&
+        i.y >= f.y &&
+        i.x + i.w <= f.x + f.w &&
+        i.y + i.h <= f.y + f.h,
+    )
+    .sort((a, b) => a.w * a.h - b.w * b.h)[0]?.id;
 }

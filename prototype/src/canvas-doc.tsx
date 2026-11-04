@@ -4,12 +4,14 @@ import type { WidgetCtx } from './widget-types';
 import { renderMarkdown } from './markdown';
 import { canvasControl } from './canvas-fields';
 import { useLatest } from './use-latest';
-import { filterSlash, docTemplates, calloutLabels, DOC_MAX } from './doc-tools';
+import { filterSlash, docTemplates, calloutLabels, DOC_MAX, docShortcut } from './doc-tools';
+import { StatusChip } from './status-chip';
 import type { SlashCommand, CalloutKind } from './doc-tools';
 
 /** Serialize only supported rich-text elements. Pasted HTML is never persisted. */
 export function markdownFrom(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? '').replace(/([\\`*_[\]])/g, '\\$1');
+  if (node.nodeType === Node.TEXT_NODE)
+    return (node.textContent ?? '').replace(/([\\`*_[\]~])/g, '\\$1').replace(/\+(?=\+)/g, '\\+');
   if (!(node instanceof HTMLElement)) return '';
   if (node.classList.contains('doc-callout-title')) return '';
   const children = () => Array.from(node.childNodes).map(markdownFrom).join('');
@@ -22,6 +24,12 @@ export function markdownFrom(node: Node): string {
     case 'EM':
     case 'I':
       return `*${children()}*`;
+    case 'U':
+      return `++${children()}++`;
+    case 'S':
+    case 'DEL':
+    case 'STRIKE':
+      return `~~${children()}~~`;
     case 'H1':
     case 'H2':
     case 'H3':
@@ -53,8 +61,11 @@ export function markdownFrom(node: Node): string {
       return `${children()}\n`;
     case 'BLOCKQUOTE':
       return `> ${children().trim().replace(/\n/g, '\n> ')}\n\n`;
-    case 'CODE':
-      return '`' + children() + '`';
+    case 'CODE': {
+      // Code spans are literal in Markdown: keep the raw text (backticks cannot be represented and are dropped).
+      const code = (node.textContent ?? '').replace(/`/g, '');
+      return code.trim() ? '`' + code + '`' : code;
+    }
     case 'A': {
       const href = node.getAttribute('href') ?? '';
       const body = children();
@@ -138,6 +149,31 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       );
     } else if (c.divider) document.execCommand('insertHTML', false, '<hr><p><br></p>');
   };
+  /** Ctrl+E: wrap the selected text in inline code, or unwrap the code span the caret is in. */
+  const toggleCode = () => {
+    const root = editor.current,
+      sel = getSelection();
+    if (!root || !sel?.rangeCount) return;
+    const range = sel.getRangeAt(0),
+      start = range.startContainer,
+      code = (start.nodeType === Node.TEXT_NODE ? start.parentElement : (start as Element))?.closest('code');
+    if (code && root.contains(code)) {
+      code.replaceWith(document.createTextNode(code.textContent ?? ''));
+      return;
+    }
+    const text = range.toString();
+    if (!text.trim() || text.includes('\n') || !root.contains(range.commonAncestorContainer))
+      return ctx.display('Select text on one line to format it as code.');
+    // Inserted directly: the browser's insertHTML turns <code> into a styled span.
+    const el = document.createElement('code');
+    el.textContent = text.replace(/`/g, '');
+    range.deleteContents();
+    range.insertNode(el);
+    range.setStartAfter(el);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
   const matches = slash ? filterSlash(slash.query) : [];
   const keyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     e.stopPropagation();
@@ -158,6 +194,14 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         setSlash(null);
         return;
       }
+    }
+    const shortcut = item.locked ? null : docShortcut(e);
+    if (shortcut) {
+      e.preventDefault();
+      if (shortcut.kind === 'strike') document.execCommand('strikethrough');
+      else if (shortcut.kind === 'block') document.execCommand('formatBlock', false, shortcut.block);
+      else toggleCode();
+      return;
     }
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -209,6 +253,7 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     <div className="rich-object canvas-interactive canvas-doc-object" onDoubleClick={e => e.stopPropagation()}>
       <div className="rich-title canvas-widget-header">
         <span>{item.text || 'Doc'}</span>
+        <StatusChip status={item.data?.status} />
         <div {...canvasControl} onMouseDown={e => e.preventDefault()} className="canvas-doc-tools">
           <button disabled={!!item.locked} aria-label="Bold document text" onClick={() => command('bold')}>
             B

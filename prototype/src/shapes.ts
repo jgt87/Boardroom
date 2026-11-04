@@ -5,7 +5,7 @@ import type { Point } from './model.ts';
 import { packKinds, packDef, packOrder } from './shape-packs.ts';
 import type { PackName } from './shape-packs.ts';
 
-const basicKinds = [
+export const basicKinds = [
   'rectangle',
   'roundrect',
   'ellipse',
@@ -103,8 +103,15 @@ export function polygon(kind: ShapeKind, w: number, h: number): Point[] | null {
   }
 }
 
-/** SVG path data for the filled outline. */
-export function shapePath(kind: ShapeKind, w: number, h: number): string {
+/** Kinds whose corner radius can be set (gap D8). */
+export const radiusKinds: string[] = ['rectangle', 'roundrect'];
+/** Corner radius actually drawn: the chosen radius (or the kind's default), capped at half the shorter side. */
+export function cornerRadius(kind: string, w: number, h: number, radius?: number): number {
+  const r = radius ?? (kind === 'roundrect' ? 20 : kind === 'rectangle' ? 4 : 0);
+  return Math.max(0, Math.min(r, w / 2, h / 2));
+}
+/** SVG path data for the filled outline; `radius` overrides the corner radius of rectangles. */
+export function shapePath(kind: ShapeKind, w: number, h: number, radius?: number): string {
   const custom = packDef(kind)?.path;
   if (custom) return custom(w, h);
   const poly = polygon(kind, w, h);
@@ -118,9 +125,11 @@ export function shapePath(kind: ShapeKind, w: number, h: number): string {
   const r =
     kind === 'terminator'
       ? Math.min(w, h) / 2
-      : kind === 'roundrect'
-        ? Math.min(20, w / 4, h / 4)
-        : Math.min(4, w / 2, h / 2);
+      : radius !== undefined && radiusKinds.includes(kind)
+        ? cornerRadius(kind, w, h, radius)
+        : kind === 'roundrect'
+          ? Math.min(20, w / 4, h / 4)
+          : Math.min(4, w / 2, h / 2);
   return `M${r},0 H${w - r} A${r},${r} 0 0 1 ${w},${r} V${h - r} A${r},${r} 0 0 1 ${w - r},${h} H${r} A${r},${r} 0 0 1 0,${h - r} V${r} A${r},${r} 0 0 1 ${r},0 Z`;
 }
 

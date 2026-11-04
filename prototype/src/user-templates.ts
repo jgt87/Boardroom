@@ -2,7 +2,8 @@
 // stored as the clipboard payload, so inserting one reuses the tested paste path (new ids,
 // connectors, groups and record datasets kept). Media files are not included.
 import type { Board } from './model.ts';
-import { clipboardFormats, copySelection, readClipboardHtml, type ClipPayload } from './clipboard.ts';
+import { clipboardFormats, copySelection, pastePayload, readClipboardHtml, type ClipPayload } from './clipboard.ts';
+import { frameMoveIds } from './interactions.ts';
 
 export const TEMPLATES_KEY = 'boardroom.templates.v1';
 export const TEMPLATE_LIMIT = 20;
@@ -20,10 +21,51 @@ export const cleanTemplateName = (name: string) =>
 /** Build a template from every object on the board except media (whose files stay in this board). */
 export function makeTemplate(board: Board, name: string, id: string, now: Date): UserTemplate | { error: string } {
   const ids = board.items.filter(i => !i.assetId).map(i => i.id);
-  const payload = copySelection(board, ids, {}, 0);
-  if (!payload) return { error: 'Add something to the board before saving it as a template.' };
+  return templateFrom(board, ids, name, id, now, 'board');
+}
+/**
+ * The objects a selection template keeps (gap list I6): the selection, everything inside selected frames,
+ * and connectors whose both ends are kept. Media objects are left out.
+ */
+export function selectionTemplateIds(board: Board, ids: string[]): string[] {
+  const chosen = new Set(frameMoveIds(board.items, ids));
+  for (const i of board.items)
+    if (i.type === 'arrow' && i.from && i.to && chosen.has(i.from) && chosen.has(i.to)) chosen.add(i.id);
+  return board.items.filter(i => chosen.has(i.id) && !i.assetId).map(i => i.id);
+}
+/** Default name for a selection template: the selected frame's title, else the board title. */
+export function selectionTemplateName(board: Board, ids: string[]): string {
+  const frames = board.items.filter(i => ids.includes(i.id) && i.type === 'frame');
+  return cleanTemplateName((frames.length === 1 && (frames[0].text || frames[0].name)) || `${board.title} selection`);
+}
+/** Build a template from the selection (see selectionTemplateIds). */
+export function makeSelectionTemplate(
+  board: Board,
+  ids: string[],
+  name: string,
+  id: string,
+  now: Date,
+): UserTemplate | { error: string } {
+  return templateFrom(board, selectionTemplateIds(board, ids), name, id, now, 'selection');
+}
+function templateFrom(
+  board: Board,
+  ids: string[],
+  name: string,
+  id: string,
+  now: Date,
+  scope: 'board' | 'selection',
+): UserTemplate | { error: string } {
+  const payload = ids.length ? copySelection(board, ids, {}, 0) : null;
+  if (!payload)
+    return {
+      error:
+        scope === 'board'
+          ? 'Add something to the board before saving it as a template.'
+          : 'Select objects other than media to save them as a template.',
+    };
   const html = clipboardFormats(payload).html;
-  if (html.length > TEMPLATE_MAX_BYTES) return { error: 'This board is too large to save as a template.' };
+  if (html.length > TEMPLATE_MAX_BYTES) return { error: `This ${scope} is too large to save as a template.` };
   return {
     id,
     name: cleanTemplateName(name) || 'Untitled template',
@@ -59,6 +101,12 @@ export function parseTemplates(raw: string | null): UserTemplate[] {
 export const addTemplate = (list: UserTemplate[], t: UserTemplate) => [t, ...list].slice(0, TEMPLATE_LIMIT);
 export const removeTemplate = (list: UserTemplate[], id: string) => list.filter(t => t.id !== id);
 export const templatePayload = (t: UserTemplate): ClipPayload | null => readClipboardHtml(t.html);
+/** A new board holding the template's objects (fresh ids) at the origin, named after the template. */
+export function boardFromTemplate(t: UserTemplate, blank: Board): Board | null {
+  const payload = templatePayload(t);
+  if (!payload) return null;
+  return { ...pastePayload({ ...blank, title: t.name }, payload, { x: 0, y: 0 }).board, title: t.name };
+}
 
 export function loadTemplates(): UserTemplate[] {
   try {

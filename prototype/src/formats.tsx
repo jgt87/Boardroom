@@ -49,8 +49,12 @@ import {
   MessageSquareText,
   PartyPopper,
   FileDown,
+  BarChart3,
+  FileSpreadsheet,
+  Pin,
+  PinOff,
 } from 'lucide-react';
-const kindIcons: Record<string, typeof Layers3> = {
+export const kindIcons: Record<string, typeof Layers3> = {
   drawio: Workflow,
   mindmap: Network,
   code: Code,
@@ -97,11 +101,14 @@ const kindIcons: Record<string, typeof Layers3> = {
   reactions: PartyPopper,
   'import:markdown': FileDown,
   'import:pptx': Presentation,
+  'import:table': FileSpreadsheet,
+  'import:docx': FileText,
+  chart: BarChart3,
 };
 import { catalog, toolCategories } from './tool-catalog';
 import type { CatalogEntry } from './tool-catalog';
 import { wireframeComponents } from './specs-media';
-import { clone, removeBranch } from './model';
+import { allKinds, clone, removeBranch } from './model';
 import type { Board, Item, Kind, MindNode, RecordRow } from './model';
 import { KanbanView, TimelineView } from './record-views';
 import { schemaOf } from './record-schema';
@@ -109,7 +116,6 @@ import { addDependency, removeDependency, deleteRecord, setMilestone, recordsErr
 import {
   mindLayout,
   mindBranchPath,
-  mindBranchColor,
   mindStyleOf,
   mindLabelLines,
   MIND_NODE_W,
@@ -117,6 +123,13 @@ import {
   MIND_ROW,
   manualMindNodes,
   MIND_NODE_H,
+  mindTopicColor,
+  mindHiddenCount,
+  toggleMindCollapse,
+  revealMindNode,
+  setMindColor,
+  mindPalette,
+  mindColorNames,
 } from './mindmap-style';
 import type { MindStyle } from './mindmap-style';
 import { mermaidToNative } from './mermaid-native';
@@ -182,7 +195,7 @@ export function MindPreview({
   style?: MindStyle;
   viewport?: MindViewport;
 }) {
-  const positions = mindLayout(nodes, style.autoLayout ?? true),
+  const positions = mindLayout(nodes, style.autoLayout ?? true, style.layout),
     minX = Math.min(0, ...[...positions.values()].map(p => p.x)),
     minY = Math.min(0, ...[...positions.values()].map(p => p.y)),
     maxX = Math.max(0, ...[...positions.values()].map(p => p.x)),
@@ -200,12 +213,19 @@ export function MindPreview({
       {nodes.map(n => {
         const p = positions.get(n.id),
           parent = n.parent ? positions.get(n.parent) : null,
-          color = mindBranchColor(nodes, n.id, style.colorful);
+          color = mindTopicColor(nodes, n.id, style.colorful),
+          tinted = style.colorful || !!n.color,
+          more = n.collapsed ? mindHiddenCount(nodes, n.id) : 0;
         return (
           p && (
-            <g key={n.id}>
+            <g key={n.id} data-mind-topic={n.id}>
               {parent && (
-                <path d={mindBranchPath(style.branchStyle, parent, p)} fill="none" stroke={color} strokeWidth="2" />
+                <path
+                  d={mindBranchPath(style.branchStyle, parent, p, style.layout)}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth="2"
+                />
               )}
               <rect
                 x={p.x}
@@ -213,9 +233,30 @@ export function MindPreview({
                 width={MIND_NODE_W}
                 height={MIND_NODE_H}
                 rx="9"
-                fill={n.parent ? (style.colorful ? color + '22' : '#edf0ff') : '#4262ff'}
-                stroke={n.parent && style.colorful ? color : 'none'}
+                fill={n.parent ? (tinted ? color + '22' : '#edf0ff') : (n.color ?? '#4262ff')}
+                stroke={n.parent && tinted ? color : 'none'}
               />
+              {more > 0 && (
+                <g className="mind-collapsed-badge">
+                  <rect
+                    x={p.x + MIND_NODE_W - 30}
+                    y={p.y + MIND_NODE_H - 10}
+                    width="34"
+                    height="18"
+                    rx="9"
+                    fill={color}
+                  />
+                  <text
+                    x={p.x + MIND_NODE_W - 13}
+                    y={p.y + MIND_NODE_H + 3}
+                    fontSize="11"
+                    fill="#ffffff"
+                    textAnchor="middle"
+                  >
+                    +{more}
+                  </text>
+                </g>
+              )}
               <text
                 x={p.x + 12}
                 y={p.y + 29 - (mindLabelLines(n.text).length - 1) * 8}
@@ -302,16 +343,23 @@ export function RichPreview({ item, board }: { item: Item; board: Board }) {
     </div>
   );
 }
+/** Drag data type for a tool dragged from the toolbar or the tool gallery onto the board (gap F12). */
+export const TOOL_MIME = 'application/x-boardroom-tool';
 export function ToolGallery({
   initial,
   onClose,
   onChoose,
   onPrimitive,
+  pinned = [],
+  onTogglePin,
 }: {
   initial: 'Formats' | 'Essentials';
   onClose: () => void;
   onChoose: (kind: string) => void;
   onPrimitive: (kind: Kind) => void;
+  /** Kinds pinned to the creation toolbar (gap F12). */
+  pinned?: string[];
+  onTogglePin?: (kind: string) => void;
 }) {
   const [category, setCategory] = useState<string>(initial),
     [query, setQuery] = useState(''),
@@ -336,6 +384,12 @@ export function ToolGallery({
       { label: 'PDF', kind: 'pdf', description: '' },
       { label: 'Markdown as Doc', kind: 'import:markdown', description: 'A .md file becomes an editable Doc' },
       { label: 'PowerPoint as Slides', kind: 'import:pptx', description: 'Slide titles and text from a .pptx file' },
+      { label: 'Word as Doc', kind: 'import:docx', description: 'Headings, lists and text from a .docx file' },
+      {
+        label: 'Spreadsheet as Table',
+        kind: 'import:table',
+        description: 'A .csv or .xlsx file becomes Table records',
+      },
     ],
     wireframes: wireframeComponents.map(c => ({
       label: c.label,
@@ -435,8 +489,21 @@ export function ToolGallery({
                       : entry.kind === 'note'
                         ? StickyNote
                         : Layers3);
-            return (
-              <button key={entry.kind} disabled={entry.unavailable} onClick={() => pick(entry)}>
+            const placeable = !entry.unavailable && (allKinds as string[]).includes(entry.kind),
+              isPinned = pinned.includes(entry.kind);
+            const button = (
+              <button
+                key={entry.kind}
+                className="gallery-pick"
+                disabled={entry.unavailable}
+                onClick={() => pick(entry)}
+                draggable={placeable}
+                onDragStart={e => {
+                  // Drag a tool onto the board to place it there (gap F12).
+                  e.dataTransfer.setData(TOOL_MIME, entry.kind);
+                  e.dataTransfer.effectAllowed = 'copy';
+                }}
+              >
                 <Icon size={22} />
                 <span>
                   <strong>{entry.label}</strong>
@@ -447,6 +514,21 @@ export function ToolGallery({
                 </span>
                 {entry.kind.startsWith('submenu:') && <span aria-hidden="true">›</span>}
               </button>
+            );
+            if (!placeable || !onTogglePin) return button;
+            return (
+              <div className="gallery-entry" key={entry.kind}>
+                {button}
+                <button
+                  className={`gallery-pin ${isPinned ? 'active' : ''}`}
+                  aria-label={`${isPinned ? 'Unpin' : 'Pin'} ${entry.label} ${isPinned ? 'from' : 'to'} the toolbar`}
+                  title={isPinned ? 'Unpin from the toolbar' : 'Pin to the toolbar'}
+                  aria-pressed={isPinned}
+                  onClick={() => onTogglePin(entry.kind)}
+                >
+                  {isPinned ? <PinOff size={14} /> : <Pin size={14} />}
+                </button>
+              </div>
             );
           })}
           {!entries.length && <p>No matching tools.</p>}
@@ -490,7 +572,8 @@ export function FormatEditor({
     records = ['table', 'kanban', 'timeline'].includes(draft.type);
   const addNode = (sibling = false) => {
     if (nodes.length >= 200 || !chosen) return;
-    const p = mindLayout(nodes, mindStyleOf(draft).autoLayout ?? true).get(chosen.id)!;
+    const p = mindLayout(nodes, mindStyleOf(draft).autoLayout ?? true, mindStyleOf(draft).layout).get(chosen.id) ??
+      chosen.position ?? { x: 0, y: 0 };
     const n = {
       id: crypto.randomUUID(),
       parent: sibling && chosen.parent ? chosen.parent : chosen.id,
@@ -499,7 +582,7 @@ export function FormatEditor({
         ? { position: { x: Math.min(100000, p.x + (sibling ? 0 : MIND_COL)), y: Math.min(100000, p.y + MIND_ROW) } }
         : {}),
     };
-    setDraft({ ...draft, nodes: [...nodes, n] });
+    setDraft({ ...draft, nodes: revealMindNode([...nodes, n], n.id) });
     setActive(n.id);
   };
   const visible = rows
@@ -640,7 +723,7 @@ export function FormatEditor({
                       setDraft({
                         ...draft,
                         data: { ...draft.data, autoLayout: e.target.checked },
-                        ...(!e.target.checked ? { nodes: manualMindNodes(nodes) } : {}),
+                        ...(!e.target.checked ? { nodes: manualMindNodes(nodes, mindStyleOf(draft).layout) } : {}),
                       });
                     }}
                   />
@@ -723,7 +806,29 @@ export function FormatEditor({
                     >
                       Delete branch
                     </button>
+                    <button
+                      disabled={!nodes.some(n => n.parent === active)}
+                      aria-pressed={!!chosen.collapsed}
+                      onClick={() => setDraft({ ...draft, nodes: toggleMindCollapse(nodes, active) })}
+                    >
+                      {chosen.collapsed ? 'Expand branch' : 'Collapse branch'}
+                    </button>
                   </div>
+                  <label>
+                    Topic colour
+                    <select
+                      aria-label="Topic colour"
+                      value={chosen.color ?? ''}
+                      onChange={e => setDraft({ ...draft, nodes: setMindColor(nodes, active, e.target.value) })}
+                    >
+                      <option value="">Automatic</option>
+                      {mindPalette.map((c, index) => (
+                        <option key={c} value={c}>
+                          {mindColorNames[index]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </>
               )}
             </section>

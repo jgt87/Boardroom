@@ -198,7 +198,7 @@ test('pen panel: smart pen turns a drawn box into a rectangle, lasso selects, pr
 
   await page.keyboard.press('p');
   await page.getByRole('group', { name: 'Pen presets' }).getByRole('button', { name: 'Preset 2' }).click();
-  await expect(page.getByRole('button', { name: 'Pen colour #e5484d' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Pen colour Red' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByLabel('Stroke width')).toHaveValue('5');
 });
 

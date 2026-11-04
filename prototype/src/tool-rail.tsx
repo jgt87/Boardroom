@@ -9,10 +9,15 @@ import {
   MousePointer2,
   Smile,
   Hand,
+  Layers3,
 } from 'lucide-react';
-import { colors, undo, redo, bulkNotes } from './model';
+import { allKinds, colors, colorName, undo, redo, bulkNotes } from './model';
 import type { Kind } from './model';
-import { ToolGallery, FormatEditor, BulkPanel } from './formats';
+import { ToolGallery, FormatEditor, BulkPanel, TOOL_MIME, kindIcons } from './formats';
+import { catalog } from './tool-catalog';
+
+/** Drag data marking a pinned toolbar tool, for reordering (gap F12). */
+const PIN_MIME = 'application/x-boardroom-pinned';
 import { AnchoredPanel } from './anchored-panel';
 import { isShapeKind, shapeLabels } from './shapes';
 import { CompactShapesMenu } from './shape-tools';
@@ -71,6 +76,7 @@ export function ToolRail() {
     setActivePreset,
     savePenPresets,
     viewPrefs,
+    setViewPrefs,
   } = useApp();
   // The sticky note tool shows the reference's compact palette and a Stack toggle (item 109).
   const noteTool = tool === 'note' || tool === 'stack';
@@ -155,6 +161,11 @@ export function ToolRail() {
                 aria-label={t.id === 'rectangle' ? 'Shapes and lines' : t.label}
                 aria-pressed={tool === t.id}
                 className={tool === t.id ? 'active' : ''}
+                draggable={!['pen', 'rectangle'].includes(t.id)}
+                onDragStart={e => {
+                  e.dataTransfer.setData(TOOL_MIME, t.id);
+                  e.dataTransfer.effectAllowed = 'copy';
+                }}
                 onClick={() => {
                   setPendingPlacement(null);
                   if (t.id === 'rectangle') {
@@ -178,6 +189,46 @@ export function ToolRail() {
                 </span>
               </button>
             ))}
+          {viewPrefs.pinned
+            .filter(k => (allKinds as string[]).includes(k))
+            .map(k => {
+              const Icon = kindIcons[k] ?? Layers3,
+                label =
+                  Object.values(catalog)
+                    .flat()
+                    .find(entry => entry.kind === k)?.label ?? k;
+              return (
+                <button
+                  key={`pin-${k}`}
+                  className="pinned-tool"
+                  aria-label={label}
+                  draggable
+                  onDragStart={e => {
+                    e.dataTransfer.setData(TOOL_MIME, k);
+                    e.dataTransfer.setData(PIN_MIME, k);
+                    e.dataTransfer.effectAllowed = 'copyMove';
+                  }}
+                  onDragOver={e => {
+                    // Drop a pinned tool on another to reorder (gap F12).
+                    if (e.dataTransfer.types.includes(PIN_MIME)) e.preventDefault();
+                  }}
+                  onDrop={e => {
+                    const from = e.dataTransfer.getData(PIN_MIME);
+                    if (!from || from === k) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const list = viewPrefs.pinned.filter(x => x !== from),
+                      at = list.indexOf(k);
+                    list.splice(at < 0 ? list.length : at, 0, from);
+                    setViewPrefs({ pinned: list });
+                  }}
+                  onClick={() => chooseFormat(k)}
+                >
+                  <Icon size={21} strokeWidth={1.7} />
+                  <span className="tool-tip">{label}</span>
+                </button>
+              );
+            })}
           <button
             data-tool-anchor="emoji"
             aria-label="Emoji and stickers"
@@ -300,6 +351,14 @@ export function ToolRail() {
             initial={gallery}
             onClose={() => setGallery(null)}
             onChoose={chooseFormat}
+            pinned={viewPrefs.pinned}
+            onTogglePin={kind =>
+              setViewPrefs({
+                pinned: viewPrefs.pinned.includes(kind)
+                  ? viewPrefs.pinned.filter(k => k !== kind)
+                  : [...viewPrefs.pinned, kind].slice(0, 12),
+              })
+            }
             onPrimitive={kind => {
               setPendingPlacement(null);
               setGallery(null);
@@ -411,7 +470,8 @@ export function ToolRail() {
                 {['#25252a', '#4262ff', '#e5484d', '#2f9e44', '#f59f00', '#ffe36e', '#7048e8'].map(c => (
                   <button
                     key={c}
-                    aria-label={`Pen colour ${c}`}
+                    aria-label={`Pen colour ${colorName(c)}`}
+                    title={colorName(c)}
                     aria-pressed={penColor === c}
                     className={penColor === c ? 'chosen' : ''}
                     style={{ background: c }}
@@ -442,7 +502,8 @@ export function ToolRail() {
                 {colors.map(c => (
                   <button
                     key={c}
-                    aria-label={`Use color ${c}`}
+                    aria-label={`Use colour ${colorName(c)}`}
+                    title={colorName(c)}
                     aria-pressed={fill === c}
                     style={{ background: c }}
                     className={fill === c ? 'chosen' : ''}

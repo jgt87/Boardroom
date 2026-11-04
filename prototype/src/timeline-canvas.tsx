@@ -15,7 +15,12 @@ export type TimelineCanvasProps = {
   settings?: TimelineSettings;
   onSettings?: (value: TimelineSettings) => void;
   onError?: (message: string) => void;
+  /** Group rows under headings. `rows` must already be ordered by group and omit rows of hidden groups. */
+  groups?: TimelineGroup[];
+  groupOf?: (row: RecordRow) => string;
+  onToggleGroup?: (value: string) => void;
 };
+export type TimelineGroup = { value: string; label: string; hidden: boolean; count: number };
 const ROW = 42,
   LABEL = 150,
   DAY = 86400000,
@@ -30,6 +35,9 @@ export function TimelineCanvas({
   settings: externalSettings,
   onSettings,
   onError,
+  groups,
+  groupOf,
+  onToggleGroup,
 }: TimelineCanvasProps) {
   const scope = useId(),
     root = useRef<HTMLDivElement>(null),
@@ -69,6 +77,19 @@ export function TimelineCanvas({
     shown = preview ?? rows,
     geometry = timelineGeometry(shown, axis);
   const bars = new Map(geometry.bars.map(bar => [bar.id, bar]));
+  // Display slots: group headings take one row height each, so bar and link positions use slots.
+  const display: ({ kind: 'group'; group: TimelineGroup } | { kind: 'row'; row: RecordRow })[] =
+    groups && groupOf
+      ? groups.flatMap(group => [
+          { kind: 'group' as const, group },
+          ...shown.filter(r => groupOf(r) === group.value).map(row => ({ kind: 'row' as const, row })),
+        ])
+      : shown.map(row => ({ kind: 'row' as const, row }));
+  const slots = new Map<string, number>();
+  display.forEach((entry, k) => {
+    if (entry.kind === 'row') slots.set(entry.row.id, k);
+  });
+  const yOf = (index: number) => (slots.get(shown[index]?.id) ?? index) * ROW + ROW / 2;
   const drag = useRef<{
     id: string;
     mode: 'move' | 'start' | 'end';
@@ -185,9 +206,9 @@ export function TimelineCanvas({
         from: row.id,
         target: null,
         x1: (bar.left + bar.width) * axis.width,
-        y1: bar.row * ROW + ROW / 2,
+        y1: yOf(bar.row),
         x2: (bar.left + bar.width) * axis.width,
-        y2: bar.row * ROW + ROW / 2,
+        y2: yOf(bar.row),
       };
       setLinkPreview({ ...connection.current });
     },
@@ -331,8 +352,26 @@ export function TimelineCanvas({
             </div>
           </div>
           <div ref={body} className="timeline-body">
-            {shown.map(row => {
-              const bar = bars.get(row.id);
+            {display.map(entry => {
+              if (entry.kind === 'group')
+                return (
+                  <div
+                    key={`group:${entry.group.value}`}
+                    className="timeline-group-heading"
+                    data-timeline-group={entry.group.value}
+                  >
+                    <button
+                      {...canvasControl}
+                      aria-expanded={!entry.group.hidden}
+                      disabled={!onToggleGroup}
+                      onClick={() => onToggleGroup?.(entry.group.value)}
+                    >
+                      {entry.group.hidden ? '▸' : '▾'} {entry.group.label} ({entry.group.count})
+                    </button>
+                  </div>
+                );
+              const row = entry.row,
+                bar = bars.get(row.id);
               return (
                 <div
                   key={row.id}
@@ -495,7 +534,7 @@ export function TimelineCanvas({
               Drop here to move a record last
             </div>
             <div ref={area} className="timeline-links-area" style={{ width: axis.width }} aria-hidden="true">
-              <svg width={axis.width} height={rows.length * ROW} className="timeline-links">
+              <svg width={axis.width} height={display.length * ROW} className="timeline-links">
                 <defs>
                   <marker
                     id={`timeline-head-${scope}`}
@@ -512,8 +551,8 @@ export function TimelineCanvas({
                 {geometry.links.map(link => {
                   const x1 = link.x1 * axis.width,
                     x2 = link.x2 * axis.width,
-                    y1 = link.fromRow * ROW + ROW / 2,
-                    y2 = link.toRow * ROW + ROW / 2;
+                    y1 = yOf(link.fromRow),
+                    y2 = yOf(link.toRow);
                   return (
                     <path
                       key={`${link.from}>${link.to}`}

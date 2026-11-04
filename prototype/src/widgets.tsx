@@ -9,6 +9,7 @@ import { activityViews } from './widgets-activities';
 import { peopleViews } from './widgets-people';
 import { shortcutView } from './widgets-shortcut';
 import { stickypadView } from './widgets-stickypad';
+import { chartViews } from './widgets-charts';
 export const widgetViews: WidgetView[] = [
   ...basicViews,
   ...mediaViews,
@@ -19,6 +20,7 @@ export const widgetViews: WidgetView[] = [
   ...peopleViews,
   shortcutView,
   stickypadView,
+  ...chartViews,
 ];
 const byKind = new Map(widgetViews.map(v => [v.kind as string, v]));
 export const viewFor = (kind: string) => byKind.get(kind);

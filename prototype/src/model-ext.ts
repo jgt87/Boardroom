@@ -12,6 +12,12 @@ import { framePresets } from './frame-presets.ts';
 import { codeLanguages } from './code-languages.ts';
 import { validateWidget } from './widget-specs.ts';
 import { validateMindStyle } from './mindmap-style.ts';
+import { validateFrameData } from './frame-styles.ts';
+import { validateComments, validateVoting } from './facilitation-rules.ts';
+import { validateTagColors } from './card-tools.ts';
+import { validateLayers } from './layers.ts';
+import { validateReactions } from './notes.ts';
+import { canRotate, isValidRotation } from './rotation.ts';
 
 export const imageMimes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 export const mediaMimes = ['video/mp4', 'video/webm', 'application/pdf'];
@@ -20,6 +26,8 @@ export const MAX_MEDIA_BYTES = 25_000_000;
 const finite = (v: unknown, min: number, max: number) =>
   typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
 const sides = ['top', 'right', 'bottom', 'left'];
+/** Largest corner radius (gap D8); the rendered radius is also capped at half the shorter side. */
+export const MAX_RADIUS = 500;
 
 export function validateExtensions(b: Board): void {
   if (b.groups !== undefined) {
@@ -110,6 +118,8 @@ export function validateExtensions(b: Board): void {
     throw new Error('Invalid voting session.');
   if (b.votingResults !== undefined && (!Array.isArray(b.votingResults) || b.votingResults.length > 200))
     throw new Error('Invalid voting results.');
+  validateComments(b);
+  validateVoting(b);
   if (
     b.privateMode !== undefined &&
     (!b.privateMode ||
@@ -120,6 +130,12 @@ export function validateExtensions(b: Board): void {
     throw new Error('Invalid private mode.');
   if (b.showAuthors !== undefined && typeof b.showAuthors !== 'boolean') throw new Error('Invalid author setting.');
   validateBoardSettings(b);
+  validateTagColors(b);
+  validateLayers(b);
+  validateReactions(b);
+  if (b.thumbnailFrame !== undefined && (typeof b.thumbnailFrame !== 'string' || b.thumbnailFrame.length > 64))
+    throw new Error('Invalid thumbnail setting.');
+  if (b.viewOnly !== undefined && typeof b.viewOnly !== 'boolean') throw new Error('Invalid view-only setting.');
   const groups = new Set(b.groups?.map(g => g.id));
   for (const i of b.items) validateItem(i, groups);
   if (
@@ -176,6 +192,23 @@ function validateItem(i: Item, groups: Set<string>): void {
           c.bends.some(p => !p || !finite(p.u, -1000, 1000) || !finite(p.v, -1000, 1000)))))
   )
     throw new Error('Invalid connector routing.');
+  if (
+    c?.labels !== undefined &&
+    (!Array.isArray(c.labels) ||
+      c.labels.length > 10 ||
+      c.labels.some(
+        l =>
+          !l ||
+          typeof l.id !== 'string' ||
+          !l.id ||
+          l.id.length > 100 ||
+          typeof l.text !== 'string' ||
+          l.text.length > 200 ||
+          !finite(l.at, 0, 1),
+      ) ||
+      new Set(c.labels.map(l => l.id)).size !== c.labels.length)
+  )
+    throw new Error('Invalid connector labels.');
   const s = i.style;
   if (
     s !== undefined &&
@@ -185,9 +218,12 @@ function validateItem(i: Item, groups: Set<string>): void {
       (s.borderColor !== undefined && !/^#[0-9a-f]{6}$/i.test(s.borderColor)) ||
       (s.borderWidth !== undefined && !finite(s.borderWidth, 0, 24)) ||
       (s.borderStyle !== undefined && !['solid', 'dashed', 'dotted'].includes(s.borderStyle)) ||
-      (s.borderOpacity !== undefined && !finite(s.borderOpacity, 0, 1)))
+      (s.borderOpacity !== undefined && !finite(s.borderOpacity, 0, 1)) ||
+      (s.radius !== undefined && !finite(s.radius, 0, MAX_RADIUS)) ||
+      (s.mask !== undefined && s.mask !== 'circle'))
   )
     throw new Error('Invalid shape border.');
+  if (i.rotation !== undefined && (!isValidRotation(i.rotation) || !canRotate(i))) throw new Error('Invalid rotation.');
   if (i.group !== undefined && (typeof i.group !== 'string' || !groups.has(i.group)))
     throw new Error('An object refers to a missing group.');
   if (i.locked !== undefined && typeof i.locked !== 'boolean') throw new Error('Invalid lock state.');
@@ -248,14 +284,7 @@ function validateItem(i: Item, groups: Set<string>): void {
     (!i.data || !['pen', 'marker', 'highlighter'].includes(i.data.style) || !finite(i.data.width, 1, 40))
   )
     throw new Error('Invalid drawing style.');
-  if (
-    i.type === 'frame' &&
-    i.data !== undefined &&
-    (!i.data ||
-      Object.keys(i.data).some(k => k !== 'contentHidden') ||
-      (i.data.contentHidden !== undefined && typeof i.data.contentHidden !== 'boolean'))
-  )
-    throw new Error('Invalid frame settings.');
+  if (i.type === 'frame' && i.data !== undefined) validateFrameData(i.data);
   if (i.type === 'mindmap') validateMindStyle(i);
   validateWidget(i);
 }

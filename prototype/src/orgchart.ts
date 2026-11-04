@@ -1,6 +1,18 @@
 // Org chart model and tidy top-down layout (item 35).
 // Evidence: ComputeOrgChartWidget (SIBLING_BEFORE, SIBLING_AFTER, PARENT, layoutService, nodesToReorder).
-export type OrgNode = { id: string; parent: string | null; name: string; role: string; collapsed?: boolean };
+import { parseDelimited } from './smart-paste.ts';
+import { toCsv } from './csv.ts';
+
+/** `team` and `location` are optional extra fields (gap E8). */
+export type OrgNode = {
+  id: string;
+  parent: string | null;
+  name: string;
+  role: string;
+  collapsed?: boolean;
+  team?: string;
+  location?: string;
+};
 export const ORG_NODE_W = 170,
   ORG_NODE_H = 64,
   ORG_GAP_X = 24,
@@ -21,7 +33,8 @@ export function validateOrgNodes(nodes: unknown): asserts nodes is OrgNode[] {
         n.name.length > 200 ||
         typeof n.role !== 'string' ||
         n.role.length > 200 ||
-        (n.collapsed !== undefined && typeof n.collapsed !== 'boolean'),
+        (n.collapsed !== undefined && typeof n.collapsed !== 'boolean') ||
+        [n.team, n.location].some(v => v !== undefined && (typeof v !== 'string' || v.length > 200)),
     )
   )
     throw new Error('Invalid org chart node.');
@@ -38,6 +51,11 @@ export function validateOrgNodes(nodes: unknown): asserts nodes is OrgNode[] {
   }
 }
 
+/** "Team · Location" line under the role (gap E8). */
+export const orgMeta = (n: OrgNode) => {
+  const text = [n.team, n.location].filter(Boolean).join(' · ');
+  return text.length > 30 ? text.slice(0, 29) + '…' : text;
+};
 const childrenOf = (nodes: OrgNode[], id: string) => nodes.filter(n => n.parent === id);
 /** Visible nodes (descendants of collapsed nodes are hidden). */
 export function visibleOrgNodes(nodes: OrgNode[]): OrgNode[] {
@@ -168,3 +186,83 @@ export const starterOrg = (): OrgNode[] => {
   a.role = b.role = 'Delivery';
   return [root, a, b];
 };
+
+// ---- CSV import and export (gap B13) ---------------------------------------------------------
+export const ORG_CSV_HEADER = ['ID', 'Name', 'Role', 'Team', 'Location', 'Manager ID'];
+/** People as CSV, managers before their reports (tree order). */
+export function orgToCsv(nodes: OrgNode[]): string {
+  const out: OrgNode[] = [],
+    visit = (n: OrgNode) => {
+      out.push(n);
+      nodes.filter(c => c.parent === n.id).forEach(visit);
+    },
+    root = nodes.find(n => n.parent === null);
+  if (root) visit(root);
+  return toCsv([
+    ORG_CSV_HEADER,
+    ...out.map(n => [n.id, n.name, n.role, n.team ?? '', n.location ?? '', n.parent ?? '']),
+  ]);
+}
+const headerAliases: Record<'id' | 'name' | 'role' | 'team' | 'location' | 'manager', string[]> = {
+  id: ['id', 'employee id', 'person id'],
+  name: ['name', 'full name', 'person', 'employee'],
+  role: ['role', 'title', 'job title', 'position'],
+  team: ['team', 'department', 'group'],
+  location: ['location', 'office', 'city'],
+  manager: ['manager id', 'manager', 'reports to', 'parent', 'parent id', 'supervisor'],
+};
+/** Undo the apostrophe the CSV writer puts before formula-like cells. */
+const unguard = (v: string) => v.replace(/^'(?=[=+\-@\t])/, '').trim();
+/**
+ * People from CSV (or tab-separated) text with a header row. Needs a Name column; ID, Role, Team, Location
+ * and Manager ID (or a manager's name) are optional. People without a known manager report to the first
+ * top-level person. Ids are regenerated.
+ */
+export function orgFromCsv(text: string): OrgNode[] {
+  const rows = parseDelimited(text);
+  if (rows.length < 2) throw new Error('The CSV needs a header row and at least one person.');
+  const head = rows[0].map(h => unguard(h).toLowerCase());
+  const col = Object.fromEntries(
+    Object.entries(headerAliases).map(([key, names]) => [key, head.findIndex(h => names.includes(h))]),
+  ) as Record<keyof typeof headerAliases, number>;
+  if (col.name < 0) throw new Error('The CSV needs a Name column.');
+  const cell = (r: string[], key: keyof typeof headerAliases) =>
+    col[key] < 0 ? '' : unguard(r[col[key]] ?? '').slice(0, 200);
+  const people = rows.slice(1).filter(r => r.some(c => c.trim()));
+  if (!people.length) throw new Error('The CSV needs at least one person.');
+  if (people.length > ORG_MAX) throw new Error('An org chart holds up to 200 people.');
+  const keyed = new Map<string, string>(),
+    byName = new Map<string, string>();
+  const nodes: (OrgNode & { manager: string })[] = people.map((r, index) => {
+    const id = crypto.randomUUID(),
+      key = cell(r, 'id'),
+      name = cell(r, 'name');
+    if (key) {
+      if (keyed.has(key)) throw new Error(`The ID "${key}" appears more than once (row ${index + 2}).`);
+      keyed.set(key, id);
+    }
+    if (name && !byName.has(name.toLowerCase())) byName.set(name.toLowerCase(), id);
+    const node: OrgNode & { manager: string } = {
+      id,
+      parent: null,
+      name,
+      role: cell(r, 'role'),
+      manager: cell(r, 'manager'),
+    };
+    const team = cell(r, 'team'),
+      location = cell(r, 'location');
+    if (team) node.team = team;
+    if (location) node.location = location;
+    return node;
+  });
+  for (const n of nodes) {
+    const parent = n.manager ? (keyed.get(n.manager) ?? byName.get(n.manager.toLowerCase())) : undefined;
+    n.parent = parent && parent !== n.id ? parent : null;
+  }
+  const roots = nodes.filter(n => n.parent === null);
+  if (!roots.length) throw new Error('Org chart reporting lines cannot form a cycle.');
+  for (const n of roots.slice(1)) n.parent = roots[0].id;
+  const result: OrgNode[] = nodes.map(({ manager: _manager, ...n }) => n);
+  validateOrgNodes(result);
+  return result;
+}

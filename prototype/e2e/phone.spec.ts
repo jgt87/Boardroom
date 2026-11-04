@@ -67,7 +67,7 @@ test.describe('phone layout 390×844', () => {
   test('editor dialog fits the phone', async ({ page }) => {
     await openApp(page);
     await page.getByRole('button', { name: 'Formats and Flows' }).click();
-    await page.locator('.gallery-items > button', { hasText: 'Kanban' }).click();
+    await page.locator('.gallery-items > button, .gallery-items .gallery-pick', { hasText: 'Kanban' }).click();
     await page.locator('svg.canvas').click({ position: { x: 250, y: 550 } });
     await page.getByRole('button', { name: 'Edit text', exact: true }).click();
     await expect(page.getByRole('dialog')).toBeVisible();

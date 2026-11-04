@@ -3,7 +3,7 @@ import { mindLayout, MIND_NODE_W, MIND_NODE_H } from './mindmap-style.ts';
 export type MindViewport = { x: number; y: number; w: number; h: number };
 export function mindViewport(item: Item): MindViewport {
   if (item.data?.autoLayout === false && item.data?.manualViewport) return item.data.manualViewport as MindViewport;
-  const points = [...mindLayout(item.nodes ?? [], item.data?.autoLayout !== false).values()];
+  const points = [...mindLayout(item.nodes ?? [], item.data?.autoLayout !== false, item.data?.layout).values()];
   const x = Math.min(0, ...points.map(p => p.x)) - 8,
     y = Math.min(0, ...points.map(p => p.y)) - 8;
   const w = Math.max(0, ...points.map(p => p.x)) + MIND_NODE_W + 8 - x;
@@ -25,7 +25,7 @@ export function applyMindBounds(board: Board, previous: Board): Board {
     }
     const old = previous.items.find(i => i.id === item.id) ?? item;
     const view = (item.data?.manualViewport as MindViewport | undefined) ?? mindViewport(old);
-    const points = [...mindLayout(item.nodes ?? [], false).values()];
+    const points = [...mindLayout(item.nodes ?? [], false, item.data?.layout).values()];
     const x = Math.min(view.x, ...points.map(p => p.x - 8)),
       y = Math.min(view.y, ...points.map(p => p.y - 8));
     const right = Math.max(view.x + view.w, ...points.map(p => p.x + MIND_NODE_W + 8));

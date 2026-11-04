@@ -1,8 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Play, Plus } from 'lucide-react';
+import {
+  X,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
+  Play,
+  Plus,
+  Eye,
+  EyeOff,
+  NotebookPen,
+  LayoutGrid,
+  Moon,
+  ExternalLink,
+} from 'lucide-react';
 import type { Board, Item, FrameFormat } from './model';
 import { framePresets, presetSize } from './frame-presets';
-import { presentationFrames, fitFrame } from './navigation';
+import { presentationFrames, fitFrame, slideFrames, isHiddenSlide, frameNotes, FRAME_NOTES_LIMIT } from './navigation';
 import { useLatest } from './use-latest';
 import type { Camera } from './navigation';
 
@@ -103,7 +117,7 @@ export function FrameControls({
   );
 }
 
-/** Presentation order editor. Reordering is stored on the board and undoable. */
+/** Presentation order editor with presenter notes and hide-from-presentation (gaps G1, G2). Changes are undoable. */
 export function PresentationPanel({
   board,
   onMove,
@@ -111,15 +125,22 @@ export function PresentationPanel({
   onShow,
   onClose,
   onAdd,
+  onHide,
+  onNotes,
 }: {
   board: Board;
   onAdd?: () => void;
   onMove: (id: string, delta: number) => void;
+  /** Index into the visible slides (hidden frames excluded). */
   onStart: (index: number) => void;
   onShow: (frame: Item) => void;
   onClose: () => void;
+  onHide?: (id: string, hidden: boolean) => void;
+  onNotes?: (id: string, notes: string) => void;
 }) {
-  const frames = presentationFrames(board);
+  const frames = presentationFrames(board),
+    slides = frames.filter(f => !isHiddenSlide(f)),
+    [notesFor, setNotesFor] = useState<string | null>(null);
   return (
     <aside
       className="presentation-panel floating"
@@ -131,7 +152,7 @@ export function PresentationPanel({
     >
       <div className="panel-heading">
         <h2>
-          Presentation <span>{frames.length}</span>
+          Presentation <span>{slides.length}</span>
         </h2>
         <button className="icon-button" aria-label="Close presentation" onClick={onClose}>
           <X size={17} />
@@ -140,39 +161,88 @@ export function PresentationPanel({
       {frames.length ? (
         <>
           <ol className="slide-list">
-            {frames.map((f, i) => (
-              <li key={f.id}>
-                <button className="slide-name" onClick={() => onShow(f)}>
-                  <b>{i + 1}</b>
-                  {f.text || 'Untitled frame'}
-                </button>
-                <button
-                  className="icon-button"
-                  aria-label={`Move ${f.text || 'frame'} earlier`}
-                  disabled={!i}
-                  onClick={() => onMove(f.id, -1)}
-                >
-                  <ArrowUp size={15} />
-                </button>
-                <button
-                  className="icon-button"
-                  aria-label={`Move ${f.text || 'frame'} later`}
-                  disabled={i === frames.length - 1}
-                  onClick={() => onMove(f.id, 1)}
-                >
-                  <ArrowDown size={15} />
-                </button>
-                <button
-                  className="icon-button"
-                  aria-label={`Present from ${f.text || 'frame'}`}
-                  onClick={() => onStart(i)}
-                >
-                  <Play size={15} />
-                </button>
-              </li>
-            ))}
+            {frames.map((f, i) => {
+              const hidden = isHiddenSlide(f),
+                name = f.text || 'frame',
+                notes = frameNotes(f);
+              return (
+                <React.Fragment key={f.id}>
+                  <li className={hidden ? 'hidden-slide' : ''}>
+                    <button
+                      className="slide-name"
+                      onClick={() => onShow(f)}
+                      title={hidden ? 'Hidden from the presentation' : undefined}
+                    >
+                      <b>{hidden ? '–' : slides.indexOf(f) + 1}</b>
+                      {f.text || 'Untitled frame'}
+                      {hidden && <small className="slide-flag">Hidden</small>}
+                    </button>
+                    {onNotes && (
+                      <button
+                        className={`icon-button ${notes ? 'active' : ''}`}
+                        aria-label={`Presenter notes for ${name}`}
+                        aria-expanded={notesFor === f.id}
+                        title={notes ? 'Edit presenter notes' : 'Add presenter notes'}
+                        onClick={() => setNotesFor(notesFor === f.id ? null : f.id)}
+                      >
+                        <NotebookPen size={15} />
+                      </button>
+                    )}
+                    {onHide && (
+                      <button
+                        className={`icon-button ${hidden ? 'active' : ''}`}
+                        aria-label={hidden ? `Show ${name} in presentation` : `Hide ${name} from presentation`}
+                        aria-pressed={hidden}
+                        title={hidden ? 'Show in presentation' : 'Hide from presentation'}
+                        onClick={() => onHide(f.id, !hidden)}
+                      >
+                        {hidden ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    )}
+                    <button
+                      className="icon-button"
+                      aria-label={`Move ${name} earlier`}
+                      disabled={!i}
+                      onClick={() => onMove(f.id, -1)}
+                    >
+                      <ArrowUp size={15} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      aria-label={`Move ${name} later`}
+                      disabled={i === frames.length - 1}
+                      onClick={() => onMove(f.id, 1)}
+                    >
+                      <ArrowDown size={15} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      aria-label={`Present from ${name}`}
+                      disabled={hidden}
+                      onClick={() => onStart(slides.indexOf(f))}
+                    >
+                      <Play size={15} />
+                    </button>
+                  </li>
+                  {onNotes && notesFor === f.id && (
+                    <li className="slide-notes">
+                      <NotesEditor
+                        key={f.id}
+                        value={notes}
+                        label={`Presenter notes for ${name}`}
+                        onSave={text => {
+                          onNotes(f.id, text);
+                          setNotesFor(null);
+                        }}
+                        onCancel={() => setNotesFor(null)}
+                      />
+                    </li>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </ol>
-          <button className="primary present-start" onClick={() => onStart(0)}>
+          <button className="primary present-start" disabled={!slides.length} onClick={() => onStart(0)}>
             <Play size={16} />
             Present from the start
           </button>
@@ -189,7 +259,117 @@ export function PresentationPanel({
   );
 }
 
-/** Full-screen presentation. Editing is disabled; Esc restores the editing view. */
+/** Text area for presenter notes with Save and Cancel; Ctrl+Enter saves. */
+export function NotesEditor({
+  value,
+  label,
+  onSave,
+  onCancel,
+}: {
+  value: string;
+  label: string;
+  onSave: (text: string) => void;
+  onCancel: () => void;
+}) {
+  const [text, setText] = useState(value);
+  return (
+    <form
+      className="notes-editor"
+      onSubmit={e => {
+        e.preventDefault();
+        onSave(text);
+      }}
+      onKeyDown={e => {
+        e.stopPropagation();
+        if (e.key === 'Escape') onCancel();
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          onSave(text);
+        }
+      }}
+    >
+      <textarea
+        autoFocus
+        aria-label={label}
+        placeholder="What to say on this slide"
+        maxLength={FRAME_NOTES_LIMIT}
+        rows={5}
+        value={text}
+        onChange={e => setText(e.target.value)}
+      />
+      <div className="note-details-actions">
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" className="primary" disabled={text === value}>
+          Save notes
+        </button>
+      </div>
+    </form>
+  );
+}
+
+const NOTES_WINDOW = 'boardroom-presenter-notes';
+/** Fill the pop-out notes window with DOM nodes only (no markup strings, no scripts). */
+function renderNotesWindow(w: Window, frame: Item, position: string, next: Item | undefined) {
+  const doc = w.document;
+  doc.title = 'Presenter notes';
+  const body = doc.body;
+  body.replaceChildren();
+  body.style.cssText =
+    'margin:0;padding:24px;font:16px/1.6 Arial,Helvetica,sans-serif;background:#1d1e24;color:#f4f4f6';
+  const small = doc.createElement('div');
+  small.textContent = `Slide ${position}`;
+  small.style.cssText = 'font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#a9abb8';
+  const title = doc.createElement('h1');
+  title.textContent = frame.text || 'Untitled frame';
+  title.style.cssText = 'font-size:22px;margin:4px 0 16px';
+  const notes = doc.createElement('div');
+  notes.textContent = frameNotes(frame) || 'No notes for this frame.';
+  notes.style.cssText = `white-space:pre-wrap;font-size:20px;${frameNotes(frame) ? '' : 'color:#a9abb8'}`;
+  const after = doc.createElement('p');
+  after.textContent = next ? `Next: ${next.text || 'Untitled frame'}` : 'Last slide';
+  after.style.cssText = 'margin-top:28px;color:#a9abb8;font-size:13px';
+  body.append(small, title, notes, after);
+}
+
+/** Small schematic of a frame's contents for the slide overview: object rectangles in their colours. */
+function SlideThumb({ board, frame }: { board: Board; frame: Item }) {
+  const inside = board.items
+    .filter(
+      i =>
+        i.id !== frame.id &&
+        !i.hidden &&
+        !['arrow', 'pen', 'frame'].includes(i.type) &&
+        i.x + i.w / 2 >= frame.x &&
+        i.x + i.w / 2 <= frame.x + frame.w &&
+        i.y + i.h / 2 >= frame.y &&
+        i.y + i.h / 2 <= frame.y + frame.h,
+    )
+    .slice(0, 200);
+  return (
+    <svg viewBox={`${frame.x} ${frame.y} ${Math.max(frame.w, 1)} ${Math.max(frame.h, 1)}`} aria-hidden="true">
+      <rect x={frame.x} y={frame.y} width={frame.w} height={frame.h} fill={frame.fill} />
+      {inside.map(i => (
+        <rect
+          key={i.id}
+          x={i.x}
+          y={i.y}
+          width={i.w}
+          height={i.h}
+          rx={4}
+          fill={i.type === 'text' ? '#d4d4d8' : i.fill}
+        />
+      ))}
+    </svg>
+  );
+}
+
+/**
+ * Full-screen presentation. Editing is disabled; Esc restores the editing view. Frames hidden from the
+ * presentation are skipped. The presenter can show notes (inline or in a pop-out window), open a slide
+ * overview (G) to jump to a frame, and darken everything outside the current frame.
+ */
 export function PresentOverlay({
   board,
   start,
@@ -203,14 +383,21 @@ export function PresentOverlay({
   onCamera: (c: Camera) => void;
   onExit: () => void;
 }) {
-  const frames = useMemo(() => presentationFrames(board), [board]),
+  const frames = useMemo(() => slideFrames(board), [board]),
     [index, setIndex] = useState(start),
+    [grid, setGrid] = useState(false),
+    [showNotes, setShowNotes] = useState(false),
+    [dark, setDark] = useState(false),
+    [blocked, setBlocked] = useState(false),
+    [popup, setPopup] = useState<Window | null>(null),
     exit = useRef<HTMLButtonElement>(null);
-  const safe = Math.min(index, frames.length - 1),
+  const safe = Math.max(0, Math.min(index, frames.length - 1)),
     frame = frames[safe],
+    next = frames[safe + 1],
     exitRef = useLatest(onExit),
     cameraRef = useLatest(onCamera),
     frameRef = useLatest(frame),
+    gridRef = useLatest(grid),
     frameKey = frame ? [frame.id, frame.x, frame.y, frame.w, frame.h].join('|') : '';
   useEffect(() => {
     if (!frames.length) exitRef.current();
@@ -221,12 +408,52 @@ export function PresentOverlay({
   useEffect(() => {
     exit.current?.focus();
   }, []);
+  // Keep the pop-out window in step with the current slide.
+  useEffect(() => {
+    if (!popup || !frame) return;
+    try {
+      if (!popup.closed) renderNotesWindow(popup, frame, `${safe + 1} / ${frames.length}`, next);
+    } catch {
+      /* the window was closed or navigated away */
+    }
+  }, [popup, frame, next, safe, frames.length]);
+  // Arrow keys in the pop-out window move the slides too; the window closes with the presentation.
+  useEffect(() => {
+    if (!popup) return;
+    const forward = (e: KeyboardEvent) => {
+      if (['ArrowRight', 'PageDown', ' '].includes(e.key)) setIndex(i => Math.min(frames.length - 1, i + 1));
+      else if (['ArrowLeft', 'PageUp'].includes(e.key)) setIndex(i => Math.max(0, i - 1));
+    };
+    try {
+      popup.document.addEventListener('keydown', forward);
+    } catch {
+      /* the window was closed */
+    }
+    return () => {
+      try {
+        popup.document.removeEventListener('keydown', forward);
+      } catch {
+        /* the window was closed */
+      }
+    };
+  }, [popup, frames.length]);
+  useEffect(
+    () => () => {
+      try {
+        if (popup && !popup.closed) popup.close();
+      } catch {
+        /* nothing to close */
+      }
+    },
+    [popup],
+  );
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.key === 'Enter' || e.key === ' ') && (e.target as HTMLElement).closest?.('button')) {
         e.stopImmediatePropagation();
         return;
       }
+      const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
       if (['ArrowRight', 'PageDown', ' ', 'Enter'].includes(e.key)) {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -244,13 +471,44 @@ export function PresentOverlay({
       } else if (e.key === 'Escape') {
         e.preventDefault();
         e.stopImmediatePropagation();
-        exitRef.current();
+        if (gridRef.current) setGrid(false);
+        else exitRef.current();
+      } else if (plain && (e.key === 'g' || e.key === 'G')) {
+        e.stopImmediatePropagation();
+        setGrid(g => !g);
+      } else if (plain && (e.key === 'n' || e.key === 'N')) {
+        e.stopImmediatePropagation();
+        setShowNotes(s => !s);
       } else e.stopImmediatePropagation();
     };
     addEventListener('keydown', key, true);
     return () => removeEventListener('keydown', key, true);
-  }, [frames.length, exitRef]);
+  }, [frames.length, exitRef, gridRef]);
   if (!frame) return null;
+  const cam = fitFrame(frame, size),
+    hole = {
+      left: frame.x * cam.z + cam.x,
+      top: frame.y * cam.z + cam.y,
+      width: frame.w * cam.z,
+      height: frame.h * cam.z,
+    };
+  const popOut = () => {
+    let w: Window | null;
+    try {
+      w = window.open('', NOTES_WINDOW, 'popup,width=520,height=640');
+    } catch {
+      w = null;
+    }
+    if (!w) {
+      // Pop-ups blocked: keep the notes in the presentation itself.
+      setBlocked(true);
+      setShowNotes(true);
+      return;
+    }
+    setBlocked(false);
+    setPopup(w);
+  };
+  const notes = frameNotes(frame);
   return (
     <div
       className="present-overlay"
@@ -260,6 +518,61 @@ export function PresentOverlay({
       onPointerDown={e => e.stopPropagation()}
       onWheel={e => e.stopPropagation()}
     >
+      {dark && <div className="present-hole" style={hole} aria-hidden="true" />}
+      {showNotes && (
+        <aside className="present-notes floating" aria-label="Presenter notes">
+          <div className="panel-heading">
+            <h2>Notes</h2>
+            <span>
+              <button
+                className="icon-button"
+                aria-label="Pop out notes"
+                title="Open notes in a separate window"
+                onClick={popOut}
+              >
+                <ExternalLink size={15} />
+              </button>
+              <button className="icon-button" aria-label="Hide presenter notes" onClick={() => setShowNotes(false)}>
+                <X size={15} />
+              </button>
+            </span>
+          </div>
+          {blocked && <p className="present-notes-warning">The pop-up was blocked, so notes are shown here.</p>}
+          <div className={`present-notes-text ${notes ? '' : 'empty'}`}>{notes || 'No notes for this frame.'}</div>
+          {next && <small>Next: {next.text || 'Untitled frame'}</small>}
+        </aside>
+      )}
+      {grid && (
+        <div className="present-grid" role="dialog" aria-label="Slide overview">
+          <div className="present-grid-head">
+            <h2>Slides</h2>
+            <button className="icon-button" aria-label="Close slide overview" onClick={() => setGrid(false)}>
+              <X size={17} />
+            </button>
+          </div>
+          <ol>
+            {frames.map((f, i) => (
+              <li key={f.id}>
+                <button
+                  autoFocus={i === safe}
+                  className={i === safe ? 'current' : ''}
+                  aria-current={i === safe ? 'true' : undefined}
+                  aria-label={`Go to slide ${i + 1}: ${f.text || 'Untitled frame'}`}
+                  onClick={() => {
+                    setIndex(i);
+                    setGrid(false);
+                  }}
+                >
+                  <SlideThumb board={board} frame={f} />
+                  <span>
+                    <b>{i + 1}</b> {f.text || 'Untitled frame'}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       <div className="present-bar floating">
         <button
           className="icon-button"
@@ -279,6 +592,34 @@ export function PresentOverlay({
           onClick={() => setIndex(safe + 1)}
         >
           <ChevronRight size={20} />
+        </button>
+        <span className="divider" />
+        <button
+          className={`icon-button ${grid ? 'active' : ''}`}
+          aria-label="Slide overview"
+          aria-pressed={grid}
+          title="Slide overview (G)"
+          onClick={() => setGrid(!grid)}
+        >
+          <LayoutGrid size={17} />
+        </button>
+        <button
+          className={`icon-button ${showNotes ? 'active' : ''}`}
+          aria-label="Presenter notes"
+          aria-pressed={showNotes}
+          title="Presenter notes (N)"
+          onClick={() => setShowNotes(!showNotes)}
+        >
+          <NotebookPen size={17} />
+        </button>
+        <button
+          className={`icon-button ${dark ? 'active' : ''}`}
+          aria-label="Dark surround"
+          aria-pressed={dark}
+          title="Darken everything outside the frame"
+          onClick={() => setDark(!dark)}
+        >
+          <Moon size={17} />
         </button>
         <span className="divider" />
         <button ref={exit} onClick={onExit}>

@@ -62,7 +62,7 @@ test.describe('exports and backups', () => {
     expect(pdf.bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
     expect((pdf.bytes.toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length).toBe(2);
 
-    const csv = await exportEntry(page, 'Export records as CSV');
+    const csv = await exportEntry(page, 'Export to spreadsheet (CSV)');
     const text = csv.bytes.toString('utf8').replace(/^\uFEFF/, '');
     expect(text.split('\r\n')[0]).toBe('Title,Status,Assignee,Start,End,Milestone,Points,Depends on,Tags,Link');
     expect(text).toContain('"Design, ""first""",Not started');

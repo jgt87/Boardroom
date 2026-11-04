@@ -375,3 +375,6 @@ export function reorderGrid(g: GridData, axis: 'row' | 'column', from: number, t
     });
   return tidy(n);
 }
+
+/** Grid cells as CSV rows (merged areas keep their text in the top-left cell). Gap B4. */
+export const gridRows = (g: GridData): string[][] => g.cells.map(row => [...row]);

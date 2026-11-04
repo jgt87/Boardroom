@@ -110,3 +110,43 @@ export function dayLabel(at: string, now: Date): string {
     days = Math.round((start(now) - start(d)) / 864e5);
   return days === 0 ? 'Today' : days === 1 ? 'Yesterday' : d.toLocaleDateString();
 }
+
+// ---- Since your last visit (gap C14) -------------------------------------------------------------
+const visitKey = (boardId: string) => `boardroom.visit.${boardId}`;
+/**
+ * Note that the board was opened now and return when it was opened before (ISO), if ever. Opening the same
+ * board again within 30 minutes counts as the same visit, so reloading keeps the earlier time.
+ */
+export function recordVisit(
+  kv: { getItem(k: string): string | null; setItem(k: string, v: string): void },
+  boardId: string,
+  now = new Date(),
+): string | undefined {
+  let stored: { previous?: string; current?: string };
+  try {
+    stored = JSON.parse(kv.getItem(visitKey(boardId)) ?? '{}') ?? {};
+  } catch {
+    stored = {};
+  }
+  const sameVisit = stored.current && now.getTime() - Date.parse(stored.current) < 30 * 60 * 1000;
+  const previous = sameVisit ? stored.previous : stored.current;
+  try {
+    kv.setItem(visitKey(boardId), JSON.stringify({ previous, current: now.toISOString() }));
+  } catch {
+    /* Storage full: the catch-up just falls back to fixed periods. */
+  }
+  return previous;
+}
+export function previousVisit(kv: { getItem(k: string): string | null }, boardId: string): string | undefined {
+  try {
+    return JSON.parse(kv.getItem(visitKey(boardId)) ?? '{}')?.previous;
+  } catch {
+    return undefined;
+  }
+}
+/** Ids of objects added or edited since `since` that still exist on the board. */
+export const changedSince = (log: Activity[], since: number, existing: Set<string>) => [
+  ...new Set(
+    log.filter(e => Date.parse(e.at) >= since && e.action !== 'deleted' && existing.has(e.itemId)).map(e => e.itemId),
+  ),
+];

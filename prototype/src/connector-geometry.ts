@@ -1,5 +1,6 @@
 import { endpoints, center, connectorSides, sideVector } from './model.ts';
 import type { Item, Point, Board, Side, Bend } from './model.ts';
+import { pointInBox, rotatedBounds } from './rotation.ts';
 import {
   routeOrthogonal,
   polylineHits,
@@ -81,6 +82,7 @@ function obstaclesFor(item: Item, items: Item[], a: Point, b: Point): Rect[] {
   const inside = (o: Item, p: Point) =>
     p.x > o.x + 0.5 && p.x < o.x + o.w - 0.5 && p.y > o.y + 0.5 && p.y < o.y + o.h - 0.5;
   return items
+    .map(o => (o.rotation ? { ...o, ...rotatedBounds(o, o.rotation), rotation: undefined } : o))
     .filter(
       o =>
         canConnect(o) &&
@@ -299,16 +301,7 @@ export function moveConnectorEndpoint(
   if (!item || item.type !== 'arrow') return board;
   const [a, b] = endpoints(item, board.items);
   const target = attach
-    ? [...board.items]
-        .reverse()
-        .find(
-          i =>
-            canConnect(i) &&
-            point.x >= i.x - tolerance &&
-            point.x <= i.x + i.w + tolerance &&
-            point.y >= i.y - tolerance &&
-            point.y <= i.y + i.h + tolerance,
-        )
+    ? [...board.items].reverse().find(i => canConnect(i) && pointInBox(i, point, tolerance))
     : undefined;
   const start = end === 'start' ? point : a,
     finish = end === 'end' ? point : b;

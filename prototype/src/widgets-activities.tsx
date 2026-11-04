@@ -1,6 +1,6 @@
 // Canvas views for Slides decks (item 78), PowerPoint import (item 84) and open-ended activities (item 82).
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Copy, Trash2, Play, X, StickyNote, Plus, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, FileDown, Trash2, Play, X, StickyNote, Plus, RotateCcw } from 'lucide-react';
 import type { Board, Item } from './model';
 import { createItem } from './model';
 import type { WidgetView, WidgetCtx } from './widget-types';
@@ -29,6 +29,9 @@ import {
   OPEN_MAX,
 } from './specs-activities';
 import type { DeckData, Slide, SlideLayout, OpenEndedData } from './specs-activities';
+import { StatusChip, statusAction } from './status-chip';
+import { saveBlobFile } from './widget-kit';
+import { pdfFileName } from './doc-pdf';
 import './widgets-activities.css';
 
 export const DECK_EVENT = 'boardroom:present-deck';
@@ -218,6 +221,7 @@ function CanvasDeck({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     <div className="canvas-deck canvas-interactive" onDoubleClick={e => e.stopPropagation()}>
       <div className="canvas-deck-header canvas-widget-header">
         <span>{item.text || 'Slides'}</span>
+        <StatusChip status={item.data?.status} />
         <div {...canvasControl} className="canvas-deck-tools">
           <button aria-label="Previous slide" disabled={current === 0} onClick={() => setIndex(current - 1)}>
             <ChevronLeft size={14} />
@@ -550,6 +554,18 @@ export const activityViews: WidgetView[] = [
           ctx.display(`Slide ${d.slides.length + 1} added at the end.`);
         },
       },
+      {
+        // Deck as PDF, one page per slide (gap G13).
+        label: 'Export PDF',
+        icon: <FileDown size={17} />,
+        run: () => {
+          void import('./deck-tools')
+            .then(m => m.deckPdf(item.text || 'Slides', item.data as DeckData))
+            .then(blob => saveBlobFile(blob, pdfFileName(item.text || 'Slides')))
+            .catch(() => ctx.display('The deck could not be exported as PDF.'));
+        },
+      },
+      statusAction(item, ctx),
     ],
   },
   {

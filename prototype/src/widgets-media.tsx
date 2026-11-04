@@ -1,6 +1,7 @@
 // Views for video, PDF, bookmark, embed, doc, wireframe and prototype-screen widgets (items 30–33, 37, 38).
 // Public libraries only: pdfjs-dist (lazy) for PDFs and marked (via markdown.ts) for docs.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Dialog as WidgetDialog } from './widget-kit';
 import {
   X,
   Play,
@@ -16,6 +17,7 @@ import {
   Search,
   Download,
   Heart,
+  FileText,
 } from 'lucide-react';
 import type { Item, ImageAsset } from './model';
 import type { WidgetView, WidgetCtx } from './widget-types';
@@ -39,6 +41,7 @@ import { exportMarkdown, markdownFileName, docTitle } from './doc-tools';
 import { applyDocFormat } from './engage';
 import type { DocFormat } from './engage';
 import { PREVIEW_EVENT } from './prototype-preview';
+import { statusAction } from './status-chip';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import './widgets-media.css';
 
@@ -327,6 +330,73 @@ async function loadPdf(file: File) {
 }
 
 // ---- Video (item 30) ---------------------------------------------------------------------------------
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const parseClock = (v: string) => {
+  const m = /^\s*(?:(\d+):)?(\d+(?:\.\d+)?)\s*$/.exec(v);
+  return m ? Number(m[1] ?? 0) * 60 + Number(m[2]) : NaN;
+};
+/** Title, description and trim of a video or recording (gap G14). */
+function VideoEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose: () => void }) {
+  const d = (item.data ?? {}) as { duration?: number; trim?: { start: number; end: number } },
+    total = d.duration ?? 0;
+  const [title, setTitle] = useState(item.text),
+    [alt, setAlt] = useState(item.alt ?? ''),
+    [start, setStart] = useState(clock(d.trim?.start ?? 0)),
+    [end, setEnd] = useState(clock(d.trim?.end ?? total));
+  const s = parseClock(start),
+    e = parseClock(end);
+  const error =
+    Number.isNaN(s) || Number.isNaN(e)
+      ? 'Use times like 0:15 or 1:30.'
+      : s >= e
+        ? 'The end must come after the start.'
+        : total && e > total + 0.5
+          ? `The video is ${clock(total)} long.`
+          : '';
+  const apply = () => {
+    if (error) return;
+    const trimmed = s > 0 || (total ? e < total - 0.25 : true);
+    const next = { ...(item.data ?? {}) };
+    if (trimmed) next.trim = { start: s, end: e };
+    else delete next.trim;
+    ctx.update(b => ({
+      ...b,
+      items: b.items.map(i =>
+        i.id === item.id ? { ...i, text: title.slice(0, 200), alt: alt.slice(0, 500) || undefined, data: next } : i,
+      ),
+    }));
+    onClose();
+  };
+  return (
+    <WidgetDialog
+      title="Video"
+      hint={total ? `Length ${clock(total)}` : undefined}
+      onClose={onClose}
+      onApply={apply}
+      applyDisabled={!!error}
+      error={error}
+    >
+      <div className="w-form">
+        <label className="span2">
+          Title
+          <input aria-label="Video title" maxLength={200} value={title} onChange={ev => setTitle(ev.target.value)} />
+        </label>
+        <label>
+          Play from
+          <input aria-label="Trim start" value={start} onChange={ev => setStart(ev.target.value)} />
+        </label>
+        <label>
+          Stop at
+          <input aria-label="Trim end" value={end} onChange={ev => setEnd(ev.target.value)} />
+        </label>
+        <label className="span2">
+          Description for screen readers
+          <input aria-label="Video description" maxLength={500} value={alt} onChange={ev => setAlt(ev.target.value)} />
+        </label>
+      </div>
+    </WidgetDialog>
+  );
+}
 function VideoView({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const [playing, setPlaying] = useState(false),
     asset = item.assetId ? ctx.assets[item.assetId] : undefined,
@@ -355,6 +425,16 @@ function VideoView({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
             onKeyDown={stop}
             onDoubleClick={stop}
             onEnded={() => setPlaying(false)}
+            onLoadedMetadata={e => {
+              if (d.trim) e.currentTarget.currentTime = d.trim.start;
+            }}
+            onTimeUpdate={e => {
+              // Trimmed videos stop at the trim end (gap G14).
+              if (d.trim && e.currentTarget.currentTime >= d.trim.end) {
+                e.currentTarget.pause();
+                setPlaying(false);
+              }
+            }}
           />
         ) : (
           <>
@@ -379,8 +459,13 @@ function VideoView({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     </div>
   );
 }
-async function loadVideo(file: File) {
-  checkFile(file, ['video/mp4', 'video/webm'], 'video. Use MP4 or WebM');
+async function loadVideo(original: File) {
+  // QuickTime (.mov) files with H.264 decode through the MP4 path in Chromium browsers (gap B9).
+  const file =
+    original.type === 'video/quicktime' || /\.mov$/i.test(original.name)
+      ? new File([original], original.name, { type: 'video/mp4' })
+      : original;
+  checkFile(file, ['video/mp4', 'video/webm'], 'video. Use MP4, MOV or WebM');
   const data = await readDataUrl(file),
     url = URL.createObjectURL(file);
   try {
@@ -428,7 +513,7 @@ async function loadVideo(file: File) {
       asset: { mime: file.type, data, width: vw, height: vh, name: file.name.slice(0, 200) } as ImageAsset,
       data: { ...(poster ? { poster } : {}), duration: Math.round(duration * 10) / 10 },
       size: [w, h] as [number, number],
-      text: file.name.replace(/\.(mp4|webm)$/i, '').slice(0, 200),
+      text: file.name.replace(/\.(mp4|webm|mov)$/i, '').slice(0, 200),
     };
   } finally {
     URL.revokeObjectURL(url);
@@ -1370,7 +1455,8 @@ export const mediaViews: WidgetView[] = [
     mode: 'html',
     interactive: true,
     Render: p => <VideoView {...p} />,
-    fromFile: { accept: 'video/mp4,video/webm', load: loadVideo },
+    Editor: p => <VideoEditor {...p} />,
+    fromFile: { accept: 'video/mp4,video/webm,video/quicktime,.mov', load: loadVideo },
   },
   {
     kind: 'pdf',
@@ -1426,6 +1512,31 @@ export const mediaViews: WidgetView[] = [
           ctx.display(`Exported ${name}.`);
         },
       },
+      {
+        label: 'Export as PDF',
+        icon: <FileText size={17} />,
+        run: () => {
+          const md = String(item.data?.markdown ?? ''),
+            title = item.text && item.text !== 'Doc' ? item.text : docTitle(md);
+          void import('./doc-pdf')
+            .then(async ({ docPdf, pdfFileName }) => {
+              const made = await docPdf(title, md),
+                name = pdfFileName(title),
+                url = URL.createObjectURL(made.blob),
+                a = document.createElement('a');
+              a.href = url;
+              a.download = name;
+              a.click();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+              ctx.display(
+                `Exported ${name} (${made.pages} page${made.pages === 1 ? '' : 's'}).` +
+                  (made.replaced ? ' Some characters the PDF fonts cannot show were replaced with "?".' : ''),
+              );
+            })
+            .catch(() => ctx.display('The PDF could not be created.'));
+        },
+      },
+      statusAction(item, ctx),
     ],
   },
   {

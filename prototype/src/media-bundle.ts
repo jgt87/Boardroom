@@ -10,7 +10,7 @@ export const BUNDLE_VERSION = 1;
 export const MAX_BUNDLE_BYTES = 300_000_000;
 export const MAX_BUNDLE_ENTRIES = 600;
 
-const extByMime: Record<string, string> = {
+export const extByMime: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/gif': 'gif',
@@ -19,13 +19,13 @@ const extByMime: Record<string, string> = {
   'video/webm': 'webm',
   'application/pdf': 'pdf',
 };
-const ID = /^[A-Za-z0-9_-]{1,100}$/;
-const MEDIA_ENTRY = /^media\/([A-Za-z0-9_-]{1,100})\.(png|jpg|gif|webp|mp4|webm|pdf)$/;
+export const ID = /^[A-Za-z0-9_-]{1,100}$/;
+export const MEDIA_ENTRY = /^media\/([A-Za-z0-9_-]{1,100})\.(png|jpg|gif|webp|mp4|webm|pdf)$/;
 
-type ManifestAsset = { mime: string; width: number; height: number; name: string; file: string };
+export type ManifestAsset = { mime: string; width: number; height: number; name: string; file: string };
 type Manifest = { format: string; version: number; assets: Record<string, ManifestAsset> };
 
-function dataUrlBytes(data: string, mime: string): Uint8Array {
+export function dataUrlBytes(data: string, mime: string): Uint8Array {
   const prefix = `data:${mime};base64,`;
   if (!data.startsWith(prefix)) throw new Error('An asset is not a base64 data URL of its declared type.');
   const bin = atob(data.slice(prefix.length)),
@@ -33,7 +33,7 @@ function dataUrlBytes(data: string, mime: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
-function bytesDataUrl(bytes: Uint8Array, mime: string): string {
+export function bytesDataUrl(bytes: Uint8Array, mime: string): string {
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return `data:${mime};base64,${btoa(bin)}`;
@@ -44,7 +44,7 @@ const referenced = (board: { items?: unknown }) =>
       .map((i: { assetId?: unknown }) => i?.assetId)
       .filter((id): id is string => typeof id === 'string' && !!id),
   );
-const limitFor = (mime: string) => (imageMimes.includes(mime) ? MAX_IMAGE_BYTES : MAX_MEDIA_BYTES);
+export const limitFor = (mime: string) => (imageMimes.includes(mime) ? MAX_IMAGE_BYTES : MAX_MEDIA_BYTES);
 
 /** ZIP magic number check (local file header "PK\x03\x04"). */
 export function isBundle(bytes: Uint8Array): boolean {
@@ -122,8 +122,18 @@ export function decodeBundle(bytes: Uint8Array): {
     Array.isArray(manifest.assets)
   )
     throw new Error('Unsupported bundle format.');
+  const assets = assetsFromManifest(manifest.assets, entries);
+  const missing = [...referenced(board as { items?: unknown })].filter(id => !assets[id]);
+  return { board, assets, missing };
+}
+
+/** Rebuild media assets from a validated manifest and the inflated ZIP entries (shared with library backups). */
+export function assetsFromManifest(
+  manifestAssets: Record<string, ManifestAsset>,
+  entries: Record<string, Uint8Array>,
+): Record<string, ImageAsset> {
   const assets: Record<string, ImageAsset> = {};
-  for (const [id, m] of Object.entries(manifest.assets)) {
+  for (const [id, m] of Object.entries(manifestAssets)) {
     if (!ID.test(id) || !m || typeof m !== 'object') throw new Error('The bundle manifest is invalid.');
     if (![...imageMimes, ...mediaMimes].includes(m.mime))
       throw new Error(`Unsupported media type in bundle: ${String(m.mime).slice(0, 40)}`);
@@ -142,8 +152,7 @@ export function decodeBundle(bytes: Uint8Array): {
   }
   for (const name of Object.keys(entries)) {
     const match = MEDIA_ENTRY.exec(name);
-    if (match && !manifest.assets[match[1]]) throw new Error(`Unexpected file in bundle: ${name}`);
+    if (match && !manifestAssets[match[1]]) throw new Error(`Unexpected file in bundle: ${name}`);
   }
-  const missing = [...referenced(board as { items?: unknown })].filter(id => !assets[id]);
-  return { board, assets, missing };
+  return assets;
 }

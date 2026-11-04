@@ -25,6 +25,7 @@ const widgetKinds = [
   'wordcloud',
   'ranking',
   'quiz',
+  'chart',
 ];
 
 async function seedEverything(page: Page) {
@@ -89,7 +90,10 @@ test.describe('accessibility (axe)', () => {
         .locator('.layer-name')
         .click();
       await page.getByRole('button', { name: 'Close layers' }).click();
-      const edit = page.locator('.selection-bar .widget-action', { hasText: /^Edit$/ });
+      // Cards open their panel from the card bar instead of an Edit button (item 115).
+      const edit = page
+        .locator('.selection-bar .widget-action', { hasText: /^Edit$/ })
+        .or(page.locator('.selection-bar').getByRole('button', { name: 'Open card panel' }));
       if (!(await edit.count())) continue;
       await edit.click();
       await expect(page.getByRole('dialog')).toBeVisible();

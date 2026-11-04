@@ -5,7 +5,8 @@ import type { Board, Item, ShapeStyle } from './model.ts';
 import { endpoints } from './model.ts';
 import { resizeItems, selectionBounds, translate } from './interactions.ts';
 import type { Bounds } from './interactions.ts';
-import { isShapeKind } from './shapes.ts';
+import { isShapeKind, radiusKinds } from './shapes.ts';
+import { MAX_RADIUS } from './model-ext.ts';
 import { editableIds } from './arrange.ts';
 
 export const LIMIT = 1e7;
@@ -123,13 +124,37 @@ export function setTextMetric(
   );
 }
 
-/** Border field on shapes only; other kinds are left untouched. */
+/** Kinds that carry a border style: shapes and images (gap D11). */
+export const styledKind = (type: string) => isShapeKind(type) || type === 'image';
+/** Merge a style patch; undefined values remove a key, and an empty style is dropped. */
+export function mergeStyle(style: ShapeStyle | undefined, patch: ShapeStyle | undefined): ShapeStyle | undefined {
+  const next: Record<string, unknown> = { ...style, ...patch };
+  for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k];
+  return Object.keys(next).length ? (next as ShapeStyle) : undefined;
+}
+/** Border, radius or mask field on shapes and images; other kinds are left untouched. */
 export function setStyleField<K extends keyof ShapeStyle>(
   board: Board,
   ids: string[],
   key: K,
   value: ShapeStyle[K],
 ): Board {
+  if (key === 'mask')
+    return value !== undefined && value !== 'circle'
+      ? board
+      : mapEditable(board, ids, i =>
+          i.type !== 'image' || i.style?.mask === value
+            ? i
+            : { ...i, style: mergeStyle(i.style, { mask: value as ShapeStyle['mask'] }) },
+        );
+  if (key === 'radius')
+    return typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > MAX_RADIUS
+      ? board
+      : mapEditable(board, ids, i =>
+          !(radiusKinds.includes(i.type) || i.type === 'image') || i.style?.radius === value
+            ? i
+            : { ...i, style: { ...i.style, radius: value } },
+        );
   const valid =
     key === 'borderColor'
       ? /^#[0-9a-f]{6}$/i.test(String(value))
@@ -140,7 +165,7 @@ export function setStyleField<K extends keyof ShapeStyle>(
           : ['solid', 'dashed', 'dotted'].includes(String(value));
   if (!valid) return board;
   return mapEditable(board, ids, i =>
-    !isShapeKind(i.type) || i.style?.[key] === value ? i : { ...i, style: { ...i.style, [key]: value } },
+    !styledKind(i.type) || i.style?.[key] === value ? i : { ...i, style: { ...i.style, [key]: value } },
   );
 }
 

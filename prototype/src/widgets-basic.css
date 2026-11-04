@@ -104,16 +104,6 @@
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
-.w-card-desc {
-  font-size: 12px;
-  color: #52525b;
-  line-height: 1.4;
-  margin: 0;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-}
 .w-card-meta {
   margin-top: auto;
   display: flex;
@@ -595,4 +585,258 @@
 .rail-stickers button:hover,
 .rail-stickers button:focus-visible {
   border-color: #4262ff;
+}
+
+/* Card face, panel and quick-edit bar (item 115) */
+.w-card-top .w-card-expand {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #52525b;
+  cursor: pointer;
+  opacity: 0.55;
+}
+.w-card:hover .w-card-expand,
+.w-card-expand:focus-visible {
+  opacity: 1;
+  background: #f0f0f4;
+}
+.w-card-hasdesc {
+  display: inline-flex;
+  color: #71717a;
+}
+.w-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.w-tag-remove {
+  display: none;
+  border: 0;
+  padding: 0;
+  margin: 0 -2px 0 1px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 0;
+}
+.w-card:hover .w-tag-remove,
+.card-tag-list .w-tag-remove,
+.w-tag-remove:focus-visible {
+  display: inline-flex;
+}
+.card-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.card-bar-item {
+  position: relative;
+  display: inline-flex;
+}
+.card-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  min-width: 220px;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--panel, #fff);
+  color: var(--text, #25252c);
+  border: 1px solid var(--border, #e4e4ea);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px #1a1a2e26;
+}
+.card-pop > button {
+  text-align: left;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.card-pop > button.active {
+  color: var(--blue, #4262ff);
+  background: #edf0ff;
+}
+.card-pop .card-pop-quiet {
+  color: var(--muted, #71717a);
+  border-top: 1px solid var(--border, #e4e4ea);
+  border-radius: 0 0 6px 6px;
+}
+.card-pop form {
+  display: flex;
+  gap: 6px;
+}
+.card-pop input:not([type='date']) {
+  flex: 1;
+  min-width: 0;
+}
+.card-pop input,
+.card-panel .card-tag-add input {
+  border: 1px solid var(--border, #e4e4ea);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.card-pop-date {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: 12px;
+  color: var(--muted, #71717a);
+}
+.card-pop-date input {
+  grid-column: 1;
+}
+.card-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 12px;
+  min-height: 22px;
+  align-items: center;
+}
+.card-tag-list small {
+  color: var(--muted, #71717a);
+}
+.tag-swatches {
+  display: inline-flex;
+  gap: 4px;
+}
+.tag-swatches button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid #0000001f;
+  cursor: pointer;
+}
+.tag-swatches button.active {
+  outline: 2px solid var(--blue, #4262ff);
+  outline-offset: 1px;
+}
+.card-panel-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+}
+.card-panel-label small {
+  font-weight: 400;
+  color: var(--muted, #71717a);
+}
+.card-panel-desc,
+.card-panel-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.card-tag-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.card-date {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.card-date input {
+  flex: 1;
+}
+.card-date button,
+.card-pop-date button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted, #71717a);
+  padding: 4px;
+  line-height: 0;
+}
+.card-desc-field {
+  border: 1px solid var(--border, #e4e4ea);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.card-desc-tools {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-bottom: 1px solid var(--border, #e4e4ea);
+  background: #fafafc;
+}
+.card-desc-tools button {
+  min-width: 28px;
+  height: 26px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+}
+.card-desc-tools button:hover {
+  background: #edf0ff;
+}
+.card-desc {
+  position: relative;
+  min-height: 140px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  outline: none;
+}
+.card-desc:empty::before,
+.card-desc:has(> p:only-child > br:only-child)::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  pointer-events: none;
+  color: var(--muted, #a1a1aa);
+}
+.card-desc p {
+  margin: 0 0 6px;
+}
+.reaction-quick {
+  display: flex;
+  gap: 2px;
+}
+.reaction-quick button {
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  padding: 0;
+}
+/* Estimate chips (gap G12) */
+.estimate-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.estimate-chips button {
+  min-width: 30px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 14px;
+  border: 1px solid var(--border, #e4e4ea);
+  background: #fff;
+  font-size: 12px;
+  cursor: grab;
+}
+.estimate-chips button.active {
+  background: #edf0ff;
+  color: var(--blue, #4262ff);
+  border-color: #c9d2ff;
 }

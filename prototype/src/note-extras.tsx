@@ -22,6 +22,34 @@ export function EmojiBadge({ item }: { item: Item }) {
   );
 }
 
+/** Reaction chips along the bottom-right of a sticky note (gap D13). */
+export function NoteReactions({ item }: { item: Item }) {
+  const entries = Object.entries(item.reactions ?? {});
+  if (!entries.length) return null;
+  const size = Math.max(10, Math.min(16, item.w * 0.065)),
+    chipH = size * 1.7,
+    widths = entries.map(([, n]) => size * (1.9 + String(n).length * 0.62));
+  let x = item.w - 6;
+  return (
+    <g pointerEvents="none" aria-label={entries.map(([e, n]) => `${e} ${n}`).join(', ')} role="img">
+      {entries.map(([e, n], k) => {
+        x -= widths[k] + 3;
+        return (
+          <g key={e} transform={`translate(${x} ${item.h - chipH - 6})`}>
+            <rect width={widths[k]} height={chipH} rx={chipH / 2} fill="#ffffff" fillOpacity={0.9} stroke="#e4e4e8" />
+            <text x={size * 0.35} y={chipH / 2} dominantBaseline="central" fontSize={size} fontFamily="Arial">
+              {e}
+              <tspan dx={size * 0.2} fontSize={size * 0.8} fill="#3f3f46">
+                {n}
+              </tspan>
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
 /** Author name at the bottom of a sticky note (item 85), shown when the board setting is on. */
 export function AuthorTag({ item }: { item: Item }) {
   if (!item.author) return null;

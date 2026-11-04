@@ -1,5 +1,6 @@
 import { endpoints } from './model.ts';
 import type { Board, Item, Point } from './model.ts';
+import { boxCenter, canRotate, normalizeRotation, rotatePoint, rotatedBounds, snapAngle } from './rotation.ts';
 export type Bounds = { x: number; y: number; w: number; h: number };
 export type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 export const handles: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -22,7 +23,8 @@ export function anchorPoint(b: Bounds, side: AnchorSide, z: number) {
 }
 export type Guide = { axis: 'x' | 'y'; at: number; start: number; end: number };
 export function itemBounds(item: Item, items: Item[]): Bounds {
-  if (item.type !== 'arrow') return { x: item.x, y: item.y, w: item.w, h: item.h };
+  if (item.type !== 'arrow')
+    return item.rotation ? rotatedBounds(item, item.rotation) : { x: item.x, y: item.y, w: item.w, h: item.h };
   const [a, b] = endpoints(item, items);
   return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
 }
@@ -95,8 +97,8 @@ export function snapMove(
       other = axis === 'x' ? 'y' : 'x',
       otherSpan = axis === 'x' ? 'h' : 'w';
     const anchors = [b[axis], b[axis] + b[span] / 2, b[axis] + b[span]];
-    let best: { distance: number; at: number; target: Item } | null = null;
-    for (const target of others)
+    let best: { distance: number; at: number; target: Bounds } | null = null;
+    for (const target of others.map(o => (o.rotation ? itemBounds(o, board.items) : o)))
       for (const at of [target[axis], target[axis] + target[span] / 2, target[axis] + target[span]])
         for (const anchor of anchors) {
           const distance = at - anchor - next[axis];
@@ -115,7 +117,54 @@ export function snapMove(
   }
   return { delta: next, guides };
 }
-export function resizeBounds(b: Bounds, handle: Handle, delta: Point, aspect = false): Bounds {
+export const GRID_SIZE = 40;
+/** Adjust a move so the selection's top-left corner lands on the grid (gap D2). */
+export function snapToGrid(board: Board, ids: string[], delta: Point, size = GRID_SIZE): Point {
+  const b = selectionBounds(board.items, ids);
+  if (!b) return delta;
+  return {
+    x: Math.round((b.x + delta.x) / size) * size - b.x,
+    y: Math.round((b.y + delta.y) / size) * size - b.y,
+  };
+}
+/** New bounds for a handle drag. `fromCentre` (Alt, gap D8) grows both opposite sides and keeps the centre. */
+/** Snap the edges a resize moved to the grid (gap D2); unmoved edges stay put. Keeps at least one cell. */
+export function snapResize(prev: Bounds, next: Bounds, size = GRID_SIZE): Bounds {
+  const r = (v: number) => Math.round(v / size) * size || 0;
+  let left = next.x,
+    top = next.y,
+    right = next.x + next.w,
+    bottom = next.y + next.h;
+  if (left !== prev.x) left = r(left);
+  if (top !== prev.y) top = r(top);
+  if (right !== prev.x + prev.w) right = r(right);
+  if (bottom !== prev.y + prev.h) bottom = r(bottom);
+  const movedRight = next.x + next.w !== prev.x + prev.w,
+    movedBottom = next.y + next.h !== prev.y + prev.h;
+  if (right - left < size) {
+    if (movedRight) right = left + size;
+    else left = right - size;
+  }
+  if (bottom - top < size) {
+    if (movedBottom) bottom = top + size;
+    else top = bottom - size;
+  }
+  return { x: left, y: top, w: right - left, h: bottom - top };
+}
+export function resizeBounds(b: Bounds, handle: Handle, delta: Point, aspect = false, fromCentre = false): Bounds {
+  if (fromCentre) {
+    const sx = handle.includes('e') ? 1 : handle.includes('w') ? -1 : 0,
+      sy = handle.includes('s') ? 1 : handle.includes('n') ? -1 : 0;
+    let w = sx ? Math.max(40, b.w + 2 * sx * delta.x) : b.w,
+      h = sy ? Math.max(30, b.h + 2 * sy * delta.y) : b.h;
+    if (aspect && sx && sy && b.w > 0 && b.h > 0) {
+      const scale = Math.max(40 / b.w, 30 / b.h, Math.abs(w / b.w - 1) >= Math.abs(h / b.h - 1) ? w / b.w : h / b.h);
+      w = b.w * scale;
+      h = b.h * scale;
+    }
+    const c = boxCenter(b);
+    return { x: c.x - w / 2, y: c.y - h / 2, w, h };
+  }
   let left = b.x,
     right = b.x + b.w,
     top = b.y,
@@ -170,4 +219,63 @@ export function handlePoint(bounds: Bounds, handle: Handle): Point {
     x: bounds.x + (handle.includes('w') ? 0 : handle.includes('e') ? bounds.w : bounds.w / 2),
     y: bounds.y + (handle.includes('n') ? 0 : handle.includes('s') ? bounds.h : bounds.h / 2),
   };
+}
+
+/** Resize one rotated object by a handle in its own frame (gap D1): the drag is turned into the
+ * object's axes, and the opposite side (or the centre with `fromCentre`) stays put on screen. */
+export function resizeRotated(item: Item, handle: Handle, delta: Point, aspect = false, fromCentre = false): Bounds {
+  const deg = item.rotation ?? 0,
+    local = rotatePoint(delta, { x: 0, y: 0 }, -deg),
+    next = resizeBounds(item, handle, local, aspect, fromCentre),
+    shift = rotatePoint(
+      { x: next.x + next.w / 2 - (item.x + item.w / 2), y: next.y + next.h / 2 - (item.y + item.h / 2) },
+      { x: 0, y: 0 },
+      deg,
+    ),
+    c = { x: item.x + item.w / 2 + shift.x, y: item.y + item.h / 2 + shift.y };
+  return { x: c.x - next.w / 2, y: c.y - next.h / 2, w: next.w, h: next.h };
+}
+/** Rotate objects by `delta` degrees around `pivot` (gap D1). Rotatable objects turn and orbit; other
+ * objects (frames, pen strokes, containers) only orbit; free connector ends turn with the selection. */
+export function rotateItems(board: Board, ids: string[], delta: number, pivot: Point): Board {
+  const chosen = new Set(ids);
+  return {
+    ...board,
+    items: board.items.map(i => {
+      if (!chosen.has(i.id)) return i;
+      if (i.type === 'arrow') {
+        const [a, b] = endpoints(i, board.items),
+          s = i.from ? a : rotatePoint(a, pivot, delta),
+          e = i.to ? b : rotatePoint(b, pivot, delta);
+        return i.from && i.to ? i : { ...i, x: s.x, y: s.y, w: e.x - s.x, h: e.y - s.y };
+      }
+      const c = rotatePoint(boxCenter(i), pivot, delta),
+        moved = { ...i, x: c.x - i.w / 2, y: c.y - i.h / 2 };
+      if (!canRotate(i)) return moved;
+      const rotation = normalizeRotation((i.rotation ?? 0) + delta);
+      if (rotation) moved.rotation = rotation;
+      else delete moved.rotation;
+      return moved;
+    }),
+  };
+}
+/** Set an absolute rotation on objects, each around its own centre (inspector field). */
+export function setRotation(board: Board, ids: string[], deg: number): Board {
+  const chosen = new Set(ids),
+    rotation = normalizeRotation(deg);
+  return {
+    ...board,
+    items: board.items.map(i => {
+      if (!chosen.has(i.id) || !canRotate(i) || (i.rotation ?? 0) === rotation) return i;
+      const next: Item = { ...i, rotation };
+      if (!rotation) delete next.rotation;
+      return next;
+    }),
+  };
+}
+/** Turn of a rotate drag. With `snap`, a single object lands on a multiple of 15 degrees
+ * (`base` is its starting rotation); a multi-selection turns in 15-degree steps. */
+export function rotationDelta(raw: number, snap: boolean, base: number | null): number {
+  if (!snap) return raw;
+  return base === null ? snapAngle(raw) : snapAngle(base + raw) - base;
 }

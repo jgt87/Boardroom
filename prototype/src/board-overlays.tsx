@@ -1,11 +1,24 @@
 // Board-level overlays: the boards dashboard (item 56), the context menu (item 57) and the
 // properties inspector (item 59).
 import React from 'react';
-import { createItem } from './model';
-import { expandGroups, canGroup, isGrouped } from './arrange';
+import { createItem, newBoard } from './model';
+import { boardFromTemplate } from './user-templates';
+import { useLibraryFiles } from './use-library-files';
+import { expandGroups, canGroup, isGrouped, reorderZ } from './arrange';
+import {
+  allOfType,
+  copyStyle,
+  frameAround,
+  kindLabel,
+  onlyType,
+  pasteStyle,
+  styleClipboard,
+  typesIn,
+} from './switch-type';
 import { useApp } from './board-app';
 import { BoardsDashboard } from './dashboard';
 import { ContextMenu } from './context-menu';
+import { deckItemFor } from './deck-tools';
 import type { MenuEntry } from './context-menu';
 import { PropertiesInspector } from './inspector';
 import { DeckPresenter } from './widgets-activities';
@@ -44,7 +57,9 @@ export function BoardOverlays() {
     fill,
     fit,
     clipRef,
+    display,
   } = app;
+  const libraryFiles = useLibraryFiles();
   const entries = (): MenuEntry[] => {
     if (!contextMenu) return [];
     const { world } = contextMenu,
@@ -76,13 +91,7 @@ export function BoardOverlays() {
         { label: 'Fit to screen', shortcut: 'Alt 1', run: () => fit() },
         { label: 'Board properties', run: () => setInspector(true) },
       ];
-    const reorder = (front: boolean) =>
-      run(b => ({
-        ...b,
-        items: front
-          ? [...b.items.filter(i => !ids.includes(i.id)), ...b.items.filter(i => ids.includes(i.id))]
-          : [...b.items.filter(i => ids.includes(i.id)), ...b.items.filter(i => !ids.includes(i.id))],
-      }));
+    const types = typesIn(board, ids);
     return [
       { label: 'Cut', shortcut: 'Ctrl X', disabled: selectionLocked, run: () => copyNow(true) },
       { label: 'Copy', shortcut: 'Ctrl C', run: () => copyNow(false) },
@@ -104,8 +113,30 @@ export function BoardOverlays() {
             } as MenuEntry,
           ]
         : []),
-      { label: 'Bring to front', disabled: selectionLocked, run: () => reorder(true) },
-      { label: 'Send to back', disabled: selectionLocked, run: () => reorder(false) },
+      {
+        label: 'Bring to front',
+        shortcut: 'PgUp',
+        disabled: selectionLocked,
+        run: () => run(b => reorderZ(b, selected, 'front')),
+      },
+      {
+        label: 'Bring forward',
+        shortcut: 'Shift PgUp',
+        disabled: selectionLocked,
+        run: () => run(b => reorderZ(b, selected, 'forward')),
+      },
+      {
+        label: 'Send backward',
+        shortcut: 'Shift PgDn',
+        disabled: selectionLocked,
+        run: () => run(b => reorderZ(b, selected, 'backward')),
+      },
+      {
+        label: 'Send to back',
+        shortcut: 'PgDn',
+        disabled: selectionLocked,
+        run: () => run(b => reorderZ(b, selected, 'back')),
+      },
       canGroup(board, selected)
         ? { label: 'Group', shortcut: 'Ctrl G', disabled: selectionLocked, run: groupNow }
         : {
@@ -129,6 +160,76 @@ export function BoardOverlays() {
       ...(single?.type === 'note'
         ? [{ label: 'Convert…', disabled: selectionLocked, run: () => setPanel('convert') } as MenuEntry]
         : []),
+      ...(types.some(t => t.type === 'frame')
+        ? [
+            {
+              label: 'Turn frames into slides',
+              run: () => {
+                const deck = deckItemFor(boardRef.current, selected);
+                if (!deck) return;
+                update({ ...boardRef.current, items: [...boardRef.current.items, deck] });
+                setSelected([deck.id]);
+                display(`Created a deck with ${(deck.data as { slides: unknown[] }).slides.length} slides.`);
+              },
+            } as MenuEntry,
+          ]
+        : []),
+      ...(types.some(t => t.type !== 'frame')
+        ? [
+            {
+              label: 'Create frame around',
+              run: () => {
+                const made = frameAround(boardRef.current, selected);
+                if (!made) return;
+                update(made.board);
+                setSelected([made.frame.id]);
+              },
+            } as MenuEntry,
+          ]
+        : []),
+      'separator',
+      ...(single
+        ? [
+            {
+              label: 'Copy style',
+              shortcut: 'Ctrl Alt C',
+              run: () => {
+                styleClipboard.current = copyStyle(single);
+                display('Style copied. Select objects and choose Paste style.');
+              },
+            } as MenuEntry,
+          ]
+        : []),
+      ...(styleClipboard.current
+        ? [
+            {
+              label: 'Paste style',
+              shortcut: 'Ctrl Alt V',
+              disabled: selectionLocked,
+              run: () => {
+                const r = pasteStyle(boardRef.current, selected, styleClipboard.current!);
+                if (r.styled) update(r.board);
+                else display('The copied style does not apply to the selection.');
+              },
+            } as MenuEntry,
+          ]
+        : []),
+      ...(types.length > 1
+        ? types.slice(0, 4).map(
+            t =>
+              ({
+                label: `Select only ${kindLabel(t.type).toLowerCase()} (${t.count})`,
+                run: () => setSelected(onlyType(board, ids, t.type)),
+              }) as MenuEntry,
+          )
+        : types.length === 1
+          ? [
+              {
+                label: `Select all: ${kindLabel(types[0].type).toLowerCase()}`,
+                run: () => setSelected(allOfType(board, types[0].type)),
+              } as MenuEntry,
+            ]
+          : []),
       { label: 'Properties', run: () => setInspector(true) },
       'separator',
       { label: 'Delete', shortcut: 'Del', danger: true, disabled: selectionLocked, run: deleteSelection },
@@ -141,6 +242,16 @@ export function BoardOverlays() {
           library={library}
           onOpen={boardActions.open}
           onCreate={boardActions.create}
+          onCreateFromTemplate={(t, space) => {
+            const made = boardFromTemplate(t, newBoard());
+            if (made) boardActions.createFrom(made, space);
+            else display('This template can no longer be read.');
+          }}
+          onRestore={boardActions.restore}
+          onPurge={boardActions.purge}
+          onSpace={boardActions.space}
+          onImport={libraryFiles.importFile}
+          onBackupAll={libraryFiles.backupAll}
           onRename={boardActions.rename}
           onDuplicate={boardActions.duplicate}
           onDelete={boardActions.remove}

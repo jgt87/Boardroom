@@ -2,12 +2,18 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Item, MindNode } from './model';
 import { removeBranch } from './model';
 import { useLatest } from './use-latest';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Minus, Plus } from 'lucide-react';
 import { mindViewport } from './mindmap-bounds';
 import {
   mindLayout,
   mindBranchPath,
-  mindBranchColor,
+  mindTopicColor,
+  mindHiddenCount,
+  toggleMindCollapse,
+  revealMindNode,
+  setMindColor,
+  mindPalette,
+  mindColorNames,
   mindStyleOf,
   mindLabelLines,
   MIND_NODE_W,
@@ -56,7 +62,7 @@ export function MindmapCanvasEditor({
     latest = useRef(nodes);
   latest.current = nodes;
   const style = mindStyleOf(item),
-    basePositions = mindLayout(nodes, style.autoLayout ?? true),
+    basePositions = mindLayout(nodes, style.autoLayout ?? true, style.layout),
     positions = dragPreview?.positions ?? basePositions,
     xs = [...basePositions.values()],
     minX = Math.min(0, ...xs.map(p => p.x)),
@@ -99,19 +105,30 @@ export function MindmapCanvasEditor({
         ? { position: { x: Math.min(100000, p.x + (sibling ? 0 : MIND_COL)), y: Math.min(100000, p.y + MIND_ROW) } }
         : {}),
     };
-    setNodes([...nodes, n]);
+    setNodes(revealMindNode([...nodes, n], n.id));
     setActive(n.id);
+  };
+  /** Collapse or expand a branch (gap E7); the toggled topic becomes the active one. */
+  const toggle = (id: string) => {
+    const next = toggleMindCollapse(nodes, id);
+    setNodes(next);
+    setActive(id);
   };
   const move = (key: string) => {
     if (!chosen) return;
     if (key === 'ArrowLeft' && chosen.parent) setActive(chosen.parent);
     else if (key === 'ArrowRight') {
       const child = nodes.find(n => n.parent === chosen.id);
-      if (child) setActive(child.id);
+      if (child) {
+        if (chosen.collapsed) setNodes(revealMindNode(nodes, child.id));
+        setActive(child.id);
+      }
     } else {
-      const order = [...nodes].sort(
-        (a, b) => positions.get(a.id)!.y - positions.get(b.id)!.y || positions.get(a.id)!.x - positions.get(b.id)!.x,
-      );
+      const order = nodes
+        .filter(n => positions.has(n.id))
+        .sort(
+          (a, b) => positions.get(a.id)!.y - positions.get(b.id)!.y || positions.get(a.id)!.x - positions.get(b.id)!.x,
+        );
       const sameColumn = order.filter(n => positions.get(n.id)!.x === p!.x),
         i = sameColumn.findIndex(n => n.id === active),
         next = sameColumn[key === 'ArrowUp' ? i - 1 : i + 1];
@@ -151,7 +168,7 @@ export function MindmapCanvasEditor({
       y: ((e.clientY - rect.top) * drag.ratio - offY) / drag.scale - 8 + minY,
     };
     drag.target = e.ctrlKey || e.metaKey ? null : mindDropTarget(drag.base, drag.id, point, basePositions);
-    setDragPreview({ id: drag.id, target: drag.target, positions: mindLayout(drag.next, false) });
+    setDragPreview({ id: drag.id, target: drag.target, positions: mindLayout(drag.next, false, style.layout) });
   };
   const dragEnd = (e: React.PointerEvent<SVGElement | HTMLButtonElement>) => {
     const drag = branchDrag.current;
@@ -239,7 +256,8 @@ export function MindmapCanvasEditor({
           {nodes.map(n => {
             const q = positions.get(n.id),
               parent = n.parent ? positions.get(n.parent) : null,
-              color = mindBranchColor(nodes, n.id, style.colorful);
+              color = mindTopicColor(nodes, n.id, style.colorful),
+              tinted = style.colorful || !!n.color;
             return (
               q && (
                 <g
@@ -253,7 +271,12 @@ export function MindmapCanvasEditor({
                   style={{ cursor: 'text' }}
                 >
                   {parent && (
-                    <path d={mindBranchPath(style.branchStyle, parent, q)} fill="none" stroke={color} strokeWidth="2" />
+                    <path
+                      d={mindBranchPath(style.branchStyle, parent, q, style.layout)}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth="2"
+                    />
                   )}
                   <rect
                     x={q.x}
@@ -261,13 +284,13 @@ export function MindmapCanvasEditor({
                     width={MIND_NODE_W}
                     height={MIND_NODE_H}
                     rx="9"
-                    fill={n.parent ? (style.colorful ? color + '22' : '#edf0ff') : '#4262ff'}
+                    fill={n.parent ? (tinted ? color + '22' : '#edf0ff') : (n.color ?? '#4262ff')}
                     stroke={
                       dragPreview?.target === n.id
                         ? '#4262ff'
                         : n.id === active
                           ? '#25252c'
-                          : n.parent && style.colorful
+                          : n.parent && tinted
                             ? color
                             : 'none'
                     }
@@ -312,7 +335,31 @@ export function MindmapCanvasEditor({
         />
       )}
       {nodes
-        .filter(n => n.parent)
+        .filter(n => nodes.some(c => c.parent === n.id) && positions.has(n.id))
+        .map(n => {
+          const q = positions.get(n.id)!,
+            down = style.layout === 'down';
+          return (
+            <button
+              key={`fold-${n.id}`}
+              className="mind-collapse-toggle"
+              data-topic-toggle={n.id}
+              aria-pressed={!!n.collapsed}
+              aria-label={`${n.collapsed ? 'Expand' : 'Collapse'} branch: ${n.text || 'Untitled topic'}`}
+              title={n.collapsed ? `Expand (${mindHiddenCount(nodes, n.id)} hidden)` : 'Collapse'}
+              style={{
+                left: offX + (q.x - minX + 8 + (down ? MIND_NODE_W / 2 : MIND_NODE_W / 2 + 12)) * scale,
+                top: offY + (q.y - minY + 8 + (down ? MIND_NODE_H : MIND_NODE_H - 2)) * scale,
+              }}
+              onPointerDown={e => e.stopPropagation()}
+              onClick={() => toggle(n.id)}
+            >
+              {n.collapsed ? <Plus size={11} /> : <Minus size={11} />}
+            </button>
+          );
+        })}
+      {nodes
+        .filter(n => n.parent && positions.has(n.id))
         .map(n => {
           const q = positions.get(n.id)!;
           return (
@@ -363,6 +410,30 @@ export function MindmapCanvasEditor({
               ? 'Move branch · Ctrl keeps its parent'
               : 'Drop on a topic to attach'}
         </p>
+      )}
+      {chosen && (
+        <div className="mind-color-row" role="group" aria-label="Topic colour">
+          <button
+            className={!chosen.color ? 'active' : ''}
+            aria-pressed={!chosen.color}
+            aria-label="Topic colour Automatic"
+            title="Automatic colour"
+            onClick={() => setNodes(setMindColor(nodes, chosen.id, ''))}
+          >
+            A
+          </button>
+          {mindPalette.map((c, index) => (
+            <button
+              key={c}
+              className={chosen.color === c ? 'active' : ''}
+              aria-pressed={chosen.color === c}
+              aria-label={`Topic colour ${mindColorNames[index]}`}
+              title={mindColorNames[index]}
+              style={{ background: c }}
+              onClick={() => setNodes(setMindColor(nodes, chosen.id, c))}
+            />
+          ))}
+        </div>
       )}
       <p className="mind-canvas-hint">
         {style.autoLayout === false

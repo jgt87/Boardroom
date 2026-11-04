@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X, ChevronUp, ChevronDown } from 'lucide-react';
 import type { Board } from './model';
-import { searchBoard, isFuzzy } from './navigation';
+import { searchBoard, isFuzzy, searchKindGroups } from './navigation';
 import { useLatest } from './use-latest';
 import type { SearchResult } from './navigation';
 
@@ -30,19 +30,30 @@ export function SearchPanel({
   exclude,
   onReveal,
   onMatches,
+  onReplace,
   onClose,
 }: {
   board: Board;
   exclude?: Set<string>;
   onReveal: (id: string) => void;
   onMatches: (ids: string[], current: string | null) => void;
+  /** Find and replace (gap D4): replaces exact matches in the given objects as one undo step. */
+  onReplace?: (ids: string[], find: string, replacement: string, matchCase: boolean) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState(''),
     [index, setIndex] = useState(0),
     input = useRef<HTMLInputElement>(null),
     list = useRef<HTMLOListElement>(null);
-  const results = useMemo(() => searchBoard(board, query, 500, exclude), [board, query, exclude]),
+  const [kind, setKind] = useState('all'),
+    [replacing, setReplacing] = useState(false),
+    [replacement, setReplacement] = useState(''),
+    [matchCase, setMatchCase] = useState(false);
+  const results = useMemo(() => {
+      const group = searchKindGroups.find(g => g.id === kind) ?? searchKindGroups[0],
+        types = new Map(board.items.map(i => [i.id, i.type]));
+      return searchBoard(board, query, 500, exclude).filter(r => group.match(types.get(r.id)!));
+    }, [board, query, exclude, kind]),
     current = results[Math.min(index, results.length - 1)];
   const matchesRef = useLatest(onMatches),
     currentId = current?.id ?? null;
@@ -134,6 +145,56 @@ export function SearchPanel({
           <X size={16} />
         </button>
       </div>
+      <div className="search-options">
+        <select aria-label="Object type" value={kind} onChange={e => setKind(e.target.value)}>
+          {searchKindGroups.map(g => (
+            <option key={g.id} value={g.id}>
+              {g.label}
+            </option>
+          ))}
+        </select>
+        {onReplace && (
+          <button
+            className={`search-replace-toggle ${replacing ? 'active' : ''}`}
+            aria-expanded={replacing}
+            onClick={() => setReplacing(r => !r)}
+          >
+            Replace
+          </button>
+        )}
+      </div>
+      {replacing && onReplace && (
+        <div className="search-replace">
+          <input
+            aria-label="Replace with"
+            placeholder="Replace with"
+            value={replacement}
+            onChange={e => setReplacement(e.target.value)}
+          />
+          <label>
+            <input type="checkbox" checked={matchCase} onChange={e => setMatchCase(e.target.checked)} /> Match case
+          </label>
+          <button
+            disabled={!current || !query.trim()}
+            onClick={() => current && onReplace([current.id], query.trim(), replacement, matchCase)}
+          >
+            Replace
+          </button>
+          <button
+            disabled={!results.length || !query.trim()}
+            onClick={() =>
+              onReplace(
+                results.map(r => r.id),
+                query.trim(),
+                replacement,
+                matchCase,
+              )
+            }
+          >
+            Replace all
+          </button>
+        </div>
+      )}
       {query.trim() !== '' &&
         (results.length ? (
           <>

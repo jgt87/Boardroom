@@ -3,7 +3,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, ArrowUp, ArrowDown, Lock, LockOpen, Eye, EyeOff, Unlink } from 'lucide-react';
 import type { Board, Item, ShapeStyle } from './model';
-import { setLocked } from './arrange';
+import { editableIds, setLocked } from './arrange';
+import { setRotation } from './interactions';
+import { canRotate } from './rotation';
 import { isShapeKind, shapeLabels } from './shapes';
 import { specFor } from './widget-specs';
 import { layerLabel } from './board-tools';
@@ -149,7 +151,7 @@ export function PropertiesInspector({ board, selected, onChange, onClose }: Prop
   const allTextBearing = items.every(hasText);
   const fontSize = shared(items, i => String(i.format?.fontSize ?? 'auto'));
   const allShapes = items.every(i => isShapeKind(i.type));
-  const border = <K extends keyof ShapeStyle>(k: K) =>
+  const border = <K extends keyof typeof DEFAULT_BORDER>(k: K) =>
     shared(items, i => (i.style?.[k] ?? DEFAULT_BORDER[k]) as ShapeStyle[K]);
   const grouped = shared(items, i => !!i.group);
   const hidden = items.every(i => i.hidden);
@@ -204,6 +206,23 @@ export function PropertiesInspector({ board, selected, onChange, onClose }: Prop
               max={1e7}
             />
           </div>
+          {geomItems.some(canRotate) && (
+            <CommitField
+              label="Rotation (°)"
+              value={show(
+                shared(geomItems.filter(canRotate), i => i.rotation ?? 0),
+                v => String(round(v)),
+              )}
+              mixed={shared(geomItems.filter(canRotate), i => i.rotation ?? 0) === MIXED}
+              disabled={locked}
+              min={-360}
+              max={360}
+              onCommit={v => {
+                const n = Number(v);
+                if (v.trim() !== '' && Number.isFinite(n)) onChange(b => setRotation(b, editableIds(b, selected), n));
+              }}
+            />
+          )}
           {many && <p className="inspector-hint">Editing moves or scales the selection as one box.</p>}
         </fieldset>
       )}

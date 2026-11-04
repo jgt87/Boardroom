@@ -74,8 +74,11 @@ test('pack shapes join Grids and get contrast checks like basic shapes', () => {
   assert.ok(
     (adopted.items.find(i => i.id === 'g')!.data as { objects?: { id: string }[] }).objects?.some(o => o.id === 'doc'),
   );
-  const dark = { ...createItem('callout', 0, 0), text: 'Low contrast', fill: '#333333' };
-  assert.ok(checkAccessibility(board(dark)).some(i => i.kind === 'contrast'));
+  // Mid grey fails with both dark and white text; a dark fill is drawn with white text and passes.
+  const grey = { ...createItem('callout', 0, 0), text: 'Low contrast', fill: '#7a7a7a' };
+  assert.ok(checkAccessibility(board(grey)).some(i => i.kind === 'contrast'));
+  const dark = { ...createItem('callout', 0, 0), text: 'White text', fill: '#333333' };
+  assert.ok(!checkAccessibility(board(dark)).some(i => i.kind === 'contrast'));
 });
 
 // Item 78 — Slides decks

@@ -14,6 +14,7 @@ import {
   ORG_NODE_H,
 } from './orgchart';
 import type { OrgNode } from './orgchart';
+import { orgMeta } from './orgchart';
 import { addActivity, addRelease, addCard, removeCard, renameCard, rename, cellCards, moveCard } from './storymap';
 import type { StoryMap } from './storymap';
 const PERSON = 'application/x-boardroom-person',
@@ -126,6 +127,7 @@ export function CanvasOrg({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                     <>
                       <strong>{n.name}</strong>
                       <span>{n.role}</span>
+                      {(n.team || n.location) && <small className="canvas-person-meta">{orgMeta(n)}</small>}
                     </>
                   ) : (
                     <>
@@ -143,6 +145,7 @@ export function CanvasOrg({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                           run(v => v.map(p => (p.id === n.id ? { ...p, role: role.slice(0, 200) } : p)))
                         }
                       />
+                      {(n.team || n.location) && <small className="canvas-person-meta">{orgMeta(n)}</small>}
                     </>
                   )}
                 </div>

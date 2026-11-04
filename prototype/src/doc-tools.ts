@@ -110,3 +110,32 @@ export function markdownFileName(title: string): string {
 }
 /** Markdown with a trailing newline, as written to an exported file. */
 export const exportMarkdown = (md: string) => (md.endsWith('\n') ? md : md + '\n');
+
+// ---- Keyboard shortcuts in Docs (gap list I1) ----------------------------------------------------------
+export type DocShortcut = { kind: 'strike' } | { kind: 'code' } | { kind: 'block'; block: 'h1' | 'h2' | 'h3' | 'p' };
+type KeyLike = { key: string; code?: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean };
+/**
+ * Doc editing shortcut for a key press, or null: Ctrl+Shift+X strikethrough, Ctrl+E inline code,
+ * Ctrl+Alt+1–3 headings and Ctrl+Alt+0 normal text (Cmd instead of Ctrl on a Mac).
+ */
+export function docShortcut(e: KeyLike): DocShortcut | null {
+  if (!(e.ctrlKey || e.metaKey)) return null;
+  const key = e.key.toLowerCase(),
+    digit = e.code?.match(/^(?:Digit|Numpad)([0-3])$/)?.[1] ?? (/^[0-3]$/.test(e.key) ? e.key : null);
+  if (e.altKey && !e.shiftKey && digit !== null)
+    return { kind: 'block', block: digit === '0' ? 'p' : (`h${digit}` as 'h1' | 'h2' | 'h3') };
+  if (e.altKey) return null;
+  if (e.shiftKey && (key === 'x' || e.code === 'KeyX')) return { kind: 'strike' };
+  if (!e.shiftKey && (key === 'e' || e.code === 'KeyE')) return { kind: 'code' };
+  return null;
+}
+/** Shortcut list for the Doc toolbar help. */
+export const docShortcutHelp = [
+  ['Ctrl+B', 'Bold'],
+  ['Ctrl+I', 'Italic'],
+  ['Ctrl+U', 'Underline'],
+  ['Ctrl+Shift+X', 'Strikethrough'],
+  ['Ctrl+E', 'Inline code'],
+  ['Ctrl+Alt+1–3', 'Heading 1–3'],
+  ['Ctrl+Alt+0', 'Normal text'],
+] as const;

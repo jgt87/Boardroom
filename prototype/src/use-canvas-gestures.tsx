@@ -1,9 +1,25 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { pinchCamera } from './camera';
+import type { Camera } from './camera';
 import { clone, createItem } from './model';
 import type { Item, Kind, Point } from './model';
-import { translate, selectWithin, snapMove, resizeBounds, resizeItems, selectionBounds } from './interactions';
-import type { Handle } from './interactions';
+import {
+  translate,
+  selectWithin,
+  snapMove,
+  snapToGrid,
+  snapResize,
+  resizeBounds,
+  resizeItems,
+  resizeRotated,
+  rotateItems,
+  rotationDelta,
+  selectionBounds,
+} from './interactions';
+import { boxCenter, canRotate, handleAngle, pointInBox } from './rotation';
+import type { Bounds, Handle } from './interactions';
 import { moveConnectorEndpoint, dragBend } from './connector-geometry';
+import { snap45 } from './diagram-gaps';
 import { expandGroups, editableIds, moveIds, duplicateItems } from './arrange';
 import { adoptIntoContainers, insertionPreview } from './autolayout';
 import { canCopyToRecords, copyToRecords, recordDropAt } from './record-canvas';
@@ -17,14 +33,7 @@ const connectTargetAt = (board: { items: Item[] }, p: Point, fromId?: string) =>
   [...board.items]
     .reverse()
     .find(
-      i =>
-        !['arrow', 'pen', 'frame', 'stickypad'].includes(i.type) &&
-        !i.hidden &&
-        i.id !== fromId &&
-        p.x >= i.x &&
-        p.x <= i.x + i.w &&
-        p.y >= i.y &&
-        p.y <= i.y + i.h,
+      i => !['arrow', 'pen', 'frame', 'stickypad'].includes(i.type) && !i.hidden && i.id !== fromId && pointInBox(i, p),
     );
 /** A pen stroke's points in world coordinates. */
 const absolutePoints = (i: Item) => (i.points ?? []).map(p => ({ x: i.x + p.x, y: i.y + p.y }));
@@ -33,18 +42,21 @@ import { isShapeKind } from './shapes';
 
 /** Pointer gestures on the canvas: select, move, resize, pan, draw, erase, connect, bend and label drags. */
 export function useCanvasGestures(core: BoardCore) {
+  const touches = useRef(new Map<number, { x: number; y: number }>()),
+    pinch = useRef<{ camera: Camera; a: { x: number; y: number }; b: { x: number; y: number } } | null>(null);
   const {
     setDropLine,
     display,
     board,
     boardRef,
+    svg,
     camera,
     draft,
     editing,
     eraseLast,
     eraser,
     fill,
-    fit,
+    followLink,
     geometryOf,
     gesture,
     penColor,
@@ -63,6 +75,7 @@ export function useCanvasGestures(core: BoardCore) {
     setThread,
     setTool,
     snapping,
+    viewPrefs,
     space,
     stackLast,
     toWorld,
@@ -94,19 +107,83 @@ export function useCanvasGestures(core: BoardCore) {
   function transformed(g: Gesture, p: Point, shift: boolean, alt: boolean) {
     const delta = { x: p.x - g.start.x, y: p.y - g.start.y };
     if (g.mode === 'move') {
-      const result = snapMove(g.board, g.ids, delta, 6 / g.camera.z, !snapping || alt, shift);
+      const result =
+        viewPrefs.snapGrid && !alt
+          ? {
+              delta: snapToGrid(g.board, g.ids, shift ? snapMove(g.board, g.ids, delta, 0, true, true).delta : delta),
+              guides: [],
+            }
+          : snapMove(g.board, g.ids, delta, 6 / g.camera.z, !snapping || alt, shift);
       return { board: detachGridObjects(translate(g.board, g.ids, result.delta), g.ids), guides: result.guides };
     }
+    if (g.mode === 'rotate') {
+      const single = g.ids.length === 1 ? g.board.items.find(i => i.id === g.ids[0]) : undefined,
+        raw = handleAngle(g.pivot!, p) - g.angle!,
+        turn = rotationDelta(raw, shift, single && canRotate(single) ? (single.rotation ?? 0) : null);
+      return { board: rotateItems(g.board, g.ids, turn, g.pivot!), guides: [] };
+    }
+    const one = g.ids.length === 1 ? g.board.items.find(i => i.id === g.ids[0]) : undefined;
+    // A single rotated object resizes along its own axes (gap D1); Alt resizes from the centre (gap D8).
+    if (one?.rotation)
+      return {
+        board: resizeItems(
+          g.board,
+          g.ids,
+          one,
+          resizeRotated(one, g.handle ?? 'se', delta, shift !== (one.type === 'image'), alt),
+        ),
+        guides: [],
+      };
     const bounds = selectionBounds(g.board.items, g.ids),
       images = g.ids.length > 0 && g.ids.every(id => g.board.items.find(i => i.id === id)?.type === 'image');
     return {
       board: bounds
-        ? resizeItems(g.board, g.ids, bounds, resizeBounds(bounds, g.handle ?? 'se', delta, shift !== images))
+        ? resizeItems(
+            g.board,
+            g.ids,
+            bounds,
+            ((b: Bounds) => (viewPrefs.snapGrid && !shift && !alt ? snapResize(bounds, b) : b))(
+              resizeBounds(bounds, g.handle ?? 'se', delta, shift !== images, alt),
+            ),
+          )
         : g.board,
       guides: [],
     };
   }
+  // Touch: two fingers pinch-zoom and pan (gap F11).
+  const local = (e: { clientX: number; clientY: number }) => {
+    const r = svg.current?.getBoundingClientRect();
+    return { x: e.clientX - (r?.left ?? 0), y: e.clientY - (r?.top ?? 0) };
+  };
+  function touchDown(e: React.PointerEvent<SVGSVGElement>): boolean {
+    if (e.pointerType !== 'touch') return false;
+    touches.current.set(e.pointerId, local(e));
+    if (touches.current.size === 2) {
+      if (gesture.current) cancelGesture();
+      const [a, b] = [...touches.current.values()];
+      pinch.current = { camera, a, b };
+      return true;
+    }
+    return !!pinch.current;
+  }
+  function touchMove(e: React.PointerEvent<SVGSVGElement>): boolean {
+    if (e.pointerType !== 'touch' || !touches.current.has(e.pointerId)) return false;
+    touches.current.set(e.pointerId, local(e));
+    const p = pinch.current;
+    if (!p || touches.current.size < 2) return !!p;
+    const [a, b] = [...touches.current.values()];
+    setCamera(pinchCamera(p.camera, p.a, p.b, a, b));
+    return true;
+  }
+  function touchUp(e: React.PointerEvent<SVGSVGElement>): boolean {
+    if (e.pointerType !== 'touch') return false;
+    touches.current.delete(e.pointerId);
+    if (!pinch.current) return false;
+    if (touches.current.size < 2) pinch.current = null;
+    return true;
+  }
   function pointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    if (touchDown(e)) return;
     if (
       (e.target as Element).closest('textarea,input,select,video,iframe,.mindmap-canvas-editor') ||
       (e.button !== 0 && e.button !== 1) ||
@@ -137,10 +214,7 @@ export function useCanvasGestures(core: BoardCore) {
       pin = (e.target as Element).closest('[data-comment]');
     if (linkEl && e.button === 0) {
       const target = current.items.find(i => i.id === linkEl.getAttribute('data-link'));
-      if (target) {
-        setSelected([target.id]);
-        fit([target]);
-      }
+      if (target) followLink(target);
       return;
     }
     if (pin && e.button === 0) {
@@ -207,6 +281,12 @@ export function useCanvasGestures(core: BoardCore) {
         ids: [selectedItem.id],
         bend: { kind: kind as 'bend' | 'segment', index: Number(index) },
       };
+    } else if ((e.target as Element).getAttribute('data-rotate')) {
+      const ids = editableIds(current, selected),
+        single = ids.length === 1 ? current.items.find(i => i.id === ids[0]) : undefined,
+        bounds = selectionBounds(current.items, ids),
+        pivot = single ? boxCenter(single) : bounds ? boxCenter(bounds) : start;
+      gesture.current = { ...base, mode: 'rotate', ids, pivot, angle: handleAngle(pivot, start) };
     } else if ((e.target as Element).getAttribute('data-resize'))
       gesture.current = {
         ...base,
@@ -286,6 +366,7 @@ export function useCanvasGestures(core: BoardCore) {
     }
   }
   function pointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    if (touchMove(e)) return;
     const g = gesture.current;
     if (!g) return;
     const p = toWorld(e.clientX, e.clientY),
@@ -318,6 +399,8 @@ export function useCanvasGestures(core: BoardCore) {
           i.id === g.ids[0] ? { ...i, connector: { ...i.connector, labelAt: nearestAlong(geo.nodes, p) } } : i,
         ),
       });
+    } else if (g.mode === 'rotate') {
+      if (g.moved) setDraft(transformed(g, p, e.shiftKey, e.altKey).board);
     } else if (g.mode === 'move' || g.mode === 'resize') {
       if (g.moved) {
         if (g.mode === 'move' && g.duplicate && !g.originalIds) {
@@ -348,8 +431,10 @@ export function useCanvasGestures(core: BoardCore) {
       if (g.mode === 'draw') {
         if ((g.item.points?.length ?? 0) < 20000) g.item.points!.push({ x: dx, y: dy });
       } else if (g.item.type === 'arrow') {
-        g.item.w = dx;
-        g.item.h = dy;
+        // Shift keeps the line at 45-degree steps (gap E5).
+        const end = e.shiftKey ? snap45(dx, dy) : { x: dx, y: dy };
+        g.item.w = end.x;
+        g.item.h = end.y;
         const over = connectTargetAt(g.board, p, g.item.from),
           preview = clone(g.item);
         if (over) preview.to = over.id;
@@ -367,6 +452,7 @@ export function useCanvasGestures(core: BoardCore) {
     }
   }
   function pointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    if (touchUp(e)) return;
     const g = gesture.current;
     if (!g) return;
     gesture.current = null;
@@ -403,14 +489,7 @@ export function useCanvasGestures(core: BoardCore) {
         const p = toWorld(e.clientX, e.clientY);
         const target = [...g.board.items]
           .reverse()
-          .find(
-            i =>
-              !['arrow', 'pen', 'frame'].includes(i.type) &&
-              p.x >= i.x &&
-              p.x <= i.x + i.w &&
-              p.y >= i.y &&
-              p.y <= i.y + i.h,
-          );
+          .find(i => !['arrow', 'pen', 'frame'].includes(i.type) && pointInBox(i, p));
         if (target && target.id !== g.item.from) g.item.to = target.id;
         if (!g.moved) g.item.w = 180;
       }
@@ -459,6 +538,8 @@ export function useCanvasGestures(core: BoardCore) {
       if (moved) update(moveConnectorEndpoint(g.board, g.ids[0], g.endpoint!, final, 12 / g.camera.z, !e.altKey));
     } else if (g.mode === 'bend') {
       if (moved) update(dragBend(g.board, g.ids[0], g.bend!, final));
+    } else if (g.mode === 'rotate') {
+      if (moved) update(transformed(g, final, e.shiftKey, e.altKey).board);
     } else if (g.mode === 'erase') {
       if (draft) update(draft);
     } else if (g.mode === 'label') {
@@ -483,5 +564,10 @@ export function useCanvasGestures(core: BoardCore) {
     setGuides([]);
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   }
-  return { cancelGesture, pointerDown, pointerMove, pointerUp };
+  function pointerCancel(e: React.PointerEvent<SVGSVGElement>) {
+    touches.current.delete(e.pointerId);
+    if (touches.current.size < 2) pinch.current = null;
+    cancelGesture();
+  }
+  return { cancelGesture, pointerDown, pointerMove, pointerUp, pointerCancel };
 }

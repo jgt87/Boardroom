@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { MentionSuggestions, MentionText } from './mention-field';
 import { issueLabels, type DiagramIssue } from './diagram-validation';
 import type { UserTemplate } from './user-templates';
 import { doNotDisturb } from './view-prefs';
@@ -19,10 +20,17 @@ import {
   BellOff,
   Link2,
   Unlink,
+  Pencil,
+  Pin,
+  PinOff,
+  SmilePlus,
 } from 'lucide-react';
 import type { Board, Item, CommentThread } from './model';
-import { layerGroups, layerLabel, formatClock, timerRemaining, templateNames, votesUsed } from './board-tools';
-import type { TimerState, A11yIssue, TemplateName, PenStyle } from './board-tools';
+import { layerGroups, layerLabel, formatClock, timerRemaining, votesUsed } from './board-tools';
+import { filterTemplates, templateCategories } from './starter-templates';
+import type { TemplateCategory } from './starter-templates';
+import type { TimerState, A11yIssue, TemplateName, PenStyle, VotingOptions } from './board-tools';
+import { addTime, parseClock, votingTimeLeft, commentReactions, orderThreads } from './facilitation-rules';
 
 const stopKeys = (onClose: () => void) => (e: React.KeyboardEvent) => {
   e.stopPropagation();
@@ -152,16 +160,31 @@ export function VotingPanel({
   onStart,
   onEnd,
   onClose,
+  onRenameResult,
+  onDeleteResult,
 }: {
   board: Board;
   selectedCount: number;
-  onStart: (budget: number, scope: 'selection' | 'board') => void;
+  onStart: (budget: number, scope: 'selection' | 'board', options: VotingOptions) => void;
   onEnd: () => void;
   onClose: () => void;
+  onRenameResult?: (index: number, name: string) => void;
+  onDeleteResult?: (index: number) => void;
 }) {
   const [budget, setBudget] = useState(3),
+    [minutes, setMinutes] = useState(0),
+    [onePer, setOnePer] = useState(false),
+    [renaming, setRenaming] = useState<number | null>(null),
+    [now, setNow] = useState(() => Date.now()),
     v = board.voting,
-    last = board.votingResults?.at(-1);
+    results = board.votingResults ?? [],
+    left = votingTimeLeft(board, now);
+  useEffect(() => {
+    if (!v?.endsAt) return;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [v?.endsAt]);
+  const options: VotingOptions = { ...(minutes ? { minutes } : {}), ...(onePer ? { onePerObject: true } : {}) };
   return (
     <aside className="facilitate-panel floating" aria-label="Dot voting" onKeyDown={stopKeys(onClose)}>
       <Heading title="Dot voting" onClose={onClose} />
@@ -171,6 +194,16 @@ export function VotingPanel({
             {votesUsed(board)} of {v.budget} votes used on {v.targets.length} objects. Use the + and − badges on the
             canvas.
           </p>
+          {(left !== null || v.onePerObject) && (
+            <p className="vote-rules">
+              {left !== null && (
+                <span className="vote-clock" role="timer" aria-label="Voting time left">
+                  {formatClock(left)} left
+                </span>
+              )}
+              {v.onePerObject && <span>One vote per object</span>}
+            </p>
+          )}
           <p className="local-note">This is a single-device session; votes are not collected from other people.</p>
           <div className="note-details-actions">
             <button className="primary" onClick={onEnd}>
@@ -191,29 +224,99 @@ export function VotingPanel({
               onChange={e => setBudget(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
             />
           </label>
+          <label className="field">
+            Time limit
+            <select aria-label="Voting time limit" value={minutes} onChange={e => setMinutes(Number(e.target.value))}>
+              <option value={0}>No limit</option>
+              {[1, 2, 3, 5, 10, 15, 30].map(m => (
+                <option key={m} value={m}>
+                  {m} min
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="check-line">
+            <input type="checkbox" checked={onePer} onChange={e => setOnePer(e.target.checked)} />
+            One vote per object
+          </label>
           <div className="note-details-actions">
-            <button disabled={!selectedCount} onClick={() => onStart(budget, 'selection')}>
+            <button disabled={!selectedCount} onClick={() => onStart(budget, 'selection', options)}>
               Vote on selection ({selectedCount})
             </button>
-            <button className="primary" onClick={() => onStart(budget, 'board')}>
+            <button className="primary" onClick={() => onStart(budget, 'board', options)}>
               Vote on whole board
             </button>
           </div>
         </>
       )}
-      {last && (
+      {results.length > 0 && (
         <section className="results">
-          <h3>Last results · {new Date(last.endedAt).toLocaleString()}</h3>
-          <ol>
-            {last.totals.slice(0, 10).map(t => (
-              <li key={t.id}>
-                <span>{t.label}</span>
-                <b style={{ width: `${Math.max(4, (t.votes / Math.max(1, last.totals[0].votes)) * 100)}%` }}>
-                  {t.votes}
-                </b>
-              </li>
-            ))}
-          </ol>
+          {results
+            .map((r, index) => ({ r, index }))
+            .reverse()
+            .slice(0, 10)
+            .map(({ r, index }, k) => {
+              const title = r.name || new Date(r.endedAt).toLocaleString();
+              return (
+                <div key={`${r.endedAt}-${index}`} className="vote-result">
+                  <div className="vote-result-head">
+                    {renaming === index ? (
+                      <input
+                        autoFocus
+                        className="result-rename"
+                        aria-label="Result name"
+                        maxLength={80}
+                        defaultValue={r.name ?? ''}
+                        placeholder={new Date(r.endedAt).toLocaleString()}
+                        onKeyDown={e => {
+                          e.stopPropagation();
+                          if (e.key === 'Enter') e.currentTarget.blur();
+                          if (e.key === 'Escape') setRenaming(null);
+                        }}
+                        onBlur={e => {
+                          onRenameResult?.(index, e.target.value);
+                          setRenaming(null);
+                        }}
+                      />
+                    ) : (
+                      <h3>
+                        {k === 0 ? 'Last results' : 'Results'} · {title}
+                      </h3>
+                    )}
+                    {onRenameResult && renaming !== index && (
+                      <button
+                        className="icon-button"
+                        aria-label={`Rename result ${title}`}
+                        title="Rename"
+                        onClick={() => setRenaming(index)}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    )}
+                    {onDeleteResult && (
+                      <button
+                        className="icon-button"
+                        aria-label={`Delete result ${title}`}
+                        title="Delete"
+                        onClick={() => onDeleteResult(index)}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                  <ol>
+                    {r.totals.slice(0, k === 0 ? 10 : 3).map(t => (
+                      <li key={t.id}>
+                        <span>{t.label}</span>
+                        <b style={{ width: `${Math.max(4, (t.votes / Math.max(1, r.totals[0].votes)) * 100)}%` }}>
+                          {t.votes}
+                        </b>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              );
+            })}
         </section>
       )}
     </aside>
@@ -265,6 +368,9 @@ export function BoardTimer({ onClose }: { onClose: () => void }) {
   const [t, setT] = useState<TimerState>({ duration: 300000, endsAt: null, remaining: 300000 }),
     [now, setNow] = useState(Date.now()),
     [sound, setSound] = useState(false),
+    [exact, setExact] = useState<string | null>(null),
+    [bad, setBad] = useState(false),
+    cancelled = useRef(false),
     rang = useRef(false);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 250);
@@ -281,6 +387,21 @@ export function BoardTimer({ onClose }: { onClose: () => void }) {
     if (!done) rang.current = false;
   }, [done, sound]);
   const set = (ms: number) => setT({ duration: ms, endsAt: null, remaining: ms });
+  const presets = [1, 2, 3, 5, 10, 15, 20, 30].map(m => m * 60000);
+  const commitExact = () => {
+    if (cancelled.current) {
+      cancelled.current = false;
+      return;
+    }
+    if (exact === null) return;
+    const ms = parseClock(exact);
+    setExact(null);
+    if (ms === null) setBad(true);
+    else {
+      setBad(false);
+      set(ms);
+    }
+  };
   return (
     <div
       className={`board-timer floating ${done ? 'done' : ''}`}
@@ -288,17 +409,67 @@ export function BoardTimer({ onClose }: { onClose: () => void }) {
       aria-label="Board timer"
       onKeyDown={stopKeys(onClose)}
     >
-      <span className="clock" aria-live={done ? 'assertive' : 'off'}>
-        {done ? "Time's up" : formatClock(left)}
-      </span>
+      {!running && !done && exact !== null ? (
+        <input
+          autoFocus
+          className="clock-input"
+          aria-label="Exact time (mm:ss)"
+          title="Type a time such as 7:30 or 12, then press Enter"
+          inputMode="numeric"
+          maxLength={5}
+          value={exact}
+          onFocus={e => e.currentTarget.select()}
+          onChange={e => setExact(e.target.value)}
+          onBlur={commitExact}
+          onKeyDown={e => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              cancelled.current = true;
+              setExact(null);
+            }
+          }}
+        />
+      ) : !running && !done ? (
+        <button
+          className={`clock clock-edit ${bad ? 'invalid' : ''}`}
+          aria-label={`Set exact time, now ${formatClock(left)}`}
+          title={bad ? 'Use mm:ss up to 99:59, for example 7:30' : 'Click to type an exact time'}
+          onClick={() => {
+            cancelled.current = false;
+            setExact(formatClock(left));
+          }}
+        >
+          {formatClock(left)}
+        </button>
+      ) : (
+        <span className="clock" aria-live={done ? 'assertive' : 'off'}>
+          {done ? "Time's up" : formatClock(left)}
+        </span>
+      )}
       {!running && !done && (
-        <select aria-label="Timer duration" value={t.duration} onChange={e => set(Number(e.target.value))}>
-          {[1, 2, 3, 5, 10, 15, 20, 30].map(m => (
-            <option key={m} value={m * 60000}>
-              {m} min
+        <select
+          aria-label="Timer duration"
+          value={presets.includes(t.duration) ? t.duration : ''}
+          onChange={e => set(Number(e.target.value))}
+        >
+          {!presets.includes(t.duration) && <option value="">Custom</option>}
+          {presets.map(ms => (
+            <option key={ms} value={ms}>
+              {ms / 60000} min
             </option>
           ))}
         </select>
+      )}
+      {running && (
+        <>
+          <button className="timer-add" aria-label="Add 1 minute" onClick={() => setT(addTime(t, 60000, Date.now()))}>
+            +1m
+          </button>
+          <button className="timer-add" aria-label="Add 5 minutes" onClick={() => setT(addTime(t, 300000, Date.now()))}>
+            +5m
+          </button>
+        </>
       )}
       <button
         className="icon-button"
@@ -353,25 +524,145 @@ export function CommentThreadView({
   onResolve,
   onDelete,
   onClose,
+  onEdit,
+  onPin,
+  onReact,
+  names,
 }: {
   thread: CommentThread;
   onReply: (text: string) => void;
   onResolve: (r: boolean) => void;
   onDelete: () => void;
   onClose: () => void;
+  onEdit?: (messageId: string, text: string) => void;
+  onPin?: (pinned: boolean) => void;
+  onReact?: (messageId: string, emoji: string) => void;
+  /** Names offered for @mentions (gap G10). */
+  names?: string[];
 }) {
   const [text, setText] = useState(''),
+    [editing, setEditing] = useState<{ id: string; text: string } | null>(null),
+    [picking, setPicking] = useState<string | null>(null),
     field = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     field.current?.focus();
   }, [thread.id]);
+  const saveEdit = () => {
+    if (editing && editing.text.trim()) onEdit?.(editing.id, editing.text);
+    setEditing(null);
+  };
   return (
     <div className="comment-thread" onKeyDown={stopKeys(onClose)}>
+      {onPin && (
+        <div className="comment-thread-tools">
+          <button
+            type="button"
+            className={`icon-button ${thread.pinned ? 'active' : ''}`}
+            aria-label={thread.pinned ? 'Unpin thread' : 'Pin thread'}
+            aria-pressed={!!thread.pinned}
+            title={thread.pinned ? 'Unpin' : 'Pin to the top of the comments list'}
+            onClick={() => onPin(!thread.pinned)}
+          >
+            {thread.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+          </button>
+        </div>
+      )}
       <ol>
         {thread.messages.map(m => (
           <li key={m.id}>
-            <small>{new Date(m.at).toLocaleString()}</small>
-            <p>{m.text}</p>
+            <small>
+              {new Date(m.at).toLocaleString()}
+              {m.editedAt && <span className="edited"> · edited</span>}
+            </small>
+            {editing?.id === m.id ? (
+              <div
+                className="comment-edit"
+                onKeyDown={e => {
+                  e.stopPropagation();
+                  if (e.key === 'Escape') setEditing(null);
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    saveEdit();
+                  }
+                }}
+              >
+                <textarea
+                  autoFocus
+                  aria-label="Edit comment"
+                  maxLength={2000}
+                  value={editing.text}
+                  onChange={e => setEditing({ id: m.id, text: e.target.value })}
+                />
+                <div className="note-details-actions">
+                  <button type="button" onClick={() => setEditing(null)}>
+                    Cancel
+                  </button>
+                  <button type="button" className="primary" disabled={!editing.text.trim()} onClick={saveEdit}>
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p>
+                <MentionText text={m.text} names={names ?? []} />
+              </p>
+            )}
+            {(onReact || onEdit) && editing?.id !== m.id && (
+              <div className="comment-reactions">
+                {(m.reactions ?? []).map(r => (
+                  <button
+                    type="button"
+                    key={r}
+                    className="reaction-chip active"
+                    aria-label={`Remove reaction ${r}`}
+                    onClick={() => onReact?.(m.id, r)}
+                  >
+                    {r}
+                  </button>
+                ))}
+                {onReact && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Add reaction"
+                    aria-expanded={picking === m.id}
+                    title="Add reaction"
+                    onClick={() => setPicking(picking === m.id ? null : m.id)}
+                  >
+                    <SmilePlus size={14} />
+                  </button>
+                )}
+                {onEdit && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Edit comment"
+                    title="Edit"
+                    onClick={() => setEditing({ id: m.id, text: m.text })}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                )}
+                {picking === m.id && onReact && (
+                  <span className="reaction-picker" role="group" aria-label="Choose a reaction">
+                    {commentReactions.map(r => (
+                      <button
+                        type="button"
+                        key={r}
+                        aria-label={`React ${r}`}
+                        aria-pressed={!!m.reactions?.includes(r)}
+                        onClick={() => {
+                          onReact(m.id, r);
+                          setPicking(null);
+                        }}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </span>
+                )}
+              </div>
+            )}
           </li>
         ))}
       </ol>
@@ -401,6 +692,7 @@ export function CommentThreadView({
             }
           }}
         />
+        <MentionSuggestions field={field} text={text} setText={setText} names={names ?? []} />
         <div className="note-details-actions">
           <button type="button" className="icon-button" aria-label="Delete thread" onClick={onDelete}>
             <Trash2 size={15} />
@@ -423,8 +715,17 @@ export function CommentThreadView({
     </div>
   );
 }
-export function NewComment({ onAdd, onClose }: { onAdd: (text: string) => void; onClose: () => void }) {
-  const [text, setText] = useState('');
+export function NewComment({
+  onAdd,
+  onClose,
+  names = [],
+}: {
+  onAdd: (text: string) => void;
+  onClose: () => void;
+  names?: string[];
+}) {
+  const [text, setText] = useState(''),
+    newField = useRef<HTMLTextAreaElement>(null);
   return (
     <form
       className="comment-thread"
@@ -435,6 +736,7 @@ export function NewComment({ onAdd, onClose }: { onAdd: (text: string) => void; 
       }}
     >
       <textarea
+        ref={newField}
         autoFocus
         aria-label="New comment"
         placeholder="Add a comment"
@@ -448,6 +750,7 @@ export function NewComment({ onAdd, onClose }: { onAdd: (text: string) => void; 
           }
         }}
       />
+      <MentionSuggestions field={newField} text={text} setText={setText} names={names} />
       <div className="note-details-actions">
         <button type="button" onClick={onClose}>
           Cancel
@@ -471,7 +774,9 @@ export function CommentsPanel({
   onClose: () => void;
 }) {
   const [show, setShow] = useState<'open' | 'resolved' | 'all'>('open'),
-    threads = (board.comments ?? []).filter(t => show === 'all' || (show === 'resolved') === !!t.resolved);
+    threads = orderThreads(
+      (board.comments ?? []).filter(t => show === 'all' || (show === 'resolved') === !!t.resolved),
+    );
   const label = (t: CommentThread) => {
     const i = t.itemId ? board.items.find(x => x.id === t.itemId) : undefined;
     return i ? layerLabel(i) : 'On the canvas';
@@ -491,7 +796,10 @@ export function CommentsPanel({
           {threads.map(t => (
             <li key={t.id}>
               <button className={active === t.id ? 'selected' : ''} onClick={() => onOpen(t)}>
-                <span>{t.messages[0].text}</span>
+                <span>
+                  {t.pinned && <Pin size={12} aria-label="Pinned" className="pin-mark" />}
+                  {t.messages[0].text}
+                </span>
                 <small>
                   {label(t)} · {t.messages.length} {t.messages.length === 1 ? 'message' : 'messages'}
                   {t.resolved ? ' · resolved' : ''}
@@ -581,7 +889,10 @@ export function LayersPanel({
   onRename,
   onUnlockAll,
   onClose,
+  extra,
 }: {
+  /** Named layer controls shown above the object list (gap D9). */
+  extra?: React.ReactNode;
   board: Board;
   selected: string[];
   onSelect: (item: Item) => void;
@@ -706,6 +1017,7 @@ export function LayersPanel({
       }}
     >
       <Heading title="Layers" count={board.items.length} onClose={onClose} />
+      {extra}
       <p>
         Front-most first. Drag rows or use Alt+↑/↓ to reorder; double-click to rename. Hidden objects are skipped on the
         canvas and in exports.
@@ -817,29 +1129,52 @@ export function TemplatesPanel({
   onInsertUser?: (t: UserTemplate) => void;
   onDeleteUser?: (id: string) => void;
 }) {
-  const about: Record<TemplateName, string> = {
-    Retrospective: 'Three frames: went well, to improve, actions',
-    SWOT: 'Strengths, weaknesses, opportunities, threats',
-    'Weekly plan': 'One column per weekday',
-    Flowchart: 'Start, process, decision and end',
-  };
+  const [query, setQuery] = useState(''),
+    [category, setCategory] = useState<TemplateCategory | null>(null),
+    shown = filterTemplates(query, category),
+    mine = userTemplates.filter(t => !query.trim() || t.name.toLowerCase().includes(query.trim().toLowerCase()));
   return (
     <aside className="facilitate-panel floating" aria-label="Templates" onKeyDown={stopKeys(onClose)}>
       <Heading title="Templates" onClose={onClose} />
-      <ol className="thread-list">
-        {templateNames.map(n => (
-          <li key={n}>
-            <button onClick={() => onChoose(n)}>
-              <span>{n}</span>
-              <small>{about[n]}</small>
+      <div className="template-search">
+        <input
+          type="search"
+          aria-label="Search templates"
+          placeholder="Search templates"
+          value={query}
+          maxLength={80}
+          onChange={e => setQuery(e.target.value)}
+        />
+        <div className="template-categories" role="group" aria-label="Template categories">
+          {[null, ...templateCategories].map(c => (
+            <button key={c ?? 'all'} aria-pressed={category === c} onClick={() => setCategory(c)}>
+              {c ?? 'All'}
             </button>
-          </li>
-        ))}
-      </ol>
+          ))}
+        </div>
+      </div>
+      <div className="template-list-scroll">
+        {shown.length ? (
+          <ol className="thread-list" aria-label="Starter templates">
+            {shown.map(t => (
+              <li key={t.name}>
+                <button onClick={() => onChoose(t.name as TemplateName)}>
+                  <span>{t.name}</span>
+                  <small>
+                    {t.category} · {t.about}
+                  </small>
+                </button>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p>No starter templates match.</p>
+        )}
+      </div>
       <h3 className="templates-subhead">My templates</h3>
-      {userTemplates.length ? (
+      {mine.length ? (
         <ol className="thread-list user-templates" aria-label="My templates">
-          {userTemplates.map(t => (
+          {mine.map(t => (
             <li key={t.id}>
               <button onClick={() => onInsertUser?.(t)}>
                 <span>{t.name}</span>
@@ -858,7 +1193,11 @@ export function TemplatesPanel({
           ))}
         </ol>
       ) : (
-        <p>Use Export → Save board as template to keep a board's layout here.</p>
+        <p>
+          {userTemplates.length
+            ? 'No saved templates match.'
+            : 'Use Export → Save board as template (or select objects and save the selection) to keep a layout here.'}
+        </p>
       )}
       <p>Templates are inserted at the centre of the view as one undoable change.</p>
     </aside>

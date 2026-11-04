@@ -161,6 +161,16 @@
   font-size: 12px;
   max-width: 92px;
 }
+.radius-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #52525b;
+}
+.radius-control input {
+  width: 72px;
+}
 .color-chip {
   position: relative;
   display: inline-flex;
@@ -1023,4 +1033,42 @@
 }
 .shape-menu.compact:has(.shape-pack-grid) {
   width: 340px !important;
+}
+
+/* Search type filter and find-and-replace (gap D4) */
+.search-options,
+.search-replace {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.search-options select,
+.search-replace input:not([type='checkbox']) {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 12px;
+}
+.search-replace input:not([type='checkbox']) {
+  flex: 1;
+  min-width: 120px;
+}
+.search-replace label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.search-options button,
+.search-replace button {
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.search-replace-toggle.active {
+  color: var(--blue);
+  background: #edf0ff;
 }

@@ -3,6 +3,8 @@
 // unlockAll identifiers. Groups here are explicit membership; frames remain spatial containment.
 import type { Board, Item, GroupDef, Point } from './model.ts';
 import { clone, pruneReferences } from './model.ts';
+import { isShapeKind } from './shapes.ts';
+import { inLockedLayer } from './layers.ts';
 import { gridOwner } from './grid-canvas.ts';
 import type { GridData } from './grid.ts';
 import { frameMoveIds, selectionBounds, translate } from './interactions.ts';
@@ -129,8 +131,12 @@ export function setLocked(board: Board, ids: string[], locked: boolean): Board {
  */
 export function editableIds(board: Board, ids: string[]): string[] {
   const byId = new Map(board.items.map(i => [i.id, i]));
+  const locked = (id: string) => {
+    const i = byId.get(id);
+    return !!i && (!!i.locked || inLockedLayer(board, i));
+  };
   return units(board, ids)
-    .filter(u => !u.some(id => byId.get(id)?.locked || gridOwner(board, id)?.locked))
+    .filter(u => !u.some(id => locked(id) || gridOwner(board, id)?.locked))
     .flat();
 }
 export function moveIds(board: Board, ids: string[]): string[] {
@@ -145,7 +151,7 @@ export function moveIds(board: Board, ids: string[]): string[] {
     ]),
   ];
   return frameMoveIds(board.items, editableIds(board, expanded)).filter(
-    id => !byId.get(id)?.locked && !gridOwner(board, id)?.locked,
+    id => !byId.get(id)?.locked && !inLockedLayer(board, byId.get(id)!) && !gridOwner(board, id)?.locked,
   );
 }
 
@@ -239,7 +245,12 @@ export function distributeSelection(board: Board, ids: string[], axis: 'horizont
 }
 
 /** Duplicate a selection, remapping connectors and copying group structure. Copies are unlocked. */
-export function duplicateItems(board: Board, ids: string[], offset = 32): { board: Board; ids: string[] } {
+export function duplicateItems(
+  board: Board,
+  ids: string[],
+  offset: number | { x: number; y: number } = 32,
+): { board: Board; ids: string[] } {
+  const off = typeof offset === 'number' ? { x: offset, y: offset } : offset;
   const included = new Set([
     ...ids,
     ...ids.flatMap(id => {
@@ -258,7 +269,7 @@ export function duplicateItems(board: Board, ids: string[], offset = 32): { boar
     parent: gmap.get(g)?.parent && newGroup.has(gmap.get(g)!.parent!) ? newGroup.get(gmap.get(g)!.parent!)! : null,
   }));
   const copies = source.map(i => {
-    const copy: Item = { ...clone(i), id: map.get(i.id)!, x: i.x + offset, y: i.y + offset };
+    const copy: Item = { ...clone(i), id: map.get(i.id)!, x: i.x + off.x, y: i.y + off.y };
     if (i.from) copy.from = map.get(i.from) ?? i.from;
     if (i.to) copy.to = map.get(i.to) ?? i.to;
     if (i.linkTo && map.has(i.linkTo)) copy.linkTo = map.get(i.linkTo);
@@ -279,4 +290,45 @@ export function duplicateItems(board: Board, ids: string[], offset = 32): { boar
     },
     ids: copies.map(i => i.id),
   };
+}
+
+export type ZOrder = 'front' | 'back' | 'forward' | 'backward';
+/**
+ * Change paint order of the selection (expanded to whole groups, locked objects excluded).
+ * `forward`/`backward` move each selected run one step past its unselected neighbour.
+ */
+export function reorderZ(board: Board, ids: string[], how: ZOrder): Board {
+  const chosen = new Set(editableIds(board, expandGroups(board, ids)));
+  if (!chosen.size) return board;
+  const items = [...board.items];
+  if (how === 'front' || how === 'back') {
+    const picked = items.filter(i => chosen.has(i.id)),
+      rest = items.filter(i => !chosen.has(i.id));
+    return { ...board, items: how === 'front' ? [...rest, ...picked] : [...picked, ...rest] };
+  }
+  // One pass of adjacent swaps: each selected run hops over its one unselected neighbour.
+  if (how === 'forward') {
+    for (let i = items.length - 2; i >= 0; i--)
+      if (chosen.has(items[i].id) && !chosen.has(items[i + 1].id)) [items[i], items[i + 1]] = [items[i + 1], items[i]];
+  } else {
+    for (let i = 1; i < items.length; i++)
+      if (chosen.has(items[i].id) && !chosen.has(items[i - 1].id)) [items[i], items[i - 1]] = [items[i - 1], items[i]];
+  }
+  return { ...board, items };
+}
+
+/** Kinds whose text "Clear content" empties. */
+const clearable = (i: Item) => ['note', 'text', 'card', 'flipcard'].includes(i.type) || isShapeKind(i.type);
+/** Clear object contents (Ctrl+Backspace): empties text on unlocked notes, text, shapes and cards. */
+export function clearContent(board: Board, ids: string[]): { board: Board; cleared: number } {
+  const chosen = new Set(editableIds(board, expandGroups(board, ids)));
+  let cleared = 0;
+  const items = board.items.map(i => {
+    if (!chosen.has(i.id) || !clearable(i)) return i;
+    const card = i.type === 'card' && i.data?.description;
+    if (!i.text && !card) return i;
+    cleared++;
+    return { ...i, text: '', ...(card ? { data: { ...i.data, description: '' } } : {}) };
+  });
+  return { board: cleared ? { ...board, items } : board, cleared };
 }

@@ -1,0 +1,148 @@
+/* Record views: swimlanes, column capacity, progress bars, footers, outline rows, saved views. */
+.kanban-preview.kanban-has-lanes {
+  display: block;
+}
+.kanban-lane {
+  margin-bottom: 12px;
+}
+.kanban-lane-title {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  cursor: pointer;
+  color: inherit;
+}
+.kanban-lane-title[aria-expanded='false']::before {
+  content: '▸ ';
+}
+.kanban-lane-title[aria-expanded='true']::before {
+  content: '▾ ';
+}
+.kanban-lane-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.kanban-preview .kanban-col-title .kanban-capacity {
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.kanban-preview .kanban-col-title.over-capacity {
+  color: #b42318;
+  font-weight: 600;
+}
+.kanban-preview .kanban-col-title.over-capacity span {
+  color: #b42318;
+}
+.record-progress {
+  display: inline-block;
+  vertical-align: middle;
+  width: 64px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 4px;
+  background: #e5e5eb;
+  overflow: hidden;
+}
+.record-progress > span {
+  display: block;
+  height: 100%;
+  background: #4262ff;
+}
+.record-progress-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.record-progress-field input {
+  min-width: 0;
+}
+.record-formula-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.record-url-value {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.record-url-value a {
+  font-size: 11px;
+}
+.record-progress-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.record-progress-settings .canvas-field {
+  width: 56px;
+}
+.record-calc-row td,
+.record-calc-row th {
+  background: #f8f8fa;
+  font-size: 11px;
+  border-top: 2px solid #d4d4da;
+}
+.record-calc-row select {
+  font-size: 11px;
+}
+.record-calc-value {
+  display: block;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.record-tree-cell {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.record-tree-toggle,
+.record-tree-spacer {
+  flex: none;
+  width: 18px;
+  text-align: center;
+}
+.record-tree-toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+}
+.record-row-actions {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.record-saved-views {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.record-saved-views .canvas-field {
+  width: 110px;
+}
+.timeline-group-heading {
+  height: 42px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  border-top: 1px solid #d4d4da;
+  background: #f8f8fa;
+  font-size: 12px;
+  font-weight: 600;
+}
+.timeline-group-heading button {
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  color: inherit;
+}

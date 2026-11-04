@@ -7,6 +7,8 @@ import {
   ArrowDown,
   ChevronsDownUp,
   ChevronsUpDown,
+  FileDown,
+  FileUp,
   Rows3,
   Columns3,
   WrapText,
@@ -22,9 +24,13 @@ import {
   moveSibling,
   reparent,
   toggleCollapse,
+  orgFromCsv,
+  orgToCsv,
+  orgMeta,
   ORG_NODE_W,
   ORG_NODE_H,
 } from './orgchart';
+import { saveText } from './widget-kit';
 import type { OrgNode } from './orgchart';
 import {
   addActivity,
@@ -244,9 +250,14 @@ function OrgDiagram({
             <text x={p.x + 12} y={p.y + 26} fontSize="14" fontWeight="600" fill="#25252c">
               {n.name.length > 20 ? n.name.slice(0, 19) + '…' : n.name || 'Unnamed'}
             </text>
-            <text x={p.x + 12} y={p.y + 46} fontSize="12" fill="#696973">
+            <text x={p.x + 12} y={p.y + 44} fontSize="12" fill="#696973">
               {n.role.length > 24 ? n.role.slice(0, 23) + '…' : n.role}
             </text>
+            {(n.team || n.location) && (
+              <text x={p.x + 12} y={p.y + 58} fontSize="10" fill="#8b8b94">
+                {orgMeta(n)}
+              </text>
+            )}
             {more > 0 && (
               <g>
                 <rect
@@ -307,8 +318,26 @@ function OrgEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose
       setError((err as Error).message);
     }
   };
-  const setField = (field: 'name' | 'role', value: string) =>
-    run(() => nodes.map(n => (n.id === active ? { ...n, [field]: value.slice(0, 200) } : n)));
+  const setField = (field: 'name' | 'role' | 'team' | 'location', value: string) =>
+    run(() =>
+      nodes.map(n => {
+        if (n.id !== active) return n;
+        const next = { ...n, [field]: value.slice(0, 200) };
+        // Optional fields are left out when empty so older boards keep their shape.
+        if ((field === 'team' || field === 'location') && !value.trim()) delete next[field];
+        return next;
+      }),
+    );
+  const csvInput = useRef<HTMLInputElement>(null);
+  const importCsv = async (file: File) => {
+    if (file.size > 1_000_000) return setError('Choose a CSV file up to 1 MB.');
+    try {
+      const next = orgFromCsv(await file.text());
+      run(() => ({ nodes: next, id: next.find(n => n.parent === null)!.id }));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
   useLayoutEffect(() => {
     if (focusAfter.current) {
       list.current?.querySelector<HTMLElement>(`[data-node="${focusAfter.current}"]`)?.focus();
@@ -411,6 +440,26 @@ function OrgEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose
                 onCommit={v => setField('role', v)}
               />
             </label>
+            <label>
+              Team
+              <CommitInput
+                key={`team-${active}`}
+                aria-label="Person team"
+                maxLength={200}
+                value={chosen.team ?? ''}
+                onCommit={v => setField('team', v)}
+              />
+            </label>
+            <label>
+              Location
+              <CommitInput
+                key={`location-${active}`}
+                aria-label="Person location"
+                maxLength={200}
+                value={chosen.location ?? ''}
+                onCommit={v => setField('location', v)}
+              />
+            </label>
             <div className="format-actions wrap">
               <button onClick={() => run(() => addChild(nodes, active))}>
                 <Plus size={15} />
@@ -465,6 +514,34 @@ function OrgEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose
               </button>
             </div>
             <p className="format-hint">{nodes.length} / 200 people</p>
+            <div className="format-actions wrap">
+              <button
+                disabled={!!live.locked}
+                title="Replace the chart with people from a CSV file (Name, Role, Team, Location, Manager ID)"
+                onClick={() => csvInput.current?.click()}
+              >
+                <FileUp size={15} />
+                Import CSV
+              </button>
+              <button
+                onClick={() => saveText(orgToCsv(nodes), `${(live.text || 'org-chart').replace(/[^\w-]+/g, '-')}.csv`)}
+              >
+                <FileDown size={15} />
+                Export CSV
+              </button>
+              <input
+                ref={csvInput}
+                type="file"
+                accept=".csv,.tsv,text/csv,text/tab-separated-values,text/plain"
+                aria-label="Org chart CSV file"
+                hidden
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) void importCsv(file);
+                }}
+              />
+            </div>
           </div>
         )}
       </section>

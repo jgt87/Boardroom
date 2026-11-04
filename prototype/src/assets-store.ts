@@ -1,6 +1,7 @@
 // Local image storage in IndexedDB, so large images do not exhaust the localStorage budget.
 import type { ImageAsset } from './model';
-import { imageFileError } from './images';
+import { DOWNSCALE_MAX_SIDE, dataUrlBytes, downscaleSize, imageFileError } from './images';
+import { MAX_IMAGE_BYTES } from './model-ext';
 
 const DB = 'boardroom-assets',
   STORE = 'assets';
@@ -86,7 +87,38 @@ export async function readImageFile(file: File): Promise<ImageAsset> {
     img.onerror = () => reject(new Error('The image could not be decoded.'));
     img.src = data;
   });
-  if (!size.width || !size.height || size.width > 20000 || size.height > 20000)
-    throw new Error('Use an image no larger than 20,000 pixels on each side.');
-  return { mime: file.type, data, ...size, name: (file.name || 'Pasted image').slice(0, 200) };
+  const name = (file.name || 'Pasted image').slice(0, 200);
+  if (!size.width || !size.height) throw new Error('The image could not be decoded.');
+  const tooBig = file.size > MAX_IMAGE_BYTES || size.width > 20000 || size.height > 20000;
+  if (!tooBig) return { mime: file.type, data, ...size, name };
+  if (file.type === 'image/gif') throw new Error('Use a GIF smaller than 4 MB and 20,000 pixels on each side.');
+  return downscaleImage(data, size, name);
+}
+
+/** Re-encode a large still image smaller (gap B10): WebP where supported, otherwise JPEG. */
+async function downscaleImage(
+  data: string,
+  size: { width: number; height: number },
+  name: string,
+): Promise<ImageAsset> {
+  const img = new Image();
+  img.src = data;
+  await img.decode();
+  let side = DOWNSCALE_MAX_SIDE;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const target = downscaleSize(size.width, size.height, side),
+      canvas = document.createElement('canvas');
+    canvas.width = target.width;
+    canvas.height = target.height;
+    canvas.getContext('2d')!.drawImage(img, 0, 0, target.width, target.height);
+    let out = canvas.toDataURL('image/webp', 0.88),
+      mime = 'image/webp';
+    if (!out.startsWith('data:image/webp')) {
+      out = canvas.toDataURL('image/jpeg', 0.88);
+      mime = 'image/jpeg';
+    }
+    if (dataUrlBytes(out) <= MAX_IMAGE_BYTES) return { mime, data: out, ...target, name };
+    side = Math.round(side * 0.75);
+  }
+  throw new Error('The image could not be made small enough to store. Choose a smaller image.');
 }

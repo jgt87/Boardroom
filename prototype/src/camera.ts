@@ -23,3 +23,17 @@ export function centeredCamera(center: Point, zoom: number, size: { w: number; h
   const z = clampZoom(zoom);
   return { z, x: size.w / 2 - center.x * z, y: size.h / 2 - center.y * z };
 }
+
+/**
+ * Two-finger pinch (gap F11): zoom by the change in finger distance around the starting midpoint and pan by
+ * how far the midpoint moved. Points are in canvas-local screen coordinates.
+ */
+export function pinchCamera(start: Camera, a0: Point, b0: Point, a: Point, b: Point): Camera {
+  const d0 = Math.hypot(b0.x - a0.x, b0.y - a0.y),
+    d = Math.hypot(b.x - a.x, b.y - a.y);
+  if (d0 < 1 || !Number.isFinite(d)) return start;
+  const m0 = { x: (a0.x + b0.x) / 2, y: (a0.y + b0.y) / 2 },
+    m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const zoomed = zoomCameraAt(start, start.z * (d / d0), m0);
+  return { ...zoomed, x: zoomed.x + m.x - m0.x, y: zoomed.y + m.y - m0.y };
+}

@@ -1,9 +1,10 @@
 // Matrix, poll, spinner and scale views and editors (items 43-44).
 import { useMemo, useRef, useState } from 'react';
-import { X, Plus, Minus, RotateCcw } from 'lucide-react';
+import { X, Plus, Minus, RotateCcw, Shuffle, Eraser, Users } from 'lucide-react';
 import type { Item } from './model';
-import type { WidgetCtx } from './widget-types';
+import type { WidgetAction, WidgetCtx } from './widget-types';
 import { matrixContents, votePoll, pollResults, pollTotal, resetPoll, clampScale } from './facilitation-widgets';
+import { spin, removePicked, fillFromPeople } from './facilitation-widgets';
 import type { PollData, SpinnerData, ScaleData, MatrixData } from './facilitation-widgets';
 import { Dialog, data, setData, stop } from './widget-kit';
 
@@ -303,6 +304,27 @@ export function SpinnerRender({ item }: { item: Item }) {
       </div>
     </div>
   );
+}
+/** Selection-bar actions for a spinner: spin, remove the picked option, fill from People (gap G11). */
+export function spinnerActions(item: Item, ctx: WidgetCtx): WidgetAction[] {
+  const d = data<SpinnerData>(item),
+    attempt = (change: () => SpinnerData) => {
+      try {
+        setData(ctx, item.id, change());
+      } catch (e) {
+        ctx.display((e as Error).message);
+      }
+    };
+  return [
+    { label: 'Spin', icon: <Shuffle size={16} />, run: () => attempt(() => spin(d)) },
+    {
+      label: 'Remove pick',
+      icon: <Eraser size={16} />,
+      disabled: !d.result || d.options.length < 2,
+      run: () => attempt(() => removePicked(d)),
+    },
+    { label: 'Fill from People', icon: <Users size={16} />, run: () => attempt(() => fillFromPeople(ctx.board)) },
+  ];
 }
 export function SpinnerEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose: () => void }) {
   const [text, setText] = useState(data<SpinnerData>(item).options.join('\n')),

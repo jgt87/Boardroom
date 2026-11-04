@@ -6,6 +6,7 @@
 import type { Board, Item } from './model.ts';
 import type { WidgetSpec } from './widget-types.ts';
 import { presetSize } from './frame-presets.ts';
+import { validateItemStatus } from './board-settings.ts';
 
 // ---- URLs ------------------------------------------------------------------------------------
 /** Normalise a user-entered web address to an https URL, or throw a readable error. */
@@ -310,6 +311,12 @@ export const mediaSpecs: WidgetSpec[] = [
       const d = dataOf(i);
       if ((d.poster !== undefined && !dataImage(d.poster)) || (d.duration !== undefined && !finite(d.duration, 0, 1e6)))
         fail('Invalid video settings.');
+      // Trim (gap G14): play only from start to end, in seconds.
+      if (
+        d.trim !== undefined &&
+        (!d.trim || !finite(d.trim.start, 0, 1e6) || !finite(d.trim.end, 0, 1e6) || d.trim.start >= d.trim.end)
+      )
+        fail('Invalid video trim.');
     },
   },
   {
@@ -385,6 +392,7 @@ export const mediaSpecs: WidgetSpec[] = [
     validate: i => {
       const d = dataOf(i);
       if (typeof d.markdown !== 'string' || d.markdown.length > 60000) fail('Invalid doc content.');
+      validateItemStatus(d);
     },
     searchText: i => i.data?.markdown ?? '',
   },

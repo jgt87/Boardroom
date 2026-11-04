@@ -117,11 +117,38 @@ function StampGlyph({ kind }: { kind: StampKind }) {
       );
   }
 }
+/** Counter badge on a sticker that was added to more than once (gap D13). */
+function CountBadge({ count }: { count?: number }) {
+  if (!count || count < 2) return null;
+  return (
+    <g>
+      <circle cx="84" cy="16" r="15" fill="#25252a" stroke="#ffffff" strokeWidth="3" />
+      <text
+        x="84"
+        y="17"
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={count > 99 ? 12 : 16}
+        fill="#ffffff"
+        fontFamily="Arial"
+        fontWeight="700"
+      >
+        {count}
+      </text>
+    </g>
+  );
+}
 export function StampRender({ item }: { item: Item }) {
-  const d = data<StampData>(item);
+  const d = data<StampData & { count?: number }>(item);
   if (d.stamp === 'emoji')
     return (
-      <svg width={item.w} height={item.h} viewBox="0 0 100 100" role="img" aria-label={`${d.emoji ?? ''} stamp`}>
+      <svg
+        width={item.w}
+        height={item.h}
+        viewBox="0 0 100 100"
+        role="img"
+        aria-label={`${d.emoji ?? ''} stamp${d.count && d.count > 1 ? `, ${d.count}` : ''}`}
+      >
         <circle cx="50" cy="50" r="46" fill={item.fill} stroke="#ffffff" strokeWidth="4" />
         <text
           x="50"
@@ -133,13 +160,21 @@ export function StampRender({ item }: { item: Item }) {
         >
           {d.emoji}
         </text>
+        <CountBadge count={d.count} />
       </svg>
     );
   const kind = d.stamp;
   return (
-    <svg width={item.w} height={item.h} viewBox="0 0 100 100" role="img" aria-label={`${stampLabels[kind]} stamp`}>
+    <svg
+      width={item.w}
+      height={item.h}
+      viewBox="0 0 100 100"
+      role="img"
+      aria-label={`${stampLabels[kind]} stamp${d.count && d.count > 1 ? `, ${d.count}` : ''}`}
+    >
       <circle cx="50" cy="50" r="46" fill={item.fill} stroke="#ffffff" strokeWidth="4" />
       <StampGlyph kind={kind} />
+      <CountBadge count={d.count} />
     </svg>
   );
 }

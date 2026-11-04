@@ -1,4 +1,5 @@
 import React from 'react';
+import { boardPeople } from './card-tools';
 import { createItem, colors } from './model';
 import type { Item, Crop } from './model';
 import { AnchoredPanel } from './anchored-panel';
@@ -26,7 +27,16 @@ import { placeNotes } from './sticky-detect';
 import { validateDiagram } from './diagram-validation';
 import { loadTemplates, removeTemplate, storeTemplates, templatePayload } from './user-templates';
 import { pastePayload } from './clipboard';
-import { moveInPresentation } from './navigation';
+import { moveInPresentation, setFrameNotes, setHiddenSlide, replaceText } from './navigation';
+import {
+  editMessage,
+  setPinned,
+  toggleReaction,
+  renameVotingResult,
+  deleteVotingResult,
+  voteLabel,
+} from './facilitation-rules';
+import { VotingClock } from './facilitation-actions';
 import { PreviewContext, PrototypePreview } from './prototype-preview';
 import { MarkdownPastePanel } from './markdown-paste';
 import { markdownToItems } from './markdown';
@@ -119,6 +129,8 @@ export function FloatingPanels() {
     widgetCtx,
     widgetEditId,
   } = useApp();
+  // People offered for @mentions in comments (gap G10).
+  const mentionNames = [...boardPeople(board), ...(authorName ? [authorName] : [])];
   // Saved templates are read when the panel opens, so a template saved from Export appears immediately.
   const [userTemplates, setUserTemplates] = React.useState(loadTemplates),
     [templatesFor, setTemplatesFor] = React.useState(facil);
@@ -211,7 +223,7 @@ export function FloatingPanels() {
           <VotingPanel
             board={board}
             selectedCount={selected.length}
-            onStart={(budget, scope) =>
+            onStart={(budget, scope, options) =>
               run(b =>
                 startVoting(
                   b,
@@ -219,15 +231,15 @@ export function FloatingPanels() {
                     ? expandGroups(b, selected)
                     : b.items.filter(i => !['arrow', 'frame', 'pen'].includes(i.type) && !i.hidden).map(i => i.id),
                   budget,
+                  options,
                 ),
               )
             }
+            onRenameResult={(index, name) => run(b => renameVotingResult(b, index, name))}
+            onDeleteResult={index => run(b => deleteVotingResult(b, index))}
             onEnd={() => {
               try {
-                const r = endVoting(
-                  boardRef.current,
-                  i => i.name || i.text.trim().slice(0, 60) || `Untitled ${i.type}`,
-                );
+                const r = endVoting(boardRef.current, voteLabel);
                 update(r.board);
                 display('Voting ended. Results are saved with the board.');
               } catch (err) {
@@ -380,6 +392,7 @@ export function FloatingPanels() {
         </AnchoredPanel>
       )}
       {timerOn && <BoardTimer onClose={() => setTimerOn(false)} />}
+      <VotingClock />
       {thread &&
         (() => {
           const existing = 'id' in thread ? (board.comments ?? []).find(t => t.id === thread.id) : undefined;
@@ -393,7 +406,11 @@ export function FloatingPanels() {
               {existing ? (
                 <CommentThreadView
                   thread={existing}
+                  names={mentionNames}
                   onReply={text => run(b => replyThread(b, existing.id, text))}
+                  onEdit={(messageId, text) => run(b => editMessage(b, existing.id, messageId, text))}
+                  onPin={pinned => run(b => setPinned(b, existing.id, pinned))}
+                  onReact={(messageId, emoji) => run(b => toggleReaction(b, existing.id, messageId, emoji))}
                   onResolve={r => {
                     run(b => setResolved(b, existing.id, r));
                     if (r) setThread(null);
@@ -406,6 +423,7 @@ export function FloatingPanels() {
                 />
               ) : (
                 <NewComment
+                  names={mentionNames}
                   onAdd={text => {
                     const item = loose.itemId ? boardRef.current.items.find(i => i.id === loose.itemId) : undefined;
                     try {
@@ -463,6 +481,17 @@ export function FloatingPanels() {
               fit([item]);
             }}
             onMatches={(ids, current) => setMatches({ ids: new Set(ids), current })}
+            onReplace={(ids, find, replacement, matchCase) =>
+              run(b => {
+                const r = replaceText(b, ids, find, replacement, matchCase);
+                display(
+                  r.count
+                    ? `Replaced ${r.count} ${r.count === 1 ? 'match' : 'matches'} in ${r.objects} ${r.objects === 1 ? 'object' : 'objects'}.`
+                    : 'No exact matches to replace (locked objects are skipped).',
+                );
+                return r.board;
+              })
+            }
             onClose={() => setSearchOpen(false)}
           />
         </div>
@@ -473,6 +502,8 @@ export function FloatingPanels() {
             board={board}
             onMove={(id, delta) => update(moveInPresentation(boardRef.current, id, delta))}
             onStart={startPresenting}
+            onHide={(id, hidden) => run(b => setHiddenSlide(b, id, hidden))}
+            onNotes={(id, notes) => run(b => setFrameNotes(b, id, notes))}
             onShow={f => {
               setSelected([f.id]);
               fit([f]);

@@ -8,6 +8,8 @@ import { CameraControls } from './camera-controls';
 import { CommandPalette } from './command-palette';
 import { reorderLayer, setHidden, renameItem } from './board-tools';
 import { LayersPanel } from './board-panels';
+import { NamedLayers } from './layers-panel';
+import { PassphraseHost } from './passphrase-dialog';
 import { useApp } from './board-app';
 import { tools } from './board-app';
 
@@ -19,6 +21,8 @@ export function BoardChrome() {
     boardRef,
     camera,
     fit,
+    backView,
+    goBack,
     help,
     minimap,
     notice,
@@ -64,6 +68,7 @@ export function BoardChrome() {
       )}
       {outline && (
         <LayersPanel
+          extra={<NamedLayers />}
           board={board}
           selected={selected}
           onSelect={i => {
@@ -142,7 +147,15 @@ export function BoardChrome() {
             </dd>
             <dt>Zoom</dt>
             <dd>
-              <kbd>Ctrl + scroll</kbd>
+              <kbd>Ctrl + scroll</kbd> <kbd>Ctrl + / Ctrl −</kbd>
+            </dd>
+            <dt>Zoom to fit / to selection / to 100%</dt>
+            <dd>
+              <kbd>Alt 1 / Alt 2 / Ctrl 0</kbd>
+            </dd>
+            <dt>Move the board</dt>
+            <dd>
+              <kbd>Arrows (nothing selected)</kbd>
             </dd>
             <dt>Select multiple</dt>
             <dd>
@@ -164,6 +177,58 @@ export function BoardChrome() {
             <dd>
               <kbd>Ctrl D</kbd>
             </dd>
+            <dt>Duplicate beside</dt>
+            <dd>
+              <kbd>Alt + arrow</kbd>
+            </dd>
+            <dt>Bring to front / forward</dt>
+            <dd>
+              <kbd>PgUp / Shift PgUp</kbd>
+            </dd>
+            <dt>Send to back / backward</dt>
+            <dd>
+              <kbd>PgDn / Shift PgDn</kbd>
+            </dd>
+            <dt>Clear contents</dt>
+            <dd>
+              <kbd>Ctrl Backspace</kbd>
+            </dd>
+            <dt>Grid / Minimap / Shapes / Eraser</dt>
+            <dd>
+              <kbd>G / M / S / E</kbd>
+            </dd>
+            <dt>Show or hide comments</dt>
+            <dd>
+              <kbd>Shift C</kbd>
+            </dd>
+            <dt>Link to object</dt>
+            <dd>
+              <kbd>Ctrl Alt K</kbd>
+            </dd>
+            <dt>Next / previous object</dt>
+            <dd>
+              <kbd>Tab / Shift Tab</kbd> <kbd>Ctrl + arrow</kbd>
+            </dd>
+            <dt>Enter or leave a frame</dt>
+            <dd>
+              <kbd>Ctrl Shift ↓ / Ctrl Shift ↑</kbd>
+            </dd>
+            <dt>Board summary</dt>
+            <dd>
+              <kbd>Alt S</kbd>
+            </dd>
+            <dt>Copy or paste style</dt>
+            <dd>
+              <kbd>Ctrl Alt C / Ctrl Alt V</kbd>
+            </dd>
+            <dt>Copy as image</dt>
+            <dd>
+              <kbd>Ctrl Shift C</kbd>
+            </dd>
+            <dt>Shortcuts</dt>
+            <dd>
+              <kbd>? / F1</kbd>
+            </dd>
             <dt>Group / Ungroup</dt>
             <dd>
               <kbd>Ctrl G / Ctrl Shift G</kbd>
@@ -182,11 +247,22 @@ export function BoardChrome() {
             </dd>
           </dl>
           <p>
-            Drag any selection handle to resize. Shift preserves proportions at corners. Drag empty space to select
+            Drag any selection handle to resize. Shift preserves proportions at corners; Alt resizes from the centre.
+            Drag the round handle above a selection to rotate it; Shift snaps to 15 degrees. Drag empty space to select
             multiple objects; Shift adds to selection. Frame moves carry fully contained objects. Hold Alt while moving
             to bypass snapping. Export JSON for a portable, editable backup.
           </p>
         </aside>
+      )}
+      <PassphraseHost />
+      <div id="sr-announcer" className="sr-only" aria-live="polite" aria-atomic="true" />
+      {backView && (
+        <div className="notice floating go-back-toast" role="status">
+          Followed a link
+          <button className="text-button" onClick={goBack}>
+            Go back
+          </button>
+        </div>
       )}
       {notice && (
         <div className={`notice floating ${saveError ? 'error' : ''}`} role="status">

@@ -7,12 +7,12 @@ import type { Item } from './model';
 import { formatStyle, CanvasTextEditor, TextBody } from './text-format';
 import { RichPreview } from './formats';
 import { NoteBadges } from './sticky-tools';
-import { connectorGeometry, ConnectorCaption } from './connectors';
+import { connectorGeometry, ConnectorCaption, ConnectorLabels } from './connectors';
 import { isShapeKind } from './shapes';
 import type { ShapeKind } from './shapes';
 import { ShapeBody, shapeTextBox } from './shape-tools';
 import { ImageBody } from './image-tools';
-import { EmojiBadge, AuthorTag } from './note-extras';
+import { EmojiBadge, AuthorTag, NoteReactions } from './note-extras';
 import { MindmapCanvasEditor } from './mindmap-canvas';
 import { CodePreview } from './code-block';
 import { strokePath, penPresets, jumpPath, pointAlong } from './board-tools';
@@ -131,6 +131,7 @@ export function useRenderItem() {
               setEditing(null);
             }}
           />
+          <ConnectorLabels item={i} nodes={g0.nodes} />
         </g>
       );
     }
@@ -139,7 +140,7 @@ export function useRenderItem() {
         key={i.id}
         data-item={i.id}
         opacity={i.opacity}
-        transform={`translate(${i.x} ${i.y})`}
+        transform={`translate(${i.x} ${i.y})${i.rotation ? ` rotate(${i.rotation} ${i.w / 2} ${i.h / 2})` : ''}`}
         onDoubleClick={e => {
           if (!['pen'].includes(i.type)) {
             e.stopPropagation();
@@ -270,6 +271,7 @@ export function useRenderItem() {
           </foreignObject>
         )}
         {i.type === 'note' && <EmojiBadge item={i} />}
+        {i.type === 'note' && <NoteReactions item={i} />}
         {i.type === 'note' && (shown.showAuthors || i.showAuthor) && <AuthorTag item={i} />}
         {editing === i.id && (
           <foreignObject

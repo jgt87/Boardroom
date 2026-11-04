@@ -2,9 +2,13 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useApp } from './board-app';
+import { listVersions, MAX_VERSIONS } from './versions';
+import { parseBoard } from './model';
 import {
   activityKey,
   catchUp,
+  changedSince,
+  previousVisit,
   catchUpPeriods,
   dayLabel,
   describeType,
@@ -12,7 +16,7 @@ import {
   restoreDeleted,
   type Activity,
 } from './activity';
-import { boardStatuses } from './board-settings';
+import { BOARD_DESCRIPTION_MAX, boardStatuses, cleanDescription, withSetting } from './board-settings';
 
 const readLog = (boardId: string): Activity[] => {
   try {
@@ -103,21 +107,68 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
       ) : (
         <p>No changes recorded yet.</p>
       )}
+      <VersionList />
     </Shell>
   );
 }
 
+/** Saved versions of this board (gap C15): restore one as a new board. */
+function VersionList() {
+  const { library, boardActions, display } = useApp();
+  const versions = listVersions(localStorage, library.activeId);
+  return (
+    <section className="version-list" aria-label="Versions">
+      <h3>Versions</h3>
+      <p>A copy is kept at most every 30 minutes while you edit (up to {MAX_VERSIONS}).</p>
+      {versions.length ? (
+        <ul>
+          {versions.map(v => (
+            <li key={v.at}>
+              <span>
+                {new Date(v.at).toLocaleString()} <small>· {v.items} objects</small>
+              </span>
+              <button
+                onClick={() => {
+                  try {
+                    const restored = parseBoard(structuredClone(v.board));
+                    const title = `${v.title || 'Untitled board'} (version ${new Date(v.at).toLocaleString()})`.slice(
+                      0,
+                      200,
+                    );
+                    if (boardActions.createFrom({ ...restored, title })) display('Opened the version as a new board.');
+                  } catch {
+                    display('This version could not be opened.');
+                  }
+                }}
+              >
+                Restore as new board
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>No versions yet.</p>
+      )}
+    </section>
+  );
+}
+
 export function CatchUpPanel({ onClose }: { onClose: () => void }) {
-  const { library } = useApp();
-  const [period, setPeriod] = useState<(typeof catchUpPeriods)[number]['id']>('week');
+  const { library, boardRef, setSelected, fit, display } = useApp();
+  const lastVisit = previousVisit(localStorage, library.activeId);
+  const [period, setPeriod] = useState<(typeof catchUpPeriods)[number]['id'] | 'visit'>(lastVisit ? 'visit' : 'week');
   const log = readLog(library.activeId),
-    ms = catchUpPeriods.find(p => p.id === period)!.ms,
-    s = catchUp(log, Date.now() - ms);
+    since =
+      period === 'visit' && lastVisit
+        ? Date.parse(lastVisit)
+        : Date.now() - catchUpPeriods.find(p => p.id === period)!.ms,
+    s = catchUp(log, since);
   return (
     <Shell title="Catch up" onClose={onClose}>
       <label className="field">
         Time period
         <select aria-label="Time period" value={period} onChange={e => setPeriod(e.target.value as typeof period)}>
+          {lastVisit && <option value="visit">Since my last visit ({new Date(lastVisit).toLocaleString()})</option>}
           {catchUpPeriods.map(p => (
             <option key={p.id} value={p.id}>
               {p.label}
@@ -131,6 +182,17 @@ export function CatchUpPanel({ onClose }: { onClose: () => void }) {
           <p className="catchup-totals">
             {s.added} added · {s.edited} edited · {s.deleted} deleted
           </p>
+          <button
+            className="catchup-show"
+            onClick={() => {
+              const ids = changedSince(log, since, new Set(boardRef.current.items.map(i => i.id)));
+              if (!ids.length) return display('The changed objects are no longer on the board.');
+              setSelected(ids);
+              fit(boardRef.current.items.filter(i => ids.includes(i.id)));
+            }}
+          >
+            Show these on the board
+          </button>
           <ul className="catchup-types" aria-label="Changes by type">
             {Object.entries(s.byType)
               .sort((a, b) => b[1] - a[1])
@@ -150,8 +212,13 @@ export function CatchUpPanel({ onClose }: { onClose: () => void }) {
 }
 
 export function DetailsPanel({ onClose }: { onClose: () => void }) {
-  const { board, library } = useApp();
+  const { board, boardRef, library, update } = useApp();
   const meta = library.boards.find(b => b.id === library.activeId);
+  const saveDescription = (text: string) => {
+    const clean = cleanDescription(text);
+    if (clean !== (boardRef.current.description ?? ''))
+      update(withSetting(boardRef.current, 'description', clean || null));
+  };
   const counts = Object.entries(
     board.items.reduce<Record<string, number>>((m, i) => ((m[i.type] = (m[i.type] ?? 0) + 1), m), {}),
   ).sort((a, b) => b[1] - a[1]);
@@ -159,6 +226,18 @@ export function DetailsPanel({ onClose }: { onClose: () => void }) {
   const date = (iso?: string) => (iso ? new Date(iso).toLocaleString() : 'Unknown');
   return (
     <Shell title="Board details" onClose={onClose}>
+      <label className="field board-description-field">
+        Description
+        <textarea
+          key={board.description ?? ''}
+          aria-label="Board description"
+          placeholder="What is this board for?"
+          rows={3}
+          maxLength={BOARD_DESCRIPTION_MAX}
+          defaultValue={board.description ?? ''}
+          onBlur={e => saveDescription(e.target.value)}
+        />
+      </label>
       <dl className="details-list">
         <dt>Name</dt>
         <dd>{board.title || 'Untitled board'}</dd>

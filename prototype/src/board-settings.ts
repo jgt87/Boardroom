@@ -22,7 +22,11 @@ export const boardStatuses = [
   { id: 'in-progress', label: 'In progress', color: '#e2a01b' },
   { id: 'review', label: 'In review', color: '#4262ff' },
   { id: 'approved', label: 'Approved', color: '#2c9f5b' },
+  { id: 'done', label: 'Done', color: '#16794a' },
+  { id: 'outdated', label: 'Outdated', color: '#a1452f' },
 ] as const;
+/** Longest board description (shown in Details, on dashboard cards and searched). */
+export const BOARD_DESCRIPTION_MAX = 1000;
 export type BoardStatus = (typeof boardStatuses)[number]['id'];
 export type StartView = { x: number; y: number; z: number };
 
@@ -42,19 +46,53 @@ export function validateBoardSettings(b: Board) {
   if (b.background !== undefined && !isBoardBackground(b.background)) throw new Error('Invalid board background.');
   if (b.startView !== undefined && !isStartView(b.startView)) throw new Error('Invalid board start view.');
   if (b.status !== undefined && !isBoardStatus(b.status)) throw new Error('Invalid board status.');
+  if (
+    b.description !== undefined &&
+    (typeof b.description !== 'string' || b.description.length > BOARD_DESCRIPTION_MAX)
+  )
+    throw new Error('Invalid board description.');
 }
 
+/** Tidy a description typed by the user: no control characters except line breaks, trimmed and capped. */
+export const cleanDescription = (text: string) =>
+  [...text]
+    .filter(ch => ch === '\n' || ch.charCodeAt(0) >= 32)
+    .join('')
+    .trim()
+    .slice(0, BOARD_DESCRIPTION_MAX);
+
 /** Set or clear one optional setting without leaving undefined keys behind. */
-export function withSetting<K extends 'background' | 'startView' | 'status'>(
+export function withSetting<K extends 'background' | 'startView' | 'status' | 'description'>(
   board: Board,
   key: K,
   value: Board[K] | null,
 ): Board {
   const next = { ...board };
-  if (value === null || value === undefined || (key === 'background' && value === DEFAULT_BACKGROUND)) delete next[key];
+  if (value === null || value === undefined || value === '' || (key === 'background' && value === DEFAULT_BACKGROUND))
+    delete next[key];
   else next[key] = value;
   return next;
 }
 
 /** Text colour for the canvas on dark backgrounds (empty-state copy, grid lines). */
 export const isDarkBackground = (color: string | undefined) => color === '#52525b' || color === '#18181b';
+
+// ---- Status chips on Doc and Slides objects (gap list I3) ----------------------------------------------
+/** The board status with this id, if any. */
+export const statusInfo = (id: unknown) => boardStatuses.find(s => s.id === id);
+/** Throw when an object's optional `data.status` is not a board status id. */
+export function validateItemStatus(data: Record<string, unknown> | undefined): void {
+  if (data?.status !== undefined && !isBoardStatus(data.status)) throw new Error('Invalid status.');
+}
+/** The next status in menu order; after the last one the status is cleared (undefined). */
+export function nextItemStatus(current: unknown): BoardStatus | undefined {
+  const index = boardStatuses.findIndex(s => s.id === current);
+  return index === boardStatuses.length - 1 ? undefined : boardStatuses[index + 1].id;
+}
+/** Object data with the status set, or removed when `status` is undefined. */
+export function withItemStatus<T extends Record<string, unknown>>(data: T, status: BoardStatus | undefined): T {
+  const next: Record<string, unknown> = { ...data };
+  if (status) next.status = status;
+  else delete next.status;
+  return next as T;
+}

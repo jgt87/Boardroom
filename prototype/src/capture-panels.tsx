@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, Circle, Square, X } from 'lucide-react';
 import { detectStickies, type FoundNote } from './sticky-detect';
+import { useApp } from './board-app';
 
 const stopKeys = (onClose: () => void) => (e: React.KeyboardEvent) => {
   e.stopPropagation();
@@ -129,6 +130,7 @@ export function TalktrackPanel({ onSave, onClose }: { onSave: (file: File) => vo
         </>
       )}
       {error && <p role="alert">{error}</p>}
+      <RecordingsList />
     </aside>
   );
 }
@@ -301,5 +303,64 @@ export function StickiesPanel({
       )}
       {error && <p role="alert">{error}</p>}
     </aside>
+  );
+}
+
+/** Videos on this board, including Talktrack recordings (gap G14): go to, edit and trim, download, delete. */
+function RecordingsList() {
+  const { board, assets, boardRef, setSelected, fit, openEditor, update } = useApp();
+  const videos = board.items.filter(i => i.type === 'video');
+  if (!videos.length) return null;
+  const length = (s?: number) => (s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '');
+  return (
+    <section className="recordings" aria-label="Recordings on this board">
+      <h3>Recordings on this board</h3>
+      <ul>
+        {videos.map(v => {
+          const asset = v.assetId ? assets[v.assetId] : undefined,
+            d = (v.data ?? {}) as { duration?: number; trim?: { start: number; end: number } };
+          return (
+            <li key={v.id}>
+              <span>
+                {v.text || 'Video'}{' '}
+                <small>
+                  {d.trim
+                    ? `${length(d.trim.start) || '0:00'}–${length(d.trim.end)} of ${length(d.duration)}`
+                    : length(d.duration)}
+                </small>
+              </span>
+              <button
+                onClick={() => {
+                  setSelected([v.id]);
+                  fit([v]);
+                }}
+              >
+                Go to
+              </button>
+              <button onClick={() => openEditor(v.id)} disabled={!!v.locked}>
+                Rename or trim
+              </button>
+              {asset && (
+                <a
+                  href={asset.data}
+                  download={`${(v.text || 'recording').slice(0, 80)}.${asset.mime === 'video/webm' ? 'webm' : 'mp4'}`}
+                >
+                  Download
+                </a>
+              )}
+              <button
+                aria-label={`Delete ${v.text || 'video'}`}
+                disabled={!!v.locked}
+                onClick={() =>
+                  update({ ...boardRef.current, items: boardRef.current.items.filter(i => i.id !== v.id) })
+                }
+              >
+                Delete
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

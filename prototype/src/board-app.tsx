@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { zoomCameraAt, clampZoom, centeredCamera } from './camera';
 import { loadViewPrefs, saveViewPrefs, wheelLooksLikeMouse, type ViewPrefs } from './view-prefs';
 import { useLatest } from './use-latest';
-import { presentationFrames } from './navigation';
+import { presentationFrames, slideFrames } from './navigation';
 import { SHORTCUT_EVENT, type ShortcutData } from './specs-shortcut';
 import { parsePenPresets, PEN_PRESETS_KEY, type PenPreset } from './pen-smart';
 import { activityKey, appendActivity, diffActivity, parseActivity } from './activity';
@@ -29,13 +29,16 @@ import {
   endpoints,
   richKinds,
   addConnectedNote,
+  allKinds,
 } from './model';
 import type { Board, History, Item, Kind, Point, ImageAsset } from './model';
 import { textLayout } from './text-format';
+import { isShapeKind } from './shapes';
 import { starters } from './formats';
 import type { Handle, Guide } from './interactions';
+import { rotatedCorners, stripRotation } from './rotation';
+import { mergeStyle, styledKind } from './inspector-model';
 import { connectorGeometry } from './connectors';
-import { isShapeKind } from './shapes';
 import { groupSelection, ungroupSelection, expandGroups, setLocked, editableIds, duplicateItems } from './arrange';
 import { createImageItem, replaceImage, splitAssets, referencedAssets } from './images';
 import { loadAssets, saveAsset, pruneAssets, readImageFile } from './assets-store';
@@ -46,6 +49,12 @@ import { PREVIEW_EVENT, usePreviewState } from './prototype-preview';
 import { looksLikeMarkdown } from './markdown';
 import { applyLayouts } from './autolayout';
 import { syncRecordCards } from './record-canvas';
+import { classifyPaste, itemsFromText } from './smart-paste';
+import { maybeSnapshot } from './versions';
+import { decryptBackup, isEncryptedBackup } from './encrypted-backup';
+import { askPassphrase } from './passphrase-dialog';
+import { recordVisit } from './activity';
+import { BASE_LAYER, assignNewToLayer, inLockedLayer, sortByLayer } from './layers';
 import { applyGridLayouts, gridOwner } from './grid-canvas';
 import { applyMindBounds } from './mindmap-bounds';
 import { privateIds, detachComments, coveredIds, lineJumps, templateItems, setPrivate } from './board-tools';
@@ -58,7 +67,14 @@ import {
   createBoard,
   renameBoard,
   duplicateBoard,
-  deleteBoard,
+  trashBoards,
+  restoreBoards,
+  purgeBoards,
+  addBoards,
+  createSpace,
+  renameSpace,
+  deleteSpace,
+  spacesOf,
   assetRefsAcrossBoards,
   LEGACY_KEY,
   setBoardMeta,
@@ -104,7 +120,10 @@ export type Tool = 'select' | 'hand' | Kind | 'stack' | 'comment';
 export type Camera = { x: number; y: number; z: number };
 export type Gesture =
   | {
-      mode: 'move' | 'resize' | 'pan' | 'draw' | 'create' | 'marquee' | 'endpoint' | 'bend' | 'lasso';
+      mode: 'move' | 'resize' | 'pan' | 'draw' | 'create' | 'marquee' | 'endpoint' | 'bend' | 'lasso' | 'rotate';
+      /** Rotate gesture (gap D1): the turning point and the pointer angle at the start. */
+      pivot?: Point;
+      angle?: number;
       /** Lasso outline in world coordinates. */
       path?: Point[];
       start: Point;
@@ -168,6 +187,16 @@ function useBoardCore() {
     pasteCount = useRef(0),
     clipSignature = useRef(''),
     lastPointer = useRef<Point | null>(null);
+  // Remember when each board was opened, for "Since my last visit" in Catch up (gap C14).
+  useEffect(() => {
+    recordVisit(localStorage, library.activeId);
+  }, [library.activeId]);
+  // Layer that new objects go to (gap D9); kept per tab.
+  const [activeLayer, setActiveLayer] = useState(BASE_LAYER),
+    activeLayerRef = useRef(activeLayer);
+  activeLayerRef.current = activeLayer;
+  // Exports turn off large-board culling while they clone the rendered SVG (gap A2).
+  const [renderAll, setRenderAll] = useState(false);
   const [outline, setOutline] = useState(false),
     [help, setHelp] = useState(false),
     [menu, setMenu] = useState(false);
@@ -293,7 +322,7 @@ function useBoardCore() {
     noticeTimer.current = setTimeout(() => setNotice(''), 5000);
   };
   const normalize = (input: Board): Board => {
-    const next = applyGridLayouts(applyLayouts(syncRecordCards(input, boardRef.current)));
+    const next = applyGridLayouts(applyLayouts(syncRecordCards(stripRotation(input), boardRef.current)));
     return normalizeText(applyMindBounds(next, boardRef.current));
   };
   const normalizeText = (next: Board): Board => {
@@ -321,9 +350,18 @@ function useBoardCore() {
   const update = (input: Board) => {
     if (input.items.length > 2000) return display('This prototype supports up to 2,000 objects per board.');
     const prev = boardRef.current;
+    // View-only boards (gap C16) refuse every change except turning view-only off.
+    if (prev.viewOnly && input.viewOnly && input !== prev)
+      return display('This board is view-only. Turn off View only in the Board menu to edit.');
     let next: Board;
     try {
-      next = normalize(stampAuthors(boardRef.current, input, authorRef.current));
+      next = normalize(
+        stampAuthors(
+          boardRef.current,
+          sortByLayer(assignNewToLayer(prev, input, activeLayerRef.current)),
+          authorRef.current,
+        ),
+      );
     } catch (error) {
       display((error as Error).message);
       return;
@@ -349,12 +387,13 @@ function useBoardCore() {
     update({
       ...boardRef.current,
       items: boardRef.current.items.map(i =>
-        selected.includes(i.id) && !i.locked && isShapeKind(i.type) ? { ...i, style: { ...i.style, ...style } } : i,
+        selected.includes(i.id) && !i.locked && styledKind(i.type) ? { ...i, style: mergeStyle(i.style, style) } : i,
       ),
     });
-  const selectionLocked = selected.some(
-    id => shown.items.find(i => i.id === id)?.locked || gridOwner(shown, id)?.locked,
-  );
+  const selectionLocked = selected.some(id => {
+    const it = shown.items.find(i => i.id === id);
+    return it?.locked || (it && inLockedLayer(shown, it)) || gridOwner(shown, id)?.locked;
+  });
   const deleteSelection = () => {
     if (!selected.length) return;
     if (selected.some(id => gridOwner(boardRef.current, id)?.locked))
@@ -443,7 +482,27 @@ function useBoardCore() {
       next.startView ? setCamera(centeredCamera(next.startView, next.startView.z, size)) : fit(next.items),
     );
   };
+  /** Apply a library change now, so several actions in one event see each other's result. */
+  const commitLibrary = (lib: Library) => {
+    libraryRef.current = lib;
+    setLibrary(lib);
+  };
+  const storageError = (err: unknown) =>
+    display((err as Error).message || 'Browser storage is full. Delete or export boards to make room.');
+  /** Store a new board, optionally filed under a space, and open it. */
+  const openNew = (fresh: Board, space?: string) => {
+    let lib = createBoard(localStorage, flushSave(), fresh).library;
+    if (space) lib = setBoardMeta(localStorage, lib, lib.activeId, { space });
+    showBoard(fresh, lib);
+    libraryRef.current = lib;
+  };
   const boardActions = {
+    /** Save the open board now and return the up-to-date library (used before a library backup). */
+    flush: () => {
+      const lib = flushSave();
+      libraryRef.current = lib;
+      return lib;
+    },
     open: (id: string) => {
       if (id === libraryRef.current.activeId) return setDashboard(false);
       try {
@@ -453,48 +512,107 @@ function useBoardCore() {
         display((err as Error).message || 'That board could not be opened.');
       }
     },
-    create: (template: TemplateName | null) => {
+    create: (template: TemplateName | null, space?: string) => {
       try {
         const fresh: Board = { ...newBoard(), title: template ?? 'Untitled board' };
         if (template) fresh.items = templateItems(template, { x: 0, y: 0 }, (t, x, y, f) => createItem(t, x, y, f));
-        const created = createBoard(localStorage, flushSave(), fresh);
-        showBoard(fresh, created.library);
+        openNew(fresh, space);
       } catch (err) {
-        display((err as Error).message || 'Browser storage is full. Delete or export boards to make room.');
+        storageError(err);
+      }
+    },
+    /** Store and open a ready-made board (a saved template or an imported backup). */
+    createFrom: (fresh: Board, space?: string) => {
+      try {
+        openNew(fresh, space);
+        return true;
+      } catch (err) {
+        storageError(err);
+        return false;
       }
     },
     rename: (id: string, title: string) => {
       try {
         if (id === libraryRef.current.activeId) update({ ...boardRef.current, title: title.slice(0, 200) });
-        else setLibrary(renameBoard(localStorage, libraryRef.current, id, title, parseBoard));
+        else commitLibrary(renameBoard(localStorage, libraryRef.current, id, title, parseBoard));
       } catch (err) {
         display((err as Error).message);
       }
     },
-    duplicate: (id: string) => {
+    duplicate: (id: string, title?: string) => {
       try {
         const lib = id === libraryRef.current.activeId ? flushSave() : libraryRef.current;
-        setLibrary(duplicateBoard(localStorage, lib, id, parseBoard).library);
+        commitLibrary(duplicateBoard(localStorage, lib, id, parseBoard, undefined, title).library);
       } catch (err) {
-        display((err as Error).message || 'Browser storage is full. Delete or export boards to make room.');
+        storageError(err);
       }
     },
-    /** File under a space or star a board (item 107). */
-    setMeta: (id: string, patch: { space?: string | null; starred?: boolean }) => {
+    /** File under a space or star one or more boards (item 107). */
+    setMeta: (id: string | string[], patch: { space?: string | null; starred?: boolean }) => {
       try {
-        setLibrary(setBoardMeta(localStorage, libraryRef.current, id, patch));
+        commitLibrary(setBoardMeta(localStorage, libraryRef.current, id, patch));
       } catch (err) {
         display((err as Error).message || 'Browser storage is full.');
       }
     },
-    remove: (id: string) => {
+    /** Move boards to the trash (gap C1). */
+    remove: (id: string | string[]) => {
+      const ids = Array.isArray(id) ? id : [id];
       try {
-        const result = deleteBoard(localStorage, libraryRef.current, id, parseBoard, newBoard);
+        const lib = ids.includes(libraryRef.current.activeId) ? flushSave() : libraryRef.current;
+        const result = trashBoards(localStorage, lib, ids, parseBoard, newBoard);
         if (result.board) showBoard(result.board, result.library);
-        else setLibrary(result.library);
-        display('Board deleted.');
+        libraryRef.current = result.library;
+        setLibrary(result.library);
+        display(ids.length === 1 ? 'Board moved to trash.' : `${ids.length} boards moved to trash.`);
       } catch (err) {
         display((err as Error).message);
+      }
+    },
+    restore: (ids: string[]) => {
+      try {
+        commitLibrary(restoreBoards(localStorage, libraryRef.current, ids));
+        display(ids.length === 1 ? 'Board restored.' : `${ids.length} boards restored.`);
+      } catch (err) {
+        storageError(err);
+      }
+    },
+    /** Delete trashed boards for good. Their media is removed at the next start. */
+    purge: (ids: string[]) => {
+      try {
+        commitLibrary(purgeBoards(localStorage, libraryRef.current, ids));
+        display(ids.length === 1 ? 'Board deleted permanently.' : `${ids.length} boards deleted permanently.`);
+      } catch (err) {
+        display((err as Error).message);
+      }
+    },
+    /** Add boards from a library backup without opening them (gap C3). */
+    addBoards: (entries: Parameters<typeof addBoards>[2], spaces: string[] = []) => {
+      try {
+        let lib = addBoards(localStorage, libraryRef.current, entries).library;
+        for (const s of spaces) if (!spacesOf(lib).includes(s)) lib = createSpace(localStorage, lib, s);
+        commitLibrary(lib);
+        return true;
+      } catch (err) {
+        storageError(err);
+        return false;
+      }
+    },
+    /** Spaces (gap C12). */
+    space: (change: { create: string } | { rename: string; to: string } | { remove: string }) => {
+      try {
+        const lib = libraryRef.current;
+        commitLibrary(
+          'create' in change
+            ? createSpace(localStorage, lib, change.create)
+            : 'rename' in change
+              ? renameSpace(localStorage, lib, change.rename, change.to)
+              : deleteSpace(localStorage, lib, change.remove),
+        );
+        return true;
+      } catch (err) {
+        display((err as Error).message || 'Browser storage is full.');
+        return false;
       }
     },
   };
@@ -527,6 +645,25 @@ function useBoardCore() {
       return r.board;
     });
   const ungroupNow = () => run(b => ungroupSelection(b, selected));
+  /** Smart paste or drop of plain text (gap list B2, B6, B7, B8). Returns false when nothing was added. */
+  function insertText(text: string, at?: Point): boolean {
+    const center = at ?? toWorld(size.w / 2, size.h / 2),
+      made = itemsFromText(text, center);
+    if (!made?.items.length) return false;
+    update({ ...boardRef.current, items: [...boardRef.current.items, ...made.items] });
+    setSelected(made.items.map(i => i.id));
+    setTool('select');
+    const what = {
+      url: made.items[0].type === 'embed' ? 'Added an embed.' : 'Added a link bookmark.',
+      cells: 'Pasted the cells as a grid.',
+      mermaid: 'Added a Mermaid diagram.',
+      lines: `Added ${made.items.length} sticky notes.`,
+      text: '',
+    }[made.kind];
+    const message = [what, made.note].filter(Boolean).join(' ');
+    if (message) display(message);
+    return true;
+  }
   async function insertImages(files: File[], at?: Point) {
     const images = files.filter(f => f.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(f.name));
     if (!images.length) {
@@ -584,14 +721,14 @@ function useBoardCore() {
     mediaKind.current = 'video';
     return insertMedia(file);
   }
-  async function insertMedia(file: File) {
-    const kind = mediaKind.current,
-      view = kind ? viewFor(kind) : undefined;
+  async function insertMedia(file: File, kindOverride?: string, at?: Point) {
+    const kind = kindOverride ?? mediaKind.current,
+      view = kind ? viewFor(kind as Kind) : undefined;
     if (!kind || !view?.fromFile) return;
     try {
       const loaded = await view.fromFile.load(file),
         id = crypto.randomUUID(),
-        center = toWorld(size.w / 2, size.h / 2);
+        center = at ?? toWorld(size.w / 2, size.h / 2);
       await saveAsset(id, loaded.asset);
       setAssets(a => ({ ...a, [id]: loaded.asset }));
       const item: Item = {
@@ -635,10 +772,12 @@ function useBoardCore() {
     const pts = items.flatMap(i =>
       i.type === 'arrow'
         ? endpoints(i, boardRef.current.items)
-        : [
-            { x: i.x, y: i.y },
-            { x: i.x + i.w, y: i.y + i.h },
-          ],
+        : i.rotation
+          ? rotatedCorners(i, i.rotation)
+          : [
+              { x: i.x, y: i.y },
+              { x: i.x + i.w, y: i.y + i.h },
+            ],
     );
     const x = Math.min(...pts.map(p => p.x)),
       y = Math.min(...pts.map(p => p.y)),
@@ -650,6 +789,21 @@ function useBoardCore() {
       z = Math.max(0.1, Math.min(1.4, (usableW - 32) / Math.max(w, 1), (size.h - 220) / Math.max(h, 1)));
     setCamera({ z, x: left + (usableW - w * z) / 2 - x * z, y: 90 + (size.h - 180 - h * z) / 2 - y * z });
   };
+  /** Internal links (gap D12): jump to the target and offer a timed way back to the previous view. */
+  const [backView, setBackView] = useState<Camera | null>(null),
+    backTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const followLink = (target: Item) => {
+    setBackView({ ...camera });
+    clearTimeout(backTimer.current);
+    backTimer.current = setTimeout(() => setBackView(null), 8000);
+    setSelected([target.id]);
+    fit([target]);
+  };
+  const goBack = () => {
+    clearTimeout(backTimer.current);
+    if (backView) setCamera(backView);
+    setBackView(null);
+  };
   const addCentered = (kind: Kind) => {
     const p = toWorld(size.w / 2, size.h / 2),
       i = createItem(kind, p.x, p.y, fill);
@@ -660,17 +814,61 @@ function useBoardCore() {
     setTool('select');
     if (!['arrow', 'pen', 'frame'].includes(kind)) setEditing(i.id);
   };
+  /** Place a tool dropped on the board (gap F12): object kinds are created at the point, others open as usual. */
+  const placeAt = (kind: string, at: Point) => {
+    if (!(allKinds as string[]).includes(kind) || ['image', 'video', 'pdf', 'drawio', 'pen'].includes(kind)) {
+      chooseFormat(kind);
+      return;
+    }
+    const i = createItem(kind as Kind, at.x, at.y, kind === 'note' ? fill : undefined);
+    i.x -= i.w / 2;
+    i.y -= i.h / 2;
+    update({ ...boardRef.current, items: [...boardRef.current.items, i] });
+    setSelected([i.id]);
+    setTool('select');
+    if (['note', 'text', 'card'].includes(kind) || isShapeKind(kind)) setEditing(i.id);
+  };
   const mediaFile = useRef<HTMLInputElement>(null),
     mediaKind = useRef<string | null>(null),
     docImportFile = useRef<HTMLInputElement>(null),
-    docImportKind = useRef<'markdown' | 'pptx'>('markdown');
-  /** Markdown files become Docs and PowerPoint files become Slides decks (items 79 and 84). */
+    docImportKind = useRef<'markdown' | 'pptx' | 'docx' | 'table'>('markdown');
+  /**
+   * Markdown and Word files become Docs, PowerPoint files become Slides decks (items 79 and 84), and CSV or
+   * Excel files become a Table of records (gap list B3, B15, I2).
+   */
   async function importDocument(file: File, at?: Point) {
     const center = at ?? toWorld(size.w / 2, size.h / 2);
     try {
       let item: Item,
         note = '';
-      if (/.pptx$/i.test(file.name)) {
+      if (/\.(csv|tsv|xlsx)$/i.test(file.name)) {
+        const { csvTable, importTitle, tableFromImport } = await import('./record-import');
+        let table: string[][];
+        if (/\.xlsx$/i.test(file.name)) {
+          const { parseXlsx, OFFICE_MAX_BYTES } = await import('./office-import');
+          if (file.size > OFFICE_MAX_BYTES) throw new Error('Excel files up to 20 MB can be imported.');
+          table = parseXlsx(new Uint8Array(await file.arrayBuffer())).rows;
+        } else table = csvTable(await file.text());
+        const made = tableFromImport(boardRef.current, table, importTitle(file.name), center);
+        update(made.board);
+        setSelected([made.item.id]);
+        setTool('select');
+        display(
+          [`Imported ${made.count} ${made.count === 1 ? 'record' : 'records'} into a table.`, ...made.notes].join(' '),
+        );
+        return;
+      }
+      if (/\.docx$/i.test(file.name)) {
+        const { parseDocx, OFFICE_MAX_BYTES } = await import('./office-import');
+        if (file.size > OFFICE_MAX_BYTES) throw new Error('Word files up to 20 MB can be imported.');
+        const doc = parseDocx(new Uint8Array(await file.arrayBuffer()));
+        item = createItem('doc', center.x, center.y, '#ffffff');
+        item.data = { ...item.data, markdown: doc.markdown };
+        item.text = docFromMarkdown(doc.markdown, file.name.replace(/\.docx$/i, '.md')).title;
+        note = doc.truncated
+          ? 'The document was shortened to 60,000 characters.'
+          : `Imported ${file.name}. Images and page layout are not imported.`;
+      } else if (/.pptx$/i.test(file.name)) {
         const { parsePptx, PPTX_MAX_BYTES } = await import('./pptx');
         if (file.size > PPTX_MAX_BYTES) throw new Error('PowerPoint files up to 50 MB can be imported.');
         const slides = parsePptx(new Uint8Array(await file.arrayBuffer()));
@@ -746,14 +944,23 @@ function useBoardCore() {
       setOutline(true);
       return;
     }
-    if (choice === 'import:markdown' || choice === 'import:pptx') {
+    if (
+      choice === 'import:markdown' ||
+      choice === 'import:pptx' ||
+      choice === 'import:docx' ||
+      choice === 'import:table'
+    ) {
       setTool('select');
-      docImportKind.current = choice === 'import:pptx' ? 'pptx' : 'markdown';
+      docImportKind.current = choice.slice(7) as 'markdown' | 'pptx' | 'docx' | 'table';
       if (docImportFile.current) {
         docImportFile.current.accept =
           choice === 'import:pptx'
             ? '.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation'
-            : '.md,.markdown,text/markdown,text/plain';
+            : choice === 'import:docx'
+              ? '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+              : choice === 'import:table'
+                ? '.csv,.tsv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                : '.md,.markdown,text/markdown,text/plain';
         docImportFile.current.click();
       }
       return;
@@ -945,10 +1152,12 @@ function useBoardCore() {
       const files = [...(e.clipboardData?.files ?? [])].filter(f => f.type.startsWith('image/'));
       if (!files.length) {
         const text = e.clipboardData?.getData('text/plain') ?? '';
-        if (text && looksLikeMarkdown(text)) {
+        if (text && looksLikeMarkdown(text) && classifyPaste(text) !== 'cells' && classifyPaste(text) !== 'mermaid') {
           e.preventDefault();
           setMdPaste(text.slice(0, 60000));
+          return;
         }
+        if (text && insertText(text)) e.preventDefault();
         return;
       }
       e.preventDefault();
@@ -1018,6 +1227,7 @@ function useBoardCore() {
         setLibrary(lib => saveActive(localStorage, lib, board));
         setSaveError('');
         setSaved(true);
+        maybeSnapshot(localStorage, libraryRef.current.activeId, board);
       } catch {
         setSaveError('Browser storage is full or unavailable. Export JSON to save your work.');
       }
@@ -1051,7 +1261,14 @@ function useBoardCore() {
       } else {
         if (f.size > 120_000_000)
           throw new Error('Choose a JSON board smaller than 120 MB, or use a .boardroom bundle.');
-        parsed = parseBoard(JSON.parse(new TextDecoder().decode(bytes)));
+        let raw: unknown = JSON.parse(new TextDecoder().decode(bytes));
+        // Passphrase-protected backups (gap B18).
+        if (isEncryptedBackup(raw)) {
+          const pass = await askPassphrase('Open encrypted backup');
+          if (pass === null) return display('Import cancelled.');
+          raw = JSON.parse(await decryptBackup(raw, pass));
+        }
+        parsed = parseBoard(raw);
       }
       const split = splitAssets(parsed, assetsRef.current);
       for (const [id, asset] of Object.entries(split.assets))
@@ -1118,13 +1335,15 @@ function useBoardCore() {
     update: change => run(change),
     display,
     preview: previewState ?? undefined,
+    openEditor: () => openEditor(item.id),
   });
-  const firstShape = selected.map(id => shown.items.find(i => i.id === id)).find(i => i && isShapeKind(i.type));
+  // Border controls cover shapes and images (gap D11).
+  const firstShape = selected.map(id => shown.items.find(i => i.id === id)).find(i => i && styledKind(i.type));
   const allShapes =
     selected.length > 0 &&
     selected.every(id => {
       const t = shown.items.find(i => i.id === id)?.type;
-      return !!t && isShapeKind(t);
+      return !!t && styledKind(t);
     });
   const mixedBorders =
     allShapes && new Set(selected.map(id => JSON.stringify(shown.items.find(i => i.id === id)?.style ?? {}))).size > 1;
@@ -1148,6 +1367,11 @@ function useBoardCore() {
     return () => window.removeEventListener(SHORTCUT_EVENT, handle);
   }, [runShortcutAction]);
   const startPresenting = (start: number) => {
+    // Frames exist but every one is hidden from the presentation (gap G2).
+    if (boardRef.current.items.some(i => i.type === 'frame') && !slideFrames(boardRef.current).length) {
+      display('Every frame is hidden from the presentation. Show a frame in the Present panel first.');
+      return;
+    }
     setPresentPanel(false);
     setPresenting({ start, camera, selected });
     setSelected([]);
@@ -1191,6 +1415,9 @@ function useBoardCore() {
     fill,
     firstShape,
     fit,
+    followLink,
+    backView,
+    goBack,
     formatId,
     gallery,
     geometries,
@@ -1208,6 +1435,8 @@ function useBoardCore() {
     setAuthorName,
     insertAt,
     insertImages,
+    insertText,
+    placeAt,
     insertMedia,
     insertCaptured,
     jumps,
@@ -1336,6 +1565,10 @@ function useBoardCore() {
     ungroupNow,
     update,
     widgetCtx,
+    renderAll,
+    setRenderAll,
+    activeLayer,
+    setActiveLayer,
     insertDrawio,
     editSeed,
     pendingPlacement,

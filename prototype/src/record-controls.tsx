@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import type { RecordSchema } from './record-schema';
 import type { RecordFilter, RecordViewConfig } from './record-query';
 import { recordFieldOptions } from './record-query';
@@ -20,6 +21,9 @@ export function RecordControls({
   onDelete,
   onCards,
   onClear,
+  layout = table ? 'table' : 'kanban',
+  groupExclude = [],
+  children,
 }: {
   schema: RecordSchema;
   view: RecordViewConfig;
@@ -36,6 +40,11 @@ export function RecordControls({
   onDelete: () => void;
   onCards: () => void;
   onClear: () => void;
+  /** Which record layout these controls serve; grouping means swimlanes in Kanban and row groups in Timeline. */
+  layout?: 'table' | 'kanban' | 'timeline';
+  /** Fields that cannot be used for grouping (such as the Kanban column field). */
+  groupExclude?: string[];
+  children?: ReactNode;
 }) {
   const fields = recordFieldOptions(schema),
     filters = view.filters ?? [],
@@ -152,23 +161,22 @@ export function RecordControls({
           >
             {view.sort?.direction === 'desc' ? 'Descending' : 'Ascending'}
           </button>
-          {table && (
-            <select
-              aria-label="Group records by"
-              value={view.group ?? ''}
-              onChange={e => onView({ ...view, group: e.target.value || undefined, hiddenGroups: [] })}
-            >
-              <option value="">No grouping</option>
-              {fields
-                .filter(f => f.id !== 'title')
-                .map(f => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-            </select>
-          )}
+          <select
+            aria-label={layout === 'kanban' ? 'Swimlanes by' : 'Group records by'}
+            value={view.group ?? ''}
+            onChange={e => onView({ ...view, group: e.target.value || undefined, hiddenGroups: [] })}
+          >
+            <option value="">{layout === 'kanban' ? 'No swimlanes' : 'No grouping'}</option>
+            {fields
+              .filter(f => f.id !== 'title' && !groupExclude.includes(f.id))
+              .map(f => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+          </select>
         </fieldset>
+        {children}
         <span className="record-result-count" aria-live="polite">
           {count} of {total}
         </span>

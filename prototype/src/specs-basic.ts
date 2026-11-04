@@ -40,13 +40,14 @@ export const basicSpecs: WidgetSpec[] = [
     validate: i => {
       const x = d(i);
       if (
-        !str(x.description, 6000) ||
+        !str(x.description, 20000) ||
         !str(x.assignee, 6000) ||
         !str(x.due, 10) ||
         (x.due && !isIsoDate(x.due)) ||
+        (x.start !== undefined && (!str(x.start, 10) || (x.start && !isIsoDate(x.start)))) ||
+        (x.start && x.due && x.start > x.due) ||
         !str(x.status, 80) ||
-        !x.status.trim() ||
-        (!i.recordRef && !(cardStatuses as readonly string[]).includes(x.status))
+        (i.recordRef ? !x.status.trim() : x.status !== '' && !(cardStatuses as readonly string[]).includes(x.status))
       )
         fail('Invalid card details.');
       if (x.points !== undefined && !num(x.points, 0, 1000)) fail('Story points must be between 0 and 1,000.');
@@ -106,6 +107,9 @@ export const basicSpecs: WidgetSpec[] = [
       if (s.stamp === 'emoji') {
         if (!isValidEmojiValue(s.emoji)) fail('Invalid emoji stamp.');
       } else if (!(stampKinds as readonly string[]).includes(s.stamp)) fail('Unknown stamp.');
+      // Sticker counter (gap D13): how many times the sticker was added to.
+      if (s.count !== undefined && !(Number.isInteger(s.count) && s.count >= 1 && s.count <= 999))
+        fail('Invalid sticker count.');
     },
   },
   {

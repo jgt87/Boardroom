@@ -809,3 +809,57 @@ select:focus-visible {
 .mindmap-canvas-editor {
   overflow: visible;
 }
+
+/* Gallery entries with a pin button (gap F12). The pick button keeps the regular entry look. */
+.gallery-entry {
+  position: relative;
+}
+.gallery-entry > .gallery-pick {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 15px;
+  width: 100%;
+  padding: 14px 40px 14px 8px;
+  border: 0;
+  background: white;
+  text-align: left;
+  border-radius: 6px;
+}
+.gallery-entry > .gallery-pick:hover {
+  background: #f1f1f5;
+}
+.gallery-entry > .gallery-pick > svg {
+  flex: 0 0 25px;
+  width: 25px;
+  margin-top: 1px;
+}
+.gallery-entry > .gallery-pick > span {
+  flex: 1;
+  min-width: 0;
+}
+.gallery-pin {
+  position: absolute;
+  top: 10px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  opacity: 0;
+}
+.gallery-entry:hover .gallery-pin,
+.gallery-pin:focus-visible,
+.gallery-pin.active {
+  opacity: 1;
+}
+.gallery-pin.active {
+  color: var(--blue);
+}
+.formats-menu .gallery-entry > .gallery-pick {
+  padding: 8px 40px 8px 10px;
+}
+.formats-menu .gallery-pin {
+  top: 6px;
+}

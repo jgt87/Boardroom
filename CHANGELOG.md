@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Help-center gaps closed
+- **Paste and drop:** spreadsheet cells become a grid, a link becomes an embed or bookmark, Mermaid code becomes a diagram, and several lines become sticky notes. PDF, video and MOV files can be dropped on the board, and images over 4 MB are scaled down instead of refused.
+- **Exports:** copy as image (Ctrl+Shift+C), image size choice, PDF of selected frames, text and grid CSV, a read-only web page with pan and zoom, mind map outlines in Markdown, and passphrase-protected backups.
+- **Boards:** trash with restore, backup and restore of all boards, import as a new board, descriptions, status filter, spaces, bulk actions, content search, saved versions, "since my last visit", a view-only mode and a thumbnail chosen from a frame.
+- **Editing:**
+  - Rotation, snap to grid and dot grid, named layers, switch type, find and replace.
+  - Select by type, create frame around, clear contents, copy and paste style.
+  - Corner radius, centre resize, image border and circle crop, more fonts.
+  - Links show a "Go back" button after you follow them.
+- **Diagrams:** crow's-foot heads, several connector labels, 45° drawing, "+" quick-connect handles, insert a shape on a line, mind map collapse, colours and layouts, and org chart fields with CSV import and export.
+- **Keyboard and access:**
+  - Tab and Ctrl+Arrow between objects with announcements, a skip link and a board summary (Alt+S).
+  - Keyboard zoom and pan, z-order keys, more single-key shortcuts and keyboard connecting.
+  - Pinch zoom on touch screens, and tools you can pin and drag from the toolbar.
+  - The accessibility checker now checks non-text contrast and untitled frames, and its false contrast warnings on dark objects are fixed.
+- **Presenting and facilitation:** presenter notes, hidden slides, a slide grid, timer tweaks, voting time limits, sticky clustering, notes to doc, frame styles, comment edit/pin/react, @mentions, estimate chips, slides from frames with PDF export, a recordings list with video trim, emoji reactions on sticky notes and sticker counters.
+- **Records:** swimlanes, footer calculations, progress bars, formulas, links, sub-records, saved views, and column colours and capacity.
+- **Docs and formats:** a chart widget, CSV/XLSX import into tables, .docx import, Doc PDF export, Doc shortcuts, status chips, eight new templates and template search.
+
+### Cards
+- **Card panel:** an expand icon on every card, or Ctrl/Cmd+Shift+Enter, opens one panel with a rich-text description (bold, italic, underline, lists, link on paste), start and due dates, status (now optional), an assignee picked from the board's people, coloured tags, story points and T-shirt size. Title and description each hold up to 20,000 characters.
+- **Card face:** the description is no longer drawn on the card; a marker shows that one exists. Dates show as a range, and tags use their colour and can be removed with a click.
+- **Card bar:** select one or many cards to set status (or remove it), assignee, dates and tags, or to export them to a spreadsheet (CSV).
+- **Switch type:** turn sticky notes, text boxes and shapes into cards, one at a time or many at once.
+- Export → Export to spreadsheet (CSV) exports the selected cards, otherwise a record view, otherwise every card.
+
 ### Look and behaviour matched to the reference board
 - **Main menu** (⋮ beside the board name) now has Board, Edit, View, Preferences, Accessibility and Assign status submenus, with keyboard navigation; menus close on Escape or a click outside.
 - **Tool rail:** Comment and + (tools) buttons; only one rail popup at a time; undo/redo sit below the rail at the same size, and the rail moves aside when History, Catch up or Details is open.

@@ -10,6 +10,24 @@ export const patchItem = (ctx: WidgetCtx, id: string, change: (i: Item) => Item)
 export const setData = (ctx: WidgetCtx, id: string, d: Record<string, any>, extra: Partial<Item> = {}) =>
   patchItem(ctx, id, i => ({ ...i, ...extra, data: d }));
 export const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+/** Download a blob as a file. */
+export function saveBlobFile(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob),
+    a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+/** Download text as a file (spreadsheet and other exports from widget actions). */
+export function saveText(text: string, name: string, type = 'text/csv') {
+  const url = URL.createObjectURL(new Blob([text], { type })),
+    a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 /** Shared focus dialog in the existing format-editor vocabulary. */
 export function Dialog({

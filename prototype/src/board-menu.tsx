@@ -165,6 +165,7 @@ export function BoardMenu() {
     camera,
     size,
     update,
+    selected,
     display,
     library,
     boardActions,
@@ -183,11 +184,13 @@ export function BoardMenu() {
   const [open, setOpen] = useState(false),
     [panel, setPanel] = useState<'history' | 'catchup' | 'details' | null>(null),
     [confirmDelete, setConfirmDelete] = useState(false),
-    [newSpace, setNewSpace] = useState('');
+    [newSpace, setNewSpace] = useState(''),
+    [copyName, setCopyName] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const close = () => {
     setOpen(false);
     setConfirmDelete(false);
+    setCopyName(null);
   };
   useDismiss(open, root, close);
   const meta = library.boards.find(b => b.id === library.activeId),
@@ -202,10 +205,60 @@ export function BoardMenu() {
       entries: [
         item('Catch up', () => setPanel('catchup')),
         item('New board', () => boardActions.create(null)),
-        item('Duplicate', () => {
-          boardActions.duplicate(library.activeId);
-          display('Board duplicated. Find the copy under All boards.');
+        item(board.thumbnailFrame ? 'Reset thumbnail' : 'Use selected frame as thumbnail', () => {
+          const next = { ...boardRef.current };
+          if (board.thumbnailFrame) delete next.thumbnailFrame;
+          else {
+            const frame = boardRef.current.items.find(i => selected.includes(i.id) && i.type === 'frame');
+            if (!frame) return display('Select a frame to use as the thumbnail.');
+            next.thumbnailFrame = frame.id;
+          }
+          update(next);
+          display(
+            next.thumbnailFrame ? 'The dashboard now shows this frame.' : 'The dashboard shows the whole board again.',
+          );
         }),
+        toggle('View only', !!board.viewOnly, () => {
+          const next = { ...boardRef.current };
+          if (next.viewOnly) delete next.viewOnly;
+          else next.viewOnly = true;
+          update(next);
+          display(next.viewOnly ? 'View only: editing is off for this board.' : 'Editing is on again.');
+        }),
+        {
+          kind: 'sub',
+          label: 'Duplicate',
+          entries: [
+            {
+              kind: 'field',
+              node: (
+                <form
+                  onSubmit={e => {
+                    e.preventDefault();
+                    const name = (copyName ?? `${board.title || 'Untitled board'} copy`).trim();
+                    if (!name) return;
+                    close();
+                    setCopyName(null);
+                    boardActions.duplicate(library.activeId, name);
+                    display(`Board duplicated as "${name.slice(0, 200)}". Find it under All boards.`);
+                  }}
+                >
+                  <input
+                    aria-label="Name of the copy"
+                    placeholder="Name of the copy"
+                    maxLength={200}
+                    value={copyName ?? `${board.title || 'Untitled board'} copy`}
+                    onKeyDown={e => e.stopPropagation()}
+                    onChange={e => setCopyName(e.target.value)}
+                  />
+                  <button type="submit" disabled={!(copyName ?? 'x').trim()}>
+                    Duplicate
+                  </button>
+                </form>
+              ),
+            },
+          ],
+        },
         {
           kind: 'sub',
           label: 'Move to',
@@ -278,7 +331,7 @@ export function BoardMenu() {
         { kind: 'sep' },
         {
           kind: 'item',
-          label: confirmDelete ? 'Click again to delete this board' : 'Delete',
+          label: confirmDelete ? 'Click again to move this board to trash' : 'Delete board',
           danger: true,
           checked: false,
           run: () => {
@@ -304,6 +357,10 @@ export function BoardMenu() {
       label: 'View',
       entries: [
         toggle('Grid', viewPrefs.grid, () => setViewPrefs({ grid: !viewPrefs.grid })),
+        toggle('Dot grid', viewPrefs.gridStyle === 'dots', () =>
+          setViewPrefs({ gridStyle: viewPrefs.gridStyle === 'dots' ? 'lines' : 'dots' }),
+        ),
+        toggle('Snap to grid', viewPrefs.snapGrid, () => setViewPrefs({ snapGrid: !viewPrefs.snapGrid })),
         toggle('Comments on board', viewPrefs.comments, () => setViewPrefs({ comments: !viewPrefs.comments })),
         toggle('Object dimensions', viewPrefs.dimensions, () => setViewPrefs({ dimensions: !viewPrefs.dimensions })),
         toggle('Undo/Redo controls', viewPrefs.undoControls, () =>

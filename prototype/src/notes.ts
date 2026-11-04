@@ -2,10 +2,12 @@
 // Evidence: ComputeStickerWidget menu arrays include EMOJI_HORIZ, WIDGET_TYPE, CONVERT_TO_FORMAT
 // and ADD_TO_DATA_TABLE. Markers here are local note metadata, not multiplayer reactions.
 import type { Board, Item, RecordRow } from './model.ts';
+import { isValidEmojiValue } from './emoji-data.ts';
 import { createItem, pruneReferences } from './model.ts';
 import type { ShapeKind } from './shapes.ts';
 import { isShapeKind } from './shapes.ts';
 import { noteToCard } from './facilitation-widgets.ts';
+import { colorName, selectedNotes } from './cluster.ts';
 
 export const noteEmojis = [
   '👍',
@@ -138,4 +140,90 @@ export function convertNote(board: Board, id: string, target: ConversionTarget):
       : i,
   );
   return { board: pruneReferences({ ...board, items, datasets }), selectId: viewId };
+}
+
+// ---- Notes to a Doc outline (gap G7) ----------------------------------------------------------------
+export type OutlineBy = 'color' | 'frame';
+const centreIn = (f: Item, i: Item) =>
+  i.x + i.w / 2 >= f.x && i.x + i.w / 2 <= f.x + f.w && i.y + i.h / 2 >= f.y && i.y + i.h / 2 <= f.y + f.h;
+/** One Markdown list line per note; line breaks inside a note become spaces. */
+const noteLine = (n: Item) => {
+  const text = n.text.replace(/\s+/g, ' ').trim();
+  return `- ${text || '(empty note)'}${n.tags?.length ? ` ${n.tags.map(t => `#${t}`).join(' ')}` : ''}`;
+};
+/**
+ * Markdown outline of the selected sticky notes, grouped by colour or by the (smallest) frame that holds
+ * each note's centre. Groups and notes follow reading order (top to bottom, then left to right).
+ */
+export function notesToMarkdown(board: Board, ids: string[], by: OutlineBy, title = 'Notes summary'): string {
+  const notes = selectedNotes(board, ids);
+  if (!notes.length) throw new Error('Select sticky notes to summarise.');
+  const frames = board.items.filter(i => i.type === 'frame');
+  const groups = new Map<string, { heading: string; lines: string[] }>();
+  for (const n of notes) {
+    let key: string, heading: string;
+    if (by === 'color') {
+      key = n.fill.toLowerCase();
+      heading = colorName(key);
+    } else {
+      const frame = frames.filter(f => centreIn(f, n)).sort((a, b) => a.w * a.h - b.w * b.h)[0];
+      key = frame?.id ?? '';
+      heading = frame ? frame.text.replace(/\s+/g, ' ').trim() || 'Untitled frame' : 'Not in a frame';
+    }
+    const g = groups.get(key) ?? { heading, lines: [] };
+    g.lines.push(noteLine(n));
+    groups.set(key, g);
+  }
+  const body = [...groups.values()].map(g => `## ${g.heading}\n\n${g.lines.join('\n')}`).join('\n\n');
+  return `# ${title}\n\n${body}\n`.slice(0, 60000);
+}
+/** Create a Doc item to the right of the selected notes holding their outline. One call is one undo step. */
+export function notesToDoc(board: Board, ids: string[], by: OutlineBy): { board: Board; docId: string } {
+  const markdown = notesToMarkdown(board, ids, by),
+    notes = selectedNotes(board, ids),
+    right = Math.max(...notes.map(n => n.x + n.w)),
+    top = Math.min(...notes.map(n => n.y));
+  const base = createItem('doc', Math.round(right + 80), Math.round(top));
+  const doc: Item = { ...base, data: { ...base.data, markdown } };
+  return { board: { ...board, items: [...board.items, doc] }, docId: doc.id };
+}
+
+// ---- Reactions on sticky notes (gap D13) -----------------------------------------------------------
+export const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '🤔', '👀'] as const;
+export const MAX_REACTIONS = 12;
+/** Add (delta +1) or remove (delta -1) one reaction on unlocked sticky notes; a count of 0 removes it. */
+export function reactToNotes(board: Board, ids: string[], emoji: string, delta: 1 | -1): Board {
+  if (!isValidEmojiValue(emoji)) throw new Error('Choose an emoji.');
+  const wanted = new Set(ids);
+  return {
+    ...board,
+    items: board.items.map(i => {
+      if (!wanted.has(i.id) || i.type !== 'note' || i.locked) return i;
+      const r = { ...(i.reactions ?? {}) };
+      const n = Math.max(0, Math.min(999, (r[emoji] ?? 0) + delta));
+      if (n) r[emoji] = n;
+      else delete r[emoji];
+      if (Object.keys(r).length > MAX_REACTIONS)
+        throw new Error(`A sticky note holds up to ${MAX_REACTIONS} different reactions.`);
+      const next: Item = { ...i, reactions: r };
+      if (!Object.keys(r).length) delete next.reactions;
+      return next;
+    }),
+  };
+}
+export function validateReactions(board: Board) {
+  for (const i of board.items) {
+    if (i.reactions === undefined) continue;
+    const entries =
+      typeof i.reactions === 'object' && i.reactions && !Array.isArray(i.reactions)
+        ? Object.entries(i.reactions)
+        : null;
+    if (
+      !entries ||
+      i.type !== 'note' ||
+      entries.length > MAX_REACTIONS ||
+      entries.some(([e, n]) => !isValidEmojiValue(e) || !Number.isInteger(n) || n < 1 || n > 999)
+    )
+      throw new Error('Invalid reactions on a sticky note.');
+  }
 }

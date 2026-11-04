@@ -1,0 +1,127 @@
+/* Charts, status chips, record import and template search (gap list B3, I3, I4, I5). */
+.w-form .chart-legend-toggle {
+  flex-direction: row;
+  align-items: center;
+  align-self: end;
+  gap: 8px;
+  font-size: 13px;
+}
+.chart-grid-wrap {
+  margin-top: 14px;
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid #e4e4e7;
+  border-radius: 6px;
+}
+.chart-grid {
+  border-collapse: collapse;
+  width: 100%;
+  font: 12px Arial;
+}
+.chart-grid caption {
+  text-align: left;
+  padding: 6px 8px;
+  font-weight: 600;
+  color: #3f3f46;
+}
+.chart-grid th,
+.chart-grid td {
+  border-top: 1px solid #e4e4e7;
+  padding: 3px;
+  text-align: left;
+  font-weight: normal;
+  color: #3f3f46;
+}
+.chart-grid input {
+  width: 100%;
+  min-width: 70px;
+  border: 1px solid #c5c5ce;
+  border-radius: 4px;
+  padding: 5px 6px;
+  font: 12px Arial;
+}
+.chart-grid-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+.chart-grid-actions button,
+.w-form > button {
+  border: 1px solid #c5c5ce;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #1f1f23;
+  padding: 6px 10px;
+  font: 13px Arial;
+  cursor: pointer;
+}
+.chart-grid-actions button:disabled,
+.w-form > button:disabled {
+  color: #6b6b75;
+  cursor: default;
+}
+
+.item-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: auto;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border: 1px solid #d4d4d8;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #27272a;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.item-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.record-import-button {
+  white-space: nowrap;
+}
+.record-chart-select {
+  max-width: 120px;
+}
+
+.template-search {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.template-search input {
+  border: 1px solid #c5c5ce;
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: 13px Arial;
+}
+.template-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.template-categories button {
+  border: 1px solid #d4d4d8;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #27272a;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.template-categories button[aria-pressed='true'] {
+  background: #e3edff;
+  border-color: #4262ff;
+  color: #1a2f99;
+}
+.template-list-scroll {
+  max-height: 340px;
+  overflow: auto;
+}
