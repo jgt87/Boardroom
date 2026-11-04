@@ -6,6 +6,8 @@ import { diagramViews } from './widgets-diagrams';
 import { engageViews } from './widgets-engage';
 import { drawioView } from './widgets-drawio';
 import { activityViews } from './widgets-activities';
+import { peopleViews } from './widgets-people';
+import { shortcutView } from './widgets-shortcut';
 export const widgetViews: WidgetView[] = [
   ...basicViews,
   ...mediaViews,
@@ -13,6 +15,8 @@ export const widgetViews: WidgetView[] = [
   ...engageViews,
   drawioView,
   ...activityViews,
+  ...peopleViews,
+  shortcutView,
 ];
 const byKind = new Map(widgetViews.map(v => [v.kind as string, v]));
 export const viewFor = (kind: string) => byKind.get(kind);

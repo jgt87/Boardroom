@@ -32,7 +32,7 @@ export const formatTools: CatalogEntry[] = [
   e('Slides', 'slides', 'Build and present a slide deck'),
   e('Engage activities', 'submenu:engage', 'Run interactive activities'),
   e('Journey Map', 'journey', 'Visualize end-to-end experiences'),
-  unavailable('Talktrack'),
+  e('Talktrack', 'talktrack', 'Record a walkthrough of your screen with your voice'),
   unavailable('Flows'),
 ];
 export const catalog: Record<string, CatalogEntry[]> = {
@@ -48,14 +48,17 @@ export const catalog: Record<string, CatalogEntry[]> = {
     e('Grid', 'grid'),
     e('Mind map', 'mindmap'),
     e('Note', 'doc'),
-    unavailable('People'),
+    e('People', 'people', 'Show who is working on this board'),
     e('Sticky stack', 'stack'),
     e('Templates', 'templates'),
     e('Text', 'text'),
-    unavailable('User card'),
+    e('User card', 'usercard', 'Show a person with their role, team and contact'),
   ],
   Libraries: [e('Wireframe library', 'submenu:wireframes', 'Drag, drop, and customize UI elements')],
-  'Customizable Widgets': [unavailable('Action Shortcut'), unavailable('AI instruction')],
+  'Customizable Widgets': [
+    e('Action Shortcut', 'shortcut', 'A button that runs an action'),
+    unavailable('AI instruction'),
+  ],
   Diagramming: [
     unavailable('AWS Cloud View'),
     e('Diagramming shapes', 'rectangle'),
@@ -109,14 +112,14 @@ export const catalog: Record<string, CatalogEntry[]> = {
     e('Icon', 'icon'),
     e('QR code', 'qr'),
   ],
-  'From Marketplace': [unavailable('Spellchecker')],
+  'From Marketplace': [e('Spellchecker', 'spellcheck', 'Underline misspelled words while editing text')],
   Other: [
     unavailable('Flows'),
     e('Accessibility Checker', 'a11y'),
     e('Bulk mode', 'bulk'),
     e('Embed iFrame code', 'embed'),
-    unavailable('Photobooth'),
-    unavailable('Stickies capture'),
-    unavailable('Validation report'),
+    e('Photobooth', 'photobooth', 'Take a photo with your camera and add it to the board'),
+    e('Stickies capture', 'stickies', 'Turn a photo of paper sticky notes into digital ones'),
+    e('Validation report', 'validation', 'Find loose connectors, unlabelled and overlapping shapes'),
   ],
 };

@@ -1,0 +1,166 @@
+.w-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: white;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.w-people {
+  height: 100%;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.w-people strong {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.w-people strong span {
+  color: #71717a;
+  font-weight: 500;
+}
+.w-people ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.w-people li {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 58px;
+  font-size: 11px;
+  text-align: center;
+}
+.w-people li span:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.w-people p {
+  margin: 0;
+  color: #71717a;
+  font-size: 13px;
+}
+.w-people-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.w-people-actions button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.w-people-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.w-people-list li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+.w-people-list li span {
+  flex: 1;
+}
+.w-people-list small {
+  color: #71717a;
+}
+.w-usercard {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  height: 100%;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.w-usercard div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+}
+.w-usercard strong {
+  font-size: 15px;
+}
+.w-usercard span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #52525b;
+}
+.w-usercard-team {
+  color: #4262ff !important;
+}
+.w-usercard-email {
+  font-size: 12px;
+}
+.w-swatches {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.w-swatches legend {
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.w-swatches button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+}
+.w-swatches button[aria-pressed='true'] {
+  outline: 2px solid #25252a;
+  outline-offset: 2px;
+}
+.w-shortcut {
+  display: grid;
+  height: 100%;
+  /* The frame around the button stays draggable, so the shortcut can be selected, moved and edited. */
+  padding: 6px;
+  border: 1px dashed transparent;
+  border-radius: 14px;
+}
+.w-shortcut:hover {
+  border-color: #c4c4cc;
+}
+.w-shortcut button {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px #0000001f;
+}
+.w-shortcut button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

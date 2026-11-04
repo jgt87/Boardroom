@@ -9,7 +9,7 @@ test('camera coordinates round trip and zoom preserves the anchor at both limits
   assert.ok(Math.abs(result.x - point.x) < 1e-10 && Math.abs(result.y - point.y) < 1e-10);
   for (const zoom of [0.001, 0.5, 100]) {
     const next = zoomCameraAt(camera, zoom, anchor);
-    assert.ok(next.z >= 0.1 && next.z <= 4);
+    assert.ok(next.z >= 0.1 && next.z <= 20);
     const before = screenToWorld(camera, anchor),
       after = screenToWorld(next, anchor);
     assert.ok(Math.abs(before.x - after.x) < 1e-10 && Math.abs(before.y - after.y) < 1e-10);

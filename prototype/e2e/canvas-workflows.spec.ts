@@ -1,4 +1,4 @@
-import { test, expect, seed, item, waitForSave, savedBoard, fit, mouseDrag, center } from './helpers';
+import { test, expect, seed, item, waitForSave, savedBoard, fit, mouseDrag, center, openApp } from './helpers';
 
 test('sticky select-and-type and Alt-drag duplicate are undoable', async ({ page }) => {
   await seed(
@@ -180,4 +180,31 @@ test('Formats menu ordering, diagram submenu, placement and Escape cancellation'
   await page.keyboard.press('Escape');
   await page.locator('svg.canvas').click({ position: { x: 1000, y: 700 } });
   expect((await savedBoard(page)).items.length).toBe(1);
+});
+
+test('the Select button toggles between Select and Pan without opening a menu', async ({ page }) => {
+  await openApp(page);
+  const rail = page.getByRole('navigation', { name: 'Creation tools' });
+  await rail.getByRole('button', { name: 'Select', exact: true }).click();
+  await expect(rail.getByRole('button', { name: 'Pan', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('complementary', { name: 'Selection tools' })).toHaveCount(0);
+  await rail.getByRole('button', { name: 'Pan', exact: true }).click();
+  await expect(rail.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('top-right action buttons share one height', async ({ page }) => {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await openApp(page);
+    const heights = await page
+      .locator('.document-actions button')
+      .evaluateAll(els =>
+        els.filter(e => e.getBoundingClientRect().width > 0).map(e => e.getBoundingClientRect().height),
+      );
+    expect(heights.length).toBeGreaterThan(4);
+    expect(new Set(heights).size, `heights at ${viewport.width}px: ${heights}`).toBe(1);
+  }
 });

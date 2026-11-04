@@ -1,6 +1,7 @@
 // Validation for optional document fields added by the next-20 integration.
 // Every field is optional; boards written before these features load unchanged.
 import { isValidAuthor } from './authors.ts';
+import { validateBoardSettings } from './board-settings.ts';
 import type { Board, Item, RecordRow } from './model.ts';
 import { normalizeNoteLink } from './model.ts';
 import { recordsError } from './records.ts';
@@ -118,6 +119,7 @@ export function validateExtensions(b: Board): void {
   )
     throw new Error('Invalid private mode.');
   if (b.showAuthors !== undefined && typeof b.showAuthors !== 'boolean') throw new Error('Invalid author setting.');
+  validateBoardSettings(b);
   const groups = new Set(b.groups?.map(g => g.id));
   for (const i of b.items) validateItem(i, groups);
   if (

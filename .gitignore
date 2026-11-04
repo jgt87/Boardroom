@@ -37,3 +37,5 @@ prototype/e2e/.tmp/
 /WASM-API-CONTRACTS.md
 /WASM-EXTRACTION.md
 /WASM-VALIDATION-AND-BINDINGS.md
+# Craft Anything desktop-app projects (captured third-party pages): never commit
+/CraftAnything/

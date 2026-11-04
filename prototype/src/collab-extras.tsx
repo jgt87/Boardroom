@@ -1,6 +1,7 @@
 // Reactions (item 83) and sticky note authors (item 85). Reactions are transient: never saved or undone.
 // Evidence: feature map (Facilitation menu lists six reaction choices); reconstruction backlog (author display).
 import React, { useEffect, useRef, useState } from 'react';
+import { doNotDisturb } from './view-prefs';
 import { X } from 'lucide-react';
 import { AUTHOR_MAX } from './authors';
 
@@ -61,7 +62,8 @@ export function ReactionLayer() {
         x: 30 + Math.random() * 40,
         drift: Math.round((Math.random() - 0.5) * 120),
       }));
-      setBursts(b => [...b.slice(-40), ...burst]);
+      // Do Not Disturb: announce the reaction but skip the floating animation.
+      if (!doNotDisturb()) setBursts(b => [...b.slice(-40), ...burst]);
       setAnnounce(`Reaction sent: ${reactionChoices.find(r => r.emoji === emoji)!.label}`);
       timers.push(window.setTimeout(() => setBursts(b => b.filter(x => !burst.some(y => y.id === x.id))), 2600));
     };

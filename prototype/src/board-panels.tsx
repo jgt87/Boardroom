@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { issueLabels, type DiagramIssue } from './diagram-validation';
+import type { UserTemplate } from './user-templates';
+import { doNotDisturb } from './view-prefs';
 import {
   X,
   Eye,
@@ -49,7 +52,17 @@ export function PenOptions({
   onWidth,
   onEraser,
   onPrecise,
+  mode = 'draw',
+  onMode,
+  presets = [],
+  activePreset = null,
+  onPreset,
 }: {
+  mode?: 'draw' | 'smart' | 'lasso';
+  onMode?: (m: 'draw' | 'smart' | 'lasso') => void;
+  presets?: { color: string; width: number }[];
+  activePreset?: number | null;
+  onPreset?: (index: number) => void;
   style: PenStyle;
   width: number;
   eraser: boolean;
@@ -79,6 +92,38 @@ export function PenOptions({
           Eraser
         </button>
       </div>
+      {!eraser && onMode && (
+        <div className="segmented" role="group" aria-label="Pen mode">
+          {(
+            [
+              ['draw', 'Draw'],
+              ['smart', 'Smart pen'],
+              ['lasso', 'Lasso'],
+            ] as const
+          ).map(([m, label]) => (
+            <button key={m} aria-pressed={mode === m} className={mode === m ? 'active' : ''} onClick={() => onMode(m)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {!eraser && onPreset && presets.length > 0 && (
+        <div className="pen-presets" role="group" aria-label="Pen presets">
+          {presets.map((p, i) => (
+            <button
+              key={i}
+              aria-label={`Preset ${i + 1}`}
+              aria-pressed={activePreset === i}
+              title={`Preset ${i + 1}: ${p.width} px. Changing colour or width while selected updates it.`}
+              onClick={() => onPreset(i)}
+            >
+              <span
+                style={{ background: p.color, width: 6 + Math.min(p.width, 18), height: 6 + Math.min(p.width, 18) }}
+              />
+            </button>
+          ))}
+        </div>
+      )}
       {eraser ? (
         <label className="check-line">
           <input type="checkbox" checked={precise} onChange={e => onPrecise(e.target.checked)} />
@@ -231,7 +276,7 @@ export function BoardTimer({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (done && !rang.current) {
       rang.current = true;
-      if (sound) beep();
+      if (sound && !doNotDisturb()) beep();
     }
     if (!done) rang.current = false;
   }, [done, sound]);
@@ -730,7 +775,48 @@ export function A11yPanel({
     </aside>
   );
 }
-export function TemplatesPanel({ onChoose, onClose }: { onChoose: (name: TemplateName) => void; onClose: () => void }) {
+export function ValidationPanel({
+  issues,
+  onSelect,
+  onClose,
+}: {
+  issues: DiagramIssue[];
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <aside className="facilitate-panel floating" aria-label="Validation report" onKeyDown={stopKeys(onClose)}>
+      <Heading title="Validation report" count={issues.length} onClose={onClose} />
+      {issues.length ? (
+        <ol className="thread-list">
+          {issues.map((i, k) => (
+            <li key={`${i.id}${i.kind}${k}`}>
+              <button onClick={() => onSelect(i.id)}>
+                <span>{i.message}</span>
+                <small>{issueLabels[i.kind]}</small>
+              </button>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p>No issues found. The report checks loose connectors, unlabelled and unconnected shapes, and overlaps.</p>
+      )}
+    </aside>
+  );
+}
+export function TemplatesPanel({
+  onChoose,
+  onClose,
+  userTemplates = [],
+  onInsertUser,
+  onDeleteUser,
+}: {
+  onChoose: (name: TemplateName) => void;
+  onClose: () => void;
+  userTemplates?: UserTemplate[];
+  onInsertUser?: (t: UserTemplate) => void;
+  onDeleteUser?: (id: string) => void;
+}) {
   const about: Record<TemplateName, string> = {
     Retrospective: 'Three frames: went well, to improve, actions',
     SWOT: 'Strengths, weaknesses, opportunities, threats',
@@ -750,6 +836,30 @@ export function TemplatesPanel({ onChoose, onClose }: { onChoose: (name: Templat
           </li>
         ))}
       </ol>
+      <h3 className="templates-subhead">My templates</h3>
+      {userTemplates.length ? (
+        <ol className="thread-list user-templates" aria-label="My templates">
+          {userTemplates.map(t => (
+            <li key={t.id}>
+              <button onClick={() => onInsertUser?.(t)}>
+                <span>{t.name}</span>
+                <small>
+                  {t.count} object{t.count === 1 ? '' : 's'} · saved {t.created.slice(0, 10)}
+                </small>
+              </button>
+              <button
+                className="icon-button"
+                aria-label={`Delete template ${t.name}`}
+                onClick={() => onDeleteUser?.(t.id)}
+              >
+                <X size={14} />
+              </button>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p>Use Export → Save board as template to keep a board's layout here.</p>
+      )}
       <p>Templates are inserted at the centre of the view as one undoable change.</p>
     </aside>
   );

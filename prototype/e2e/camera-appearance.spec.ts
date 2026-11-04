@@ -95,3 +95,23 @@ test('view controls and appearance fit desktop and phone layouts', async ({ page
     await page.screenshot({ path: testInfo.outputPath(`appearance-${viewport.width}.png`) });
   }
 });
+
+test('view menu offers zoom presets, grid, object dimensions and remembers them', async ({ page }) => {
+  await seed(page, `return {...m.newBoard(),items:[{...m.createItem('note',0,0),id:'n',text:'Size me'}]};`);
+  await page.getByRole('button', { name: /Zoom and navigation:/ }).click();
+  const view = page.getByRole('region', { name: 'View controls' });
+  await view.getByRole('group', { name: 'Zoom presets' }).getByRole('button', { name: '1200%' }).click();
+  await expect(page.getByRole('button', { name: 'Zoom and navigation: 1200%' })).toBeVisible();
+  await view.getByRole('group', { name: 'Zoom presets' }).getByRole('button', { name: '50%' }).click();
+  await expect(page.getByRole('button', { name: 'Zoom and navigation: 50%' })).toBeVisible();
+  await expect(page.locator('.canvas-grid')).toHaveCount(1);
+  await view.getByLabel('Grid').uncheck();
+  await expect(page.locator('.canvas-grid')).toHaveCount(0);
+  await view.getByLabel('Object dimensions').check();
+  await page.keyboard.press('Escape');
+  await item(page, 'n').click();
+  await expect(page.locator('.dimension-label')).toHaveText('210 × 210');
+  await page.reload();
+  await expect(page.locator('svg.canvas')).toBeVisible();
+  await expect(page.locator('.canvas-grid')).toHaveCount(0);
+});

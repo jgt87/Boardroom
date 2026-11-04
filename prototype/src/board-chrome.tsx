@@ -1,8 +1,9 @@
 import React from 'react';
-import { StickyNote, Minus, Plus, Maximize, X, Keyboard, Magnet, Map as MapIcon } from 'lucide-react';
+import { StickyNote, Minus, Plus, Maximize, X, Keyboard, Magnet, Map as MapIcon, Frame } from 'lucide-react';
 import { setLocked } from './arrange';
 import { Minimap } from './minimap';
 import { CameraControls } from './camera-controls';
+import { CommandPalette } from './command-palette';
 import { reorderLayer, setHidden, renameItem } from './board-tools';
 import { LayersPanel } from './board-panels';
 import { useApp } from './board-app';
@@ -21,6 +22,8 @@ export function BoardChrome() {
     notice,
     outline,
     presenting,
+    presentPanel,
+    setPresentPanel,
     saveError,
     selected,
     setCamera,
@@ -35,6 +38,7 @@ export function BoardChrome() {
     snapping,
     update,
     zoom,
+    commandsOpen,
   } = useApp();
   return (
     <>
@@ -115,6 +119,16 @@ export function BoardChrome() {
           </button>
           <span className="divider" />
           <button
+            className={`icon-button ${presentPanel ? 'active' : ''}`}
+            aria-label="Frames"
+            aria-pressed={presentPanel}
+            title="Frames"
+            onClick={() => setPresentPanel(p => !p)}
+          >
+            <Frame size={17} />
+          </button>
+          <span className="divider" />
+          <button
             className="icon-button"
             aria-label="Fit to screen"
             title="Fit to screen (Alt 1)"
@@ -141,6 +155,7 @@ export function BoardChrome() {
           </button>
         </div>
       </footer>
+      {commandsOpen && <CommandPalette />}
       {help && (
         <aside className="help floating">
           <div className="panel-heading">

@@ -1,4 +1,5 @@
 import React from 'react';
+import { readableTextOn } from './board-tools';
 import { Lock, Link as LinkIcon } from 'lucide-react';
 import { richKinds } from './model';
 import type { Item } from './model';
@@ -260,7 +261,7 @@ export function useRenderItem() {
             ) : (
               <div
                 className={`object-text ${i.type === 'text' ? 'plain-text' : ''}`}
-                style={{ color: i.type === 'text' ? i.fill : '#22232b', ...formatStyle(i) }}
+                style={{ color: i.type === 'text' ? i.fill : readableTextOn(i.fill), ...formatStyle(i) }}
               >
                 <TextBody item={i} />
               </div>

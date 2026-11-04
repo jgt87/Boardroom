@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Play } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Play, Plus } from 'lucide-react';
 import type { Board, Item, FrameFormat } from './model';
 import { framePresets, presetSize } from './frame-presets';
 import { presentationFrames, fitFrame } from './navigation';
@@ -110,8 +110,10 @@ export function PresentationPanel({
   onStart,
   onShow,
   onClose,
+  onAdd,
 }: {
   board: Board;
+  onAdd?: () => void;
   onMove: (id: string, delta: number) => void;
   onStart: (index: number) => void;
   onShow: (frame: Item) => void;
@@ -177,6 +179,11 @@ export function PresentationPanel({
         </>
       ) : (
         <p>Add frames to build a presentation. Each frame becomes one slide.</p>
+      )}
+      {onAdd && (
+        <button className="add-frame" onClick={onAdd}>
+          <Plus size={15} /> Add frame
+        </button>
       )}
     </aside>
   );

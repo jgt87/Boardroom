@@ -144,6 +144,7 @@ export function BoardOverlays() {
           onRename={boardActions.rename}
           onDuplicate={boardActions.duplicate}
           onDelete={boardActions.remove}
+          onMeta={boardActions.setMeta}
           onClose={() => setDashboard(false)}
         />
       )}

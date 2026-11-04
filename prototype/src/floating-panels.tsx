@@ -1,5 +1,5 @@
 import React from 'react';
-import { createItem } from './model';
+import { createItem, colors } from './model';
 import type { Item, Crop } from './model';
 import { AnchoredPanel } from './anchored-panel';
 import { NoteDetails } from './sticky-tools';
@@ -21,6 +21,11 @@ import { setNoteEmoji, convertNote } from './notes';
 import { EmojiPicker, ConvertPanel } from './note-extras';
 import { SearchPanel } from './search-panel';
 import { PresentationPanel, PresentOverlay } from './presentation';
+import { TalktrackPanel, PhotoboothPanel, StickiesPanel } from './capture-panels';
+import { placeNotes } from './sticky-detect';
+import { validateDiagram } from './diagram-validation';
+import { loadTemplates, removeTemplate, storeTemplates, templatePayload } from './user-templates';
+import { pastePayload } from './clipboard';
 import { moveInPresentation } from './navigation';
 import { PreviewContext, PrototypePreview } from './prototype-preview';
 import { MarkdownPastePanel } from './markdown-paste';
@@ -48,6 +53,7 @@ import {
   CommentsPanel,
   LinkPicker,
   A11yPanel,
+  ValidationPanel,
   TemplatesPanel,
 } from './board-panels';
 import { viewFor } from './widgets';
@@ -68,6 +74,8 @@ export function FloatingPanels() {
     detailsId,
     display,
     facil,
+    insertCaptured,
+    insertImages,
     fit,
     groupNow,
     mdPaste,
@@ -111,6 +119,13 @@ export function FloatingPanels() {
     widgetCtx,
     widgetEditId,
   } = useApp();
+  // Saved templates are read when the panel opens, so a template saved from Export appears immediately.
+  const [userTemplates, setUserTemplates] = React.useState(loadTemplates),
+    [templatesFor, setTemplatesFor] = React.useState(facil);
+  if (facil !== templatesFor) {
+    setTemplatesFor(facil);
+    if (facil === 'templates') setUserTemplates(loadTemplates());
+  }
   return (
     <>
       {detailsId === selectedItem?.id && selectedItem?.type === 'note' && (
@@ -240,6 +255,24 @@ export function FloatingPanels() {
       {facil === 'templates' && (
         <AnchoredPanel anchor="facilitate" placement="below">
           <TemplatesPanel
+            userTemplates={userTemplates}
+            onDeleteUser={id => {
+              const next = removeTemplate(userTemplates, id);
+              if (storeTemplates(next)) setUserTemplates(next);
+            }}
+            onInsertUser={t => {
+              const payload = templatePayload(t);
+              if (!payload) return display('This template can no longer be read.');
+              const c = toWorld(size.w / 2, size.h / 2),
+                result = pastePayload(boardRef.current, payload, {
+                  x: c.x - payload.bounds.w / 2,
+                  y: c.y - payload.bounds.h / 2,
+                });
+              update(result.board);
+              setSelected(result.ids);
+              setFacil(null);
+              fit(result.board.items.filter(i => result.ids.includes(i.id)));
+            }}
             onChoose={(name: TemplateName) => {
               const at = toWorld(size.w / 2 - 300, size.h / 2 - 200),
                 items = templateItems(name, at, (t, x, y, f) => createItem(t, x, y, f));
@@ -247,6 +280,41 @@ export function FloatingPanels() {
               setSelected(items.map(i => i.id));
               setFacil(null);
               fit(items);
+            }}
+            onClose={() => setFacil(null)}
+          />
+        </AnchoredPanel>
+      )}
+      {facil === 'stickies' && (
+        <AnchoredPanel anchor="facilitate" placement="below">
+          <StickiesPanel
+            palette={colors}
+            onCreate={(found, photo) => {
+              const origin = toWorld(size.w / 2 - 200, size.h / 2 - 200),
+                notes = placeNotes(found, origin).map(p => ({ ...createItem('note', p.x, p.y, p.color), text: '' }));
+              update({ ...boardRef.current, items: [...boardRef.current.items, ...notes] });
+              setSelected(notes.map(n => n.id));
+              setFacil(null);
+              fit(notes);
+              if (photo) void insertImages([photo], { x: origin.x - 520, y: origin.y });
+              display(
+                `Added ${notes.length} sticky note${notes.length === 1 ? '' : 's'}. Double-click a note to type its text.`,
+              );
+            }}
+            onClose={() => setFacil(null)}
+          />
+        </AnchoredPanel>
+      )}
+      {facil === 'validation' && (
+        <AnchoredPanel anchor="facilitate" placement="below">
+          <ValidationPanel
+            issues={validateDiagram(board)}
+            onSelect={id => {
+              const item = boardRef.current.items.find(i => i.id === id);
+              if (item) {
+                setSelected([id]);
+                fit([item]);
+              }
             }}
             onClose={() => setFacil(null)}
           />
@@ -265,6 +333,27 @@ export function FloatingPanels() {
             }}
             onClose={() => setFacil(null)}
           />
+        </AnchoredPanel>
+      )}
+      {(facil === 'talktrack' || facil === 'photobooth') && (
+        <AnchoredPanel anchor="facilitate" placement="below">
+          {facil === 'talktrack' ? (
+            <TalktrackPanel
+              onSave={file => {
+                void insertCaptured(file);
+                setFacil(null);
+              }}
+              onClose={() => setFacil(null)}
+            />
+          ) : (
+            <PhotoboothPanel
+              onSave={file => {
+                void insertCaptured(file);
+                setFacil(null);
+              }}
+              onClose={() => setFacil(null)}
+            />
+          )}
         </AnchoredPanel>
       )}
       {facil === 'reactions' && (
@@ -387,6 +476,14 @@ export function FloatingPanels() {
             onShow={f => {
               setSelected([f.id]);
               fit([f]);
+            }}
+            onAdd={() => {
+              const c = toWorld(size.w / 2, size.h / 2),
+                count = boardRef.current.items.filter(i => i.type === 'frame').length,
+                frame = { ...createItem('frame', c.x - 320, c.y - 180), w: 640, h: 360, text: `Frame ${count + 1}` };
+              update({ ...boardRef.current, items: [frame, ...boardRef.current.items] });
+              setSelected([frame.id]);
+              fit([frame]);
             }}
             onClose={() => setPresentPanel(false)}
           />

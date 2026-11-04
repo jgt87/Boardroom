@@ -503,6 +503,14 @@ export const contrastRatio = (a: string, b: string) => {
   const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
   return (x + 0.05) / (y + 0.05);
 };
+/** Text colour for objects without their own text colour: dark, or white on dark fills. */
+export const readableTextOn = (fill: string | undefined, dark = '#22232b') =>
+  fill &&
+  /^#[0-9a-f]{6}$/i.test(fill) &&
+  contrastRatio(fill, dark) < 4.5 &&
+  contrastRatio(fill, '#ffffff') > contrastRatio(fill, dark)
+    ? '#ffffff'
+    : dark;
 export type A11yIssue = { id: string; kind: 'contrast' | 'alt' | 'small-text' | 'empty'; message: string };
 /** Local accessibility review: text contrast, missing descriptions on media, tiny text. */
 export function checkAccessibility(board: Board): A11yIssue[] {

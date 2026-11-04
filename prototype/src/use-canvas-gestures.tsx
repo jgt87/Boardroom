@@ -1,6 +1,6 @@
 import React from 'react';
 import { clone, createItem } from './model';
-import type { Kind, Point } from './model';
+import type { Item, Kind, Point } from './model';
 import { translate, selectWithin, snapMove, resizeBounds, resizeItems, selectionBounds } from './interactions';
 import type { Handle } from './interactions';
 import { moveConnectorEndpoint, dragBend } from './connector-geometry';
@@ -9,6 +9,10 @@ import { adoptIntoContainers, insertionPreview } from './autolayout';
 import { canCopyToRecords, copyToRecords, recordDropAt } from './record-canvas';
 import { adoptGridObjects, detachGridObjects, gridDropAt } from './grid-canvas';
 import { stackNext, simplify, strokeFromPoints, eraseAt, eraseAlong, nearestAlong } from './board-tools';
+import { recognizeStroke, lassoSelect } from './pen-smart';
+
+/** A pen stroke's points in world coordinates. */
+const absolutePoints = (i: Item) => (i.points ?? []).map(p => ({ x: i.x + p.x, y: i.y + p.y }));
 import type { BoardCore, Gesture } from './board-app';
 import { isShapeKind } from './shapes';
 
@@ -53,6 +57,8 @@ export function useCanvasGestures(core: BoardCore) {
     finishPlacedItem,
     setMindEditId,
     setCodeId,
+    penMode,
+    setLasso,
   } = core;
   const hit = (e: React.PointerEvent) => (e.target as Element).closest<SVGGElement>('[data-item]')?.dataset.item;
   function cancelGesture() {
@@ -63,6 +69,7 @@ export function useCanvasGestures(core: BoardCore) {
     setDraft(null);
     setDropLine(null);
     setMarquee(null);
+    setLasso(null);
     setGuides([]);
   }
   function transformed(g: Gesture, p: Point, shift: boolean, alt: boolean) {
@@ -140,6 +147,11 @@ export function useCanvasGestures(core: BoardCore) {
       eraseLast.current = start;
       gesture.current = { ...base, mode: 'erase' };
       setDraft(eraseAt(current, start, 10 / camera.z, precise));
+      return;
+    }
+    if (tool === 'pen' && !eraser && penMode === 'lasso' && e.button === 0 && !space.current) {
+      gesture.current = { ...base, mode: 'lasso', path: [start] };
+      setLasso([start]);
       return;
     }
     if (
@@ -228,7 +240,10 @@ export function useCanvasGestures(core: BoardCore) {
     else if (g.mode === 'endpoint' && g.moved)
       setDraft(moveConnectorEndpoint(g.board, g.ids[0], g.endpoint!, p, 12 / g.camera.z, !e.altKey));
     else if (g.mode === 'bend' && g.moved) setDraft(dragBend(g.board, g.ids[0], g.bend!, p));
-    else if (g.mode === 'erase') {
+    else if (g.mode === 'lasso') {
+      g.path!.push(p);
+      setLasso([...g.path!]);
+    } else if (g.mode === 'erase') {
       const from = eraseLast.current ?? g.start;
       eraseLast.current = p;
       setDraft(d => eraseAlong(d ?? g.board, from, p, 10 / g.camera.z, precise));
@@ -291,6 +306,15 @@ export function useCanvasGestures(core: BoardCore) {
     gesture.current = null;
     const final = toWorld(e.clientX, e.clientY),
       moved = g.moved || Math.hypot(e.clientX - g.screen.x, e.clientY - g.screen.y) > 3;
+    if (g.mode === 'lasso') {
+      setLasso(null);
+      const ids = lassoSelect(g.board.items, g.path ?? []);
+      if (ids.length) {
+        setSelected(expandGroups(g.board, ids));
+        setTool('select');
+      }
+      return;
+    }
     if (g.mode === 'marquee' && moved)
       setSelected([
         ...new Set([
@@ -334,6 +358,27 @@ export function useCanvasGestures(core: BoardCore) {
             absolute.length > 1 ? absolute : [...absolute, { x: absolute[0].x + 0.5, y: absolute[0].y + 0.5 }],
           ),
         );
+      }
+      // Smart pen: a recognisable stroke becomes a real shape or line (one undo step).
+      const recognized = g.item.type === 'pen' && penMode === 'smart' ? recognizeStroke(absolutePoints(g.item)) : null;
+      if (recognized) {
+        const shape =
+          recognized.kind === 'line'
+            ? {
+                ...createItem('arrow', recognized.x, recognized.y),
+                w: recognized.w,
+                h: recognized.h,
+                connector: { endHead: 'none' as const },
+              }
+            : {
+                ...createItem(recognized.kind, recognized.x, recognized.y, '#ffffff'),
+                w: recognized.w,
+                h: recognized.h,
+                text: '',
+              };
+        update({ ...g.board, items: [...g.board.items, shape] });
+        setSelected([shape.id]);
+        return;
       }
       update(finishPlacedItem(g.board, g.item));
       if (g.item.type !== 'pen') {

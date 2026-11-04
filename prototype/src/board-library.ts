@@ -24,6 +24,9 @@ export type BoardMeta = {
   updatedAt: string;
   items: number;
   preview: PreviewShape[];
+  /** Optional space (folder) the board is filed under, and whether it is starred (item 107). */
+  space?: string;
+  starred?: boolean;
 };
 export type Library = { version: 1; activeId: string; boards: BoardMeta[] };
 
@@ -79,6 +82,44 @@ function readIndex(kv: KeyValueStore): Library | null {
   }
 }
 const writeIndex = (kv: KeyValueStore, lib: Library) => kv.setItem(INDEX_KEY, JSON.stringify(lib));
+export const SPACE_MAX = 60;
+export const cleanSpace = (name: string) =>
+  [...name]
+    .filter(ch => ch.charCodeAt(0) >= 32 && ch !== '<' && ch !== '>')
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, SPACE_MAX);
+/** Distinct spaces in use, alphabetically. */
+export const spacesOf = (lib: Library) =>
+  [...new Set(lib.boards.map(b => b.space).filter((s): s is string => !!s))].sort((a, b) => a.localeCompare(b));
+/** File a board under a space ('' or null removes it) and/or star it. Index-only; board data is untouched. */
+export function setBoardMeta(
+  kv: KeyValueStore,
+  lib: Library,
+  id: string,
+  patch: { space?: string | null; starred?: boolean },
+): Library {
+  const next: Library = {
+    ...lib,
+    boards: lib.boards.map(b => {
+      if (b.id !== id) return b;
+      const m = { ...b };
+      if (patch.space !== undefined) {
+        const s = patch.space ? cleanSpace(patch.space) : '';
+        if (s) m.space = s;
+        else delete m.space;
+      }
+      if (patch.starred !== undefined) {
+        if (patch.starred) m.starred = true;
+        else delete m.starred;
+      }
+      return m;
+    }),
+  };
+  writeIndex(kv, next);
+  return next;
+}
 
 /**
  * Open the library: migrate a legacy single board on first run, adopt a legacy copy that is newer
@@ -135,6 +176,8 @@ export function saveActive(kv: KeyValueStore, lib: Library, board: Board, now = 
   kv.setItem(LEGACY_KEY, json);
   const old = lib.boards.find(b => b.id === lib.activeId);
   const meta = metaFor(lib.activeId, board, now, old?.createdAt);
+  if (old?.space) meta.space = old.space;
+  if (old?.starred) meta.starred = true;
   const next: Library = { ...lib, boards: [meta, ...lib.boards.filter(b => b.id !== lib.activeId)] };
   writeIndex(kv, next);
   return next;

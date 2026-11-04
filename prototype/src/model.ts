@@ -31,7 +31,10 @@ export type WidgetKind =
   | 'ranking'
   | 'quiz'
   | 'slides'
-  | 'openended';
+  | 'openended'
+  | 'people'
+  | 'usercard'
+  | 'shortcut';
 export const widgetKinds: WidgetKind[] = [
   'drawio',
   'card',
@@ -62,6 +65,9 @@ export const widgetKinds: WidgetKind[] = [
   'quiz',
   'slides',
   'openended',
+  'people',
+  'usercard',
+  'shortcut',
 ];
 export type Kind =
   | 'note'
@@ -229,6 +235,10 @@ export type Board = {
   privateMode?: { all: boolean; frames: string[] };
   /** Show sticky note authors (item 85). */
   showAuthors?: boolean;
+  /** Board settings (item 103): canvas colour, the view new visitors open at, and a status. */
+  background?: string;
+  startView?: { x: number; y: number; z: number };
+  status?: 'draft' | 'in-progress' | 'review' | 'approved';
 };
 export type History = { past: Board[]; current: Board; future: Board[] };
 export const colors = [
@@ -244,6 +254,11 @@ export const colors = [
   '#d1ec9c',
   '#ffffff',
   '#e4e4e7',
+  // Dark colours (item 98): text on these switches to white automatically.
+  '#3d5afe',
+  '#1e3a8a',
+  '#166534',
+  '#1f1f23',
 ];
 export const clone = <T>(value: T): T => structuredClone(value);
 export const newBoard = (): Board => ({ version: 1, title: 'My first board', items: [] });

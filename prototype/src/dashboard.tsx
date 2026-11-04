@@ -1,6 +1,7 @@
 // Boards dashboard (item 56): open, create (blank or from a template), rename, duplicate and delete.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Plus, Copy, Trash2, Pencil, Search, LayoutGrid } from 'lucide-react';
+import { X, Plus, Copy, Trash2, Pencil, Search, LayoutGrid, Star } from 'lucide-react';
+import { spacesOf } from './board-library';
 import type { BoardMeta, Library } from './board-library';
 import { templateNames } from './board-tools';
 import type { TemplateName } from './board-tools';
@@ -55,7 +56,9 @@ export function BoardsDashboard({
   onDuplicate,
   onDelete,
   onClose,
+  onMeta,
 }: {
+  onMeta?: (id: string, patch: { starred?: boolean }) => void;
   library: Library;
   onOpen: (id: string) => void;
   onCreate: (template: TemplateName | null) => void;
@@ -68,6 +71,7 @@ export function BoardsDashboard({
     [renaming, setRenaming] = useState<string | null>(null),
     [confirming, setConfirming] = useState<string | null>(null),
     [sort, setSort] = useState<'recent' | 'name' | 'created'>('recent'),
+    [space, setSpace] = useState<string>('all'),
     dialog = useRef<HTMLDivElement>(null),
     search = useRef<HTMLInputElement>(null);
   // Escape closes the dashboard even after focus was lost (for example when a deleted card's button disappears).
@@ -91,15 +95,22 @@ export function BoardsDashboard({
   }, []);
   const boards = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = library.boards.filter(b => !q || b.title.toLowerCase().includes(q));
-    return [...list].sort((a, b) =>
-      sort === 'name'
-        ? a.title.localeCompare(b.title)
-        : sort === 'created'
-          ? Date.parse(b.createdAt) - Date.parse(a.createdAt)
-          : Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
+    const list = library.boards.filter(
+      b =>
+        (!q || b.title.toLowerCase().includes(q)) &&
+        (space === 'all' || (space === 'starred' ? b.starred : space === 'none' ? !b.space : b.space === space)),
     );
-  }, [library.boards, query, sort]);
+    // Starred boards come first (item 107), then the chosen order.
+    return [...list].sort(
+      (a, b) =>
+        Number(!!b.starred) - Number(!!a.starred) ||
+        (sort === 'name'
+          ? a.title.localeCompare(b.title)
+          : sort === 'created'
+            ? Date.parse(b.createdAt) - Date.parse(a.createdAt)
+            : Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
+    );
+  }, [library.boards, query, sort, space]);
   return (
     <div
       className="format-overlay dashboard-overlay"
@@ -149,6 +160,16 @@ export function BoardsDashboard({
               onChange={e => setQuery(e.target.value)}
             />
           </label>
+          <select aria-label="Show boards" value={space} onChange={e => setSpace(e.target.value)}>
+            <option value="all">All boards</option>
+            <option value="starred">Starred</option>
+            <option value="none">No space</option>
+            {spacesOf(library).map(s => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
           <select aria-label="Sort boards" value={sort} onChange={e => setSort(e.target.value as typeof sort)}>
             <option value="recent">Last edited</option>
             <option value="created">Newest</option>
@@ -188,6 +209,7 @@ export function BoardsDashboard({
                 <small>
                   {b.items} {b.items === 1 ? 'object' : 'objects'} · {relative(b.updatedAt)}
                   {b.id === library.activeId ? ' · open now' : ''}
+                  {b.space ? ` · ${b.space}` : ''}
                 </small>
                 {confirming === b.id ? (
                   <div className="board-confirm" role="alert">
@@ -205,6 +227,17 @@ export function BoardsDashboard({
                   </div>
                 ) : (
                   <div className="board-actions">
+                    {onMeta && (
+                      <button
+                        className={`icon-button ${b.starred ? 'active' : ''}`}
+                        aria-label={`${b.starred ? 'Unstar' : 'Star'} ${b.title}`}
+                        aria-pressed={!!b.starred}
+                        title={b.starred ? 'Unstar' : 'Star'}
+                        onClick={() => onMeta(b.id, { starred: !b.starred })}
+                      >
+                        <Star size={15} fill={b.starred ? 'currentColor' : 'none'} />
+                      </button>
+                    )}
                     <button
                       className="icon-button"
                       aria-label={`Rename ${b.title}`}

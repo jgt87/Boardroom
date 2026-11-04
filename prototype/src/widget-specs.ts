@@ -7,6 +7,8 @@ import { diagramSpecs } from './specs-diagrams.ts';
 import { engageSpecs } from './specs-engage.ts';
 import { drawioSpec } from './drawio.ts';
 import { activitySpecs } from './specs-activities.ts';
+import { peopleSpecs } from './specs-people.ts';
+import { shortcutSpec } from './specs-shortcut.ts';
 
 export const widgetSpecs: WidgetSpec[] = [
   ...basicSpecs,
@@ -15,6 +17,8 @@ export const widgetSpecs: WidgetSpec[] = [
   ...engageSpecs,
   drawioSpec,
   ...activitySpecs,
+  ...peopleSpecs,
+  shortcutSpec,
 ];
 const byKind = new Map(widgetSpecs.map(s => [s.kind, s]));
 export const specFor = (kind: string) => byKind.get(kind as WidgetKind);

@@ -12,6 +12,8 @@ import { isShapeKind } from './shapes';
 export function useKeyboardShortcuts(core: BoardCore, gestures: { cancelGesture: () => void }) {
   const {
     setContextMenu,
+    viewPrefs,
+    setCommandsOpen,
     camera,
     svg,
     toWorld,
@@ -86,6 +88,12 @@ export function useKeyboardShortcuts(core: BoardCore, gestures: { cancelGesture:
         return;
       const key = e.key.toLowerCase(),
         mod = e.ctrlKey || e.metaKey;
+      // Command palette (item 105).
+      if (mod && !e.altKey && (key === 'k' || key === '/')) {
+        e.preventDefault();
+        setCommandsOpen(o => !o);
+        return;
+      }
       if (gesture.current) {
         if (key === 'escape') {
           e.preventDefault();
@@ -191,6 +199,8 @@ export function useKeyboardShortcuts(core: BoardCore, gestures: { cancelGesture:
             y: key === 'arrowdown' ? d : key === 'arrowup' ? -d : 0,
           }),
         );
+      } else if (!mod && !e.altKey && !viewPrefs.singleKeys && key.length === 1 && key !== '?') {
+        // Single-character shortcuts are off (item 104): plain letters do nothing.
       } else if (!mod && !e.altKey && key === 'c') {
         setTool('comment');
         setEditing(null);

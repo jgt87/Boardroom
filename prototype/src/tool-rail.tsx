@@ -1,4 +1,4 @@
-import { Undo2, Redo2, LayoutTemplate, Shapes, Ellipsis, MousePointer2, Smile } from 'lucide-react';
+import { Undo2, Redo2, LayoutTemplate, Shapes, Ellipsis, MousePointer2, Smile, Hand } from 'lucide-react';
 import { colors, undo, redo, bulkNotes } from './model';
 import type { Kind } from './model';
 import { ToolGallery, FormatEditor, BulkPanel } from './formats';
@@ -14,8 +14,7 @@ import { EmojiPicker } from './emoji-picker';
 import { StickerChoices } from './widgets-graphics';
 
 export function ToolRail() {
-  const [navigationMenu, setNavigationMenu] = useState(false),
-    [emojiMenu, setEmojiMenu] = useState(false);
+  const [emojiMenu, setEmojiMenu] = useState(false);
   const {
     addCentered,
     board,
@@ -54,6 +53,13 @@ export function ToolRail() {
     pendingPlacement,
     setPendingPlacement,
     setFacil,
+    penMode,
+    setPenMode,
+    penPresetList,
+    activePreset,
+    setActivePreset,
+    savePenPresets,
+    viewPrefs,
   } = useApp();
   /** Start click-to-place for an emoji (`emoji:<emoji>`) or a built-in sticker kind. */
   const placeStamp = (choice: string) => {
@@ -70,26 +76,31 @@ export function ToolRail() {
         aria-label="Creation tools"
         onClickCapture={e => {
           const label = (e.target as Element).closest('button')?.getAttribute('aria-label');
-          if (label !== 'Select') setNavigationMenu(false);
           if (label !== 'Emoji and stickers') setEmojiMenu(false);
         }}
       >
         <button
           data-tool-anchor="select"
-          aria-label="Select"
-          title="Select (V) · Pan (H)"
-          aria-pressed={tool === 'select'}
-          className={tool === 'select' ? 'active' : ''}
+          aria-label={tool === 'hand' ? 'Pan' : 'Select'}
+          title={
+            tool === 'hand'
+              ? 'Pan (H) · click for Select'
+              : tool === 'select'
+                ? 'Select (V) · click for Pan'
+                : 'Select (V)'
+          }
+          aria-pressed={tool === 'select' || tool === 'hand'}
+          className={tool === 'select' || tool === 'hand' ? 'active' : ''}
           onClick={() => {
-            setNavigationMenu(v => (tool === 'select' ? !v : false));
-            setTool('select');
+            // One button toggles between the selector and the hand (pan) tool; from any other tool it returns to Select.
+            setTool(tool === 'select' ? 'hand' : 'select');
             setEditing(null);
             setPendingPlacement(null);
             setGallery(null);
             setShapes(false);
           }}
         >
-          <MousePointer2 size={21} />
+          {tool === 'hand' ? <Hand size={21} /> : <MousePointer2 size={21} />}
         </button>
         <button
           data-tool-anchor="formats"
@@ -191,30 +202,6 @@ export function ToolRail() {
           />
         </AnchoredPanel>
       )}
-      {navigationMenu && (
-        <AnchoredPanel anchor="select">
-          <aside className="shape-menu floating" aria-label="Selection tools">
-            <h2>Selection tools</h2>
-            <button
-              onClick={() => {
-                setTool('select');
-                setNavigationMenu(false);
-              }}
-            >
-              Select
-            </button>
-            <button
-              aria-label="Pan"
-              onClick={() => {
-                setTool('hand');
-                setNavigationMenu(false);
-              }}
-            >
-              Hand tool
-            </button>
-          </aside>
-        </AnchoredPanel>
-      )}
       {shapes && (
         <AnchoredPanel anchor="rectangle">
           <aside className="shape-menu floating" aria-label="Shapes and lines">
@@ -298,32 +285,34 @@ export function ToolRail() {
           }}
         />
       )}
-      <div className="history floating">
-        <button
-          className="icon-button"
-          aria-label="Undo"
-          title="Undo (Ctrl Z)"
-          disabled={!history.past.length}
-          onClick={() => {
-            setHistory(undo);
-            setEditing(null);
-          }}
-        >
-          <Undo2 size={19} />
-        </button>
-        <button
-          className="icon-button"
-          aria-label="Redo"
-          title="Redo (Ctrl Shift Z)"
-          disabled={!history.future.length}
-          onClick={() => {
-            setHistory(redo);
-            setEditing(null);
-          }}
-        >
-          <Redo2 size={19} />
-        </button>
-      </div>
+      {viewPrefs.undoControls && (
+        <div className="history floating">
+          <button
+            className="icon-button"
+            aria-label="Undo"
+            title="Undo (Ctrl Z)"
+            disabled={!history.past.length}
+            onClick={() => {
+              setHistory(undo);
+              setEditing(null);
+            }}
+          >
+            <Undo2 size={19} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Redo"
+            title="Redo (Ctrl Shift Z)"
+            disabled={!history.future.length}
+            onClick={() => {
+              setHistory(redo);
+              setEditing(null);
+            }}
+          >
+            <Redo2 size={19} />
+          </button>
+        </div>
+      )}
       {tool !== 'select' && tool !== 'hand' && (
         <AnchoredPanel
           anchor={
@@ -360,9 +349,25 @@ export function ToolRail() {
                   setPenStyle(st);
                   setPenWidth(penPresets[st].width);
                 }}
-                onWidth={setPenWidth}
+                onWidth={w => {
+                  setPenWidth(w);
+                  if (activePreset !== null)
+                    savePenPresets(penPresetList.map((p, i) => (i === activePreset ? { ...p, width: w } : p)));
+                }}
                 onEraser={setEraser}
                 onPrecise={setPrecise}
+                mode={penMode}
+                onMode={setPenMode}
+                presets={penPresetList}
+                activePreset={activePreset}
+                onPreset={i => {
+                  const p = penPresetList[i]!;
+                  setActivePreset(i);
+                  setEraser(false);
+                  setPenMode('draw');
+                  setPenColor(p.color);
+                  setPenWidth(p.width);
+                }}
               />
             )}
             {tool === 'pen' && !eraser && (
@@ -374,7 +379,11 @@ export function ToolRail() {
                     aria-pressed={penColor === c}
                     className={penColor === c ? 'chosen' : ''}
                     style={{ background: c }}
-                    onClick={() => setPenColor(c)}
+                    onClick={() => {
+                      setPenColor(c);
+                      if (activePreset !== null)
+                        savePenPresets(penPresetList.map((p, i) => (i === activePreset ? { ...p, color: c } : p)));
+                    }}
                   />
                 ))}
               </div>

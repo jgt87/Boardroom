@@ -3,6 +3,8 @@ import { Download, Layers, Check, ChevronDown, CloudOff, Search as SearchIcon, M
 import { IMAGE_ACCEPT, withAssets } from './images';
 import { setPrivate } from './board-tools';
 import { useApp } from './board-app';
+import { BoardMenu, BoardStatusChip } from './board-menu';
+import { addTemplate, loadTemplates, makeTemplate, storeTemplates } from './user-templates';
 import { useExporters } from './use-exporters';
 
 export function TopBar() {
@@ -10,6 +12,7 @@ export function TopBar() {
     assets,
     board,
     boardRef,
+    display,
     download,
 
     facil,
@@ -67,6 +70,8 @@ export function TopBar() {
           maxLength={200}
           onChange={e => update({ ...boardRef.current, title: e.target.value })}
         />
+        <BoardStatusChip />
+        <BoardMenu />
         <span className={`save-state ${saveError ? 'error' : ''}`} title={saveError || 'Stored only in this browser'}>
           {saveError ? <CloudOff size={15} /> : <Check size={15} />}
           <span>{saveError ? 'Save issue' : saved ? 'Saved locally' : 'Saving'}</span>
@@ -227,6 +232,20 @@ export function TopBar() {
               </button>
               <button onClick={exportCsv}>
                 Export records as CSV<span>Selected or first record view</span>
+              </button>
+              <button
+                onClick={() => {
+                  setMenu(false);
+                  const made = makeTemplate(board, board.title, crypto.randomUUID(), new Date());
+                  if ('error' in made) return display(made.error);
+                  display(
+                    storeTemplates(addTemplate(loadTemplates(), made))
+                      ? `Saved "${made.name}" to My templates.`
+                      : 'This browser has no room to store the template.',
+                  );
+                }}
+              >
+                Save board as template<span>Reuse it from Templates; media not included</span>
               </button>
               <button
                 onClick={() => {

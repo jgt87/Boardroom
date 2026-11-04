@@ -1,6 +1,7 @@
 import { expandGroups } from './arrange';
 import React from 'react';
 import { selectionBounds, handles, handlePoint } from './interactions';
+import { dimensionLabel } from './view-prefs';
 import { connectorGeometry, ConnectorMarkers } from './connectors';
 import { bendHandles } from './connector-geometry';
 import { castVote, threadPoint, frameContentHidden } from './board-tools';
@@ -38,6 +39,8 @@ export function CanvasSurface() {
 
     run,
     selected,
+    viewPrefs,
+    lasso,
     selectedItem,
     selectionLocked,
     setMindEditId,
@@ -118,6 +121,7 @@ export function CanvasSurface() {
           if (images.length) void insertImages(images, toWorld(e.clientX, e.clientY));
         }}
         className={`canvas tool-${tool}`}
+        style={board.background ? { background: board.background } : undefined}
         width="100%"
         height="100%"
         aria-label="Whiteboard canvas"
@@ -203,7 +207,7 @@ export function CanvasSurface() {
             <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
           </marker>
         </defs>
-        <rect width="100%" height="100%" fill="url(#grid)" />
+        {viewPrefs.grid && <rect className="canvas-grid" width="100%" height="100%" fill="url(#grid)" />}
         <g id="objects" transform={`translate(${camera.x} ${camera.y}) scale(${camera.z})`}>
           {[
             ...shown.items.filter(i => i.type === 'frame'),
@@ -226,7 +230,7 @@ export function CanvasSurface() {
                 </foreignObject>
               </g>
             ))}
-          {(board.comments ?? [])
+          {(viewPrefs.comments ? (board.comments ?? []) : [])
             .filter(t => !t.resolved || (thread && 'id' in thread && thread.id === t.id))
             .map(t => {
               const p = threadPoint(shown, t);
@@ -282,6 +286,18 @@ export function CanvasSurface() {
                     strokeWidth={1.5 / camera.z}
                     pointerEvents="none"
                   />
+                )}
+                {viewPrefs.dimensions && !(selected.length === 1 && selectedItem?.type === 'arrow') && (
+                  <text
+                    className="dimension-label"
+                    x={b.x + b.w / 2}
+                    y={b.y + b.h + 22 / camera.z}
+                    textAnchor="middle"
+                    fontSize={12 / camera.z}
+                    pointerEvents="none"
+                  >
+                    {dimensionLabel(b)}
+                  </text>
                 )}
                 {!editing &&
                   !selectionLocked &&
@@ -382,6 +398,16 @@ export function CanvasSurface() {
             pointerEvents="none"
           />
         ))}
+        {lasso && lasso.length > 1 && (
+          <polygon
+            className="lasso-path"
+            points={lasso.map(p => `${p.x * camera.z + camera.x},${p.y * camera.z + camera.y}`).join(' ')}
+            fill="#4262ff12"
+            stroke="#4262ff"
+            strokeDasharray="5 4"
+            pointerEvents="none"
+          />
+        )}
         {marquee && (
           <rect
             x={marquee.x * camera.z + camera.x}

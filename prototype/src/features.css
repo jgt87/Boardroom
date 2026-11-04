@@ -883,7 +883,8 @@
   .board-header .divider {
     display: none;
   }
-  .document-actions > .icon-button {
+  .document-actions > .icon-button,
+  .document-actions > .menu-anchor > .icon-button {
     width: 34px;
   }
   .search-anchor {

@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Parity with the live inventory: view menu, people, capture, templates
+- **View menu:** the zoom percentage now also offers 50–2000% presets, Fit to screen, and toggles for Grid, Object dimensions (W × H under the selection), Minimap, Spell check and full screen. Zoom goes up to 2000%.
+- **People** and **User card** objects show who works on a board, using the local profile name (no server accounts).
+- **Talktrack** records your screen and voice, and **Photobooth** takes a camera photo; both add the result to the board and stay on this device (needs localhost or HTTPS).
+- **Save board as template** (Export menu) keeps a board's layout in this browser; insert or delete it from Templates → My templates.
+- **Sticky notes** have 16 colours, including four dark ones whose text turns white automatically.
+- **Action Shortcut** buttons open a link, jump to a frame, start presenting or open the timer. **Spellchecker** turns spelling marks on or off. A **Frames** button in the bottom bar opens the frames list, which can add a frame.
+- **Validation report** lists loose connectors, unlabelled, unconnected and overlapping shapes. **Stickies capture** turns a photo of paper sticky notes into digital notes in the same colours and layout.
+- **Pen panel:** Smart pen turns hand-drawn boxes, circles, triangles and straight strokes into real shapes and lines; Lasso selects objects inside a drawn loop; three pen presets remember colour and width.
+- **Board menu** (⋮ beside the board name): status, 11 background colours, a start view the board opens at, and Duplicate board.
+- **Preferences:** mouse or trackpad navigation, single-character shortcuts, reduce motion, and showing comments and the undo/redo controls.
+- **Command palette:** Ctrl+K or Ctrl+/ finds and runs any tool or common action.
+- **History** and **Catch up** in the board menu: see what was added, edited or deleted, restore deleted objects, and get a summary for the last day, week or month.
+- **Board details**, **Star this board** and **Move to** a named space; All boards lists starred boards first and filters by space. Mouse or trackpad adds **Auto-detect**.
+- **Do Not Disturb** (view menu) mutes the timer sound and reaction animations.
+
+### Select and Pan toggle
+- The Select button in the tool rail now switches directly between Select and the hand (Pan) tool on each click instead of opening a menu. Its icon and name follow the active tool; from any other tool it returns to Select.
+- The top-right action buttons now share one height: Collaborate and review was smaller than the others because it sits in a menu wrapper.
+
 ### Camera and appearance controls
 - The zoom percentage opens precise zoom and world-center coordinates, a 100% shortcut, and Reset view (origin centered at 100%). Existing wheel/button zoom shares the tested camera math.
 - Properties → Appearance adds whole-object opacity, numeric font weight and vertical text offset. Font weight is also selectable in the text toolbar; Bold stays consistent with numeric weights. Auto text reserves space for the offset.

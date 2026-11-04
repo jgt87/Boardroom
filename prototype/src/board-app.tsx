@@ -1,6 +1,12 @@
 // Board application state and behaviour. UI components read it through useApp().
 import React, { useEffect, useRef, useState } from 'react';
-import { zoomCameraAt } from './camera';
+import { zoomCameraAt, clampZoom, centeredCamera } from './camera';
+import { loadViewPrefs, saveViewPrefs, wheelLooksLikeMouse, type ViewPrefs } from './view-prefs';
+import { useLatest } from './use-latest';
+import { presentationFrames } from './navigation';
+import { SHORTCUT_EVENT, type ShortcutData } from './specs-shortcut';
+import { parsePenPresets, PEN_PRESETS_KEY, type PenPreset } from './pen-smart';
+import { activityKey, appendActivity, diffActivity, parseActivity } from './activity';
 import {
   MousePointer2,
   Hand,
@@ -55,6 +61,7 @@ import {
   deleteBoard,
   assetRefsAcrossBoards,
   LEGACY_KEY,
+  setBoardMeta,
 } from './board-library';
 import type { Library } from './board-library';
 import { copySelection, clipboardFormats, readClipboardHtml, pastePayload } from './clipboard';
@@ -97,7 +104,9 @@ export type Tool = 'select' | 'hand' | Kind | 'stack' | 'comment';
 export type Camera = { x: number; y: number; z: number };
 export type Gesture =
   | {
-      mode: 'move' | 'resize' | 'pan' | 'draw' | 'create' | 'marquee' | 'endpoint' | 'bend';
+      mode: 'move' | 'resize' | 'pan' | 'draw' | 'create' | 'marquee' | 'endpoint' | 'bend' | 'lasso';
+      /** Lasso outline in world coordinates. */
+      path?: Point[];
       start: Point;
       screen: Point;
       board: Board;
@@ -142,7 +151,12 @@ function useBoardCore() {
     [editing, setEditing] = useState<string | null>(null);
   const [pendingPlacement, setPendingPlacement] = useState<string | null>(null);
   const editSeed = useRef<{ id: string; text: string } | null>(null);
-  const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, z: 1 });
+  // A board with a start view (item 103) opens there; otherwise at the origin.
+  const [camera, setCamera] = useState<Camera>(() =>
+    initial.board.startView
+      ? centeredCamera(initial.board.startView, initial.board.startView.z, { w: innerWidth, h: innerHeight })
+      : { x: 0, y: 0, z: 1 },
+  );
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight });
   const [library, setLibrary] = useState<Library>(initial.library),
     [dashboard, setDashboard] = useState(false),
@@ -168,11 +182,34 @@ function useBoardCore() {
     [penWidth, setPenWidth] = useState(3),
     [eraser, setEraser] = useState(false),
     [precise, setPrecise] = useState(false),
+    // Pen panel mode (item 102): plain ink, smart pen (strokes become shapes) or lasso selection.
+    [penMode, setPenMode] = useState<'draw' | 'smart' | 'lasso'>('draw'),
+    [lasso, setLasso] = useState<Point[] | null>(null),
+    [penPresetList, setPenPresetList] = useState<PenPreset[]>(() => {
+      try {
+        return parsePenPresets(localStorage.getItem(PEN_PRESETS_KEY));
+      } catch {
+        return parsePenPresets(null);
+      }
+    }),
+    [activePreset, setActivePreset] = useState<number | null>(null),
     [penColor, setPenColor] = useState('#25252a');
   const stackLast = useRef<string | null>(null);
   const eraseLast = useRef<Point | null>(null);
   const [facilitate, setFacilitate] = useState(false),
-    [facil, setFacil] = useState<'voting' | 'comments' | 'templates' | 'a11y' | 'reactions' | 'authors' | null>(null),
+    [facil, setFacil] = useState<
+      | 'voting'
+      | 'comments'
+      | 'templates'
+      | 'a11y'
+      | 'reactions'
+      | 'authors'
+      | 'talktrack'
+      | 'photobooth'
+      | 'validation'
+      | 'stickies'
+      | null
+    >(null),
     [timerOn, setTimerOn] = useState(false);
   const [thread, setThread] = useState<{ id: string } | { x: number; y: number; itemId?: string } | null>(null);
   const [widgetEditId, setWidgetEditId] = useState<string | null>(null);
@@ -222,6 +259,26 @@ function useBoardCore() {
   const [dropLine, setDropLine] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [guides, setGuides] = useState<Guide[]>([]),
     [snapping, setSnapping] = useState(true);
+  const [viewPrefs, setViewPrefsState] = useState<ViewPrefs>(loadViewPrefs);
+  // Spelling marks follow the page's spellcheck attribute, which every editor inherits.
+  useEffect(() => {
+    document.documentElement.spellcheck = viewPrefs.spellcheck;
+  }, [viewPrefs.spellcheck]);
+  useEffect(() => {
+    document.documentElement.classList.toggle('reduce-motion', viewPrefs.reduceMotion);
+  }, [viewPrefs.reduceMotion]);
+  useEffect(() => {
+    if (viewPrefs.dnd) document.documentElement.dataset.dnd = 'on';
+    else delete document.documentElement.dataset.dnd;
+  }, [viewPrefs.dnd]);
+  const navigationRef = useLatest(viewPrefs.navigation);
+  const [commandsOpen, setCommandsOpen] = useState(false);
+  const setViewPrefs = (patch: Partial<ViewPrefs>) =>
+    setViewPrefsState(prev => {
+      const next = { ...prev, ...patch };
+      saveViewPrefs(next);
+      return next;
+    });
   const svg = useRef<SVGSVGElement>(null),
     gesture = useRef<Gesture | null>(null),
     file = useRef<HTMLInputElement>(null),
@@ -248,8 +305,20 @@ function useBoardCore() {
     });
     return changed ? { ...next, items } : next;
   };
+  /** Record what changed for History and Catch up (item 106). Storage failures never block editing. */
+  const logActivity = (prev: Board, next: Board) => {
+    try {
+      const entries = diffActivity(prev, next, new Date().toISOString(), () => crypto.randomUUID());
+      if (!entries.length) return;
+      const key = activityKey(libraryRef.current.activeId);
+      localStorage.setItem(key, JSON.stringify(appendActivity(parseActivity(localStorage.getItem(key)), entries)));
+    } catch {
+      /* History is best effort. */
+    }
+  };
   const update = (input: Board) => {
     if (input.items.length > 2000) return display('This prototype supports up to 2,000 objects per board.');
+    const prev = boardRef.current;
     let next: Board;
     try {
       next = normalize(stampAuthors(boardRef.current, input, authorRef.current));
@@ -260,6 +329,7 @@ function useBoardCore() {
     boardRef.current = next;
     pauseSave.current = false;
     setHistory(h => commit(h, next));
+    logActivity(prev, next);
   };
   const rawSelectedItem = shown.items.find(i => i.id === selected[0]);
   const selectedItem =
@@ -367,7 +437,9 @@ function useBoardCore() {
     setThread(null);
     setDashboard(false);
     pauseSave.current = false;
-    requestAnimationFrame(() => fit(next.items));
+    requestAnimationFrame(() =>
+      next.startView ? setCamera(centeredCamera(next.startView, next.startView.z, size)) : fit(next.items),
+    );
   };
   const boardActions = {
     open: (id: string) => {
@@ -403,6 +475,14 @@ function useBoardCore() {
         setLibrary(duplicateBoard(localStorage, lib, id, parseBoard).library);
       } catch (err) {
         display((err as Error).message || 'Browser storage is full. Delete or export boards to make room.');
+      }
+    },
+    /** File under a space or star a board (item 107). */
+    setMeta: (id: string, patch: { space?: string | null; starred?: boolean }) => {
+      try {
+        setLibrary(setBoardMeta(localStorage, libraryRef.current, id, patch));
+      } catch (err) {
+        display((err as Error).message || 'Browser storage is full.');
       }
     },
     remove: (id: string) => {
@@ -495,6 +575,12 @@ function useBoardCore() {
       if (added.length === 1) setWidgetEditId(added[0].id);
     }
     if (errors.length) display(errors.join(' '));
+  }
+  /** Add a recorded or captured file (Talktrack video, Photobooth photo) to the board. */
+  async function insertCaptured(file: File) {
+    if (file.type.startsWith('image/')) return insertImages([file]);
+    mediaKind.current = 'video';
+    return insertMedia(file);
   }
   async function insertMedia(file: File) {
     const kind = mediaKind.current,
@@ -671,7 +757,22 @@ function useBoardCore() {
       setFacil('reactions');
       return;
     }
-    if (choice === 'voting' || choice === 'a11y') {
+    if (choice === 'spellcheck') {
+      setTool('select');
+      setViewPrefs({ spellcheck: !viewPrefs.spellcheck });
+      display(
+        viewPrefs.spellcheck
+          ? 'Spell check is off.'
+          : 'Spell check is on. Misspelled words are underlined while you edit.',
+      );
+      return;
+    }
+    if (choice === 'talktrack' || choice === 'photobooth') {
+      setTool('select');
+      setFacil(choice);
+      return;
+    }
+    if (choice === 'voting' || choice === 'a11y' || choice === 'validation' || choice === 'stickies') {
       setTool('select');
       setFacil(choice);
       return;
@@ -879,18 +980,23 @@ function useBoardCore() {
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
       if (gesture.current) return;
-      if (e.ctrlKey || e.metaKey) {
+      // Mouse mode: the wheel zooms and Shift+wheel pans; trackpad mode: the wheel pans and Ctrl+wheel zooms.
+      const mouse =
+        navigationRef.current === 'mouse' || (navigationRef.current === 'auto' && wheelLooksLikeMouse(e) && !e.ctrlKey);
+      if (mouse && e.shiftKey && !e.ctrlKey && !e.metaKey)
+        return setCamera(c => ({ ...c, x: c.x - (e.deltaX || e.deltaY), y: c.y }));
+      if (e.ctrlKey || e.metaKey || mouse) {
         const rect = canvas.getBoundingClientRect(),
           at = { x: e.clientX - rect.left, y: e.clientY - rect.top };
         setCamera(c => {
-          const z = Math.max(0.1, Math.min(4, c.z * Math.exp(-e.deltaY * 0.008)));
+          const z = clampZoom(c.z * Math.exp(-e.deltaY * 0.008));
           return { z, x: at.x - ((at.x - c.x) * z) / c.z, y: at.y - ((at.y - c.y) * z) / c.z };
         });
       } else setCamera(c => ({ ...c, x: c.x - e.deltaX, y: c.y - e.deltaY }));
     };
     canvas.addEventListener('wheel', wheel, { passive: false });
     return () => canvas.removeEventListener('wheel', wheel);
-  }, []);
+  }, [navigationRef]);
   useEffect(() => {
     if (pauseSave.current) return;
     setSaved(false);
@@ -1009,6 +1115,25 @@ function useBoardCore() {
     });
   const mixedBorders =
     allShapes && new Set(selected.map(id => JSON.stringify(shown.items.find(i => i.id === id)?.style ?? {}))).size > 1;
+  // Action Shortcut buttons (item 99) ask the board to navigate, present or open the timer.
+  const runShortcutAction = useLatest((d: ShortcutData) => {
+    if (d.action === 'timer') setTimerOn(true);
+    else if (d.action === 'present') {
+      if (presentationFrames(boardRef.current).length) startPresenting(0);
+      else display('Add a frame to present.');
+    } else if (d.action === 'frame') {
+      const frame = boardRef.current.items.find(i => i.id === d.target && i.type === 'frame');
+      if (frame) {
+        setSelected([frame.id]);
+        fit([frame]);
+      } else display('The frame for this shortcut no longer exists.');
+    }
+  });
+  useEffect(() => {
+    const handle = (e: Event) => runShortcutAction.current((e as CustomEvent<ShortcutData>).detail);
+    window.addEventListener(SHORTCUT_EVENT, handle);
+    return () => window.removeEventListener(SHORTCUT_EVENT, handle);
+  }, [runShortcutAction]);
   const startPresenting = (start: number) => {
     setPresentPanel(false);
     setPresenting({ start, camera, selected });
@@ -1071,6 +1196,7 @@ function useBoardCore() {
     insertAt,
     insertImages,
     insertMedia,
+    insertCaptured,
     jumps,
     marquee,
     matches,
@@ -1152,6 +1278,25 @@ function useBoardCore() {
     setShapes,
     setSize,
     setSnapping,
+    setViewPrefs,
+    viewPrefs,
+    penMode,
+    setPenMode,
+    commandsOpen,
+    setCommandsOpen,
+    lasso,
+    setLasso,
+    penPresetList,
+    activePreset,
+    setActivePreset,
+    savePenPresets: (list: PenPreset[]) => {
+      setPenPresetList(list);
+      try {
+        localStorage.setItem(PEN_PRESETS_KEY, JSON.stringify(list));
+      } catch {
+        /* Presets still apply for this session. */
+      }
+    },
     setThread,
     setTimerOn,
     setTool,
