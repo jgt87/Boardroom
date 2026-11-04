@@ -9,6 +9,9 @@
 - **Sticky stack:** a card holding a pad of notes with a curled corner; drag from the pad to take any number of notes (the note lifts while dragged and the curl settles back); drag the title to move the stack.
 - **Selection:** outline with a small gap, round corner handles, and four connection dots; drag a dot to draw a curved connector that previews its attachment, highlights the target and attaches to the nearest side, leaving a small gap. **Swap line ends** reverses a connector.
 - **Sticky authors:** a Show author button per note shows, bottom-left, the person who last edited its text.
+- **Header and top bar:** Export is an icon beside the main menu; the top-right buttons form one bar ending in a ▶ Present button.
+- **Bottom bar:** Frames, zoom out, zoom %, zoom in and a Help menu (keyboard shortcuts, commands). The zoom menu offers full screen, Show minimap, Grid, Object dimensions, Fit to screen, presets and exact view; the minimap starts hidden.
+- **Sticky toolbar:** one compact row (font, size, bold) with More text options for the rest. Corner handles are grey-outlined; connection dots are solid blue.
 
 ### Parity with the live inventory: view menu, people, capture, templates
 - **View menu:** the zoom percentage now also offers 50–2000% presets, Fit to screen, and toggles for Grid, Object dimensions (W × H under the selection), Minimap, Spell check and full screen. Zoom goes up to 2000%.

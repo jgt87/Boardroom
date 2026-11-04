@@ -12,6 +12,7 @@ import {
   Highlighter,
   PaintBucket,
   MoveVertical,
+  Ellipsis,
 } from 'lucide-react';
 import type { Item, TextFormat } from './model';
 import { fitText, wrappedLineCount } from './text-layout';
@@ -143,11 +144,22 @@ export function formattedText(item: Item) {
         .map((line, index) => `${item.format!.list === 'bullet' ? '•' : `${index + 1}.`} ${line}`)
         .join('\n');
 }
-export function TextControls({ item, onChange }: { item: Item; onChange: (f: TextFormat) => void }) {
+export function TextControls({
+  item,
+  onChange,
+  compact = false,
+}: {
+  item: Item;
+  onChange: (f: TextFormat) => void;
+  /** One-row toolbar (item 114): font, size and bold, with the rest behind "More text options". */
+  compact?: boolean;
+}) {
   const f = item.format ?? {},
     set = (change: TextFormat) => onChange({ ...f, ...change });
+  const [expanded, setExpanded] = useState(false),
+    full = !compact || expanded;
   return (
-    <div className="text-controls" aria-label="Text formatting">
+    <div className={`text-controls ${compact ? 'compact' : ''}`} aria-label="Text formatting">
       <select
         aria-label="Font family"
         style={{ fontFamily: f.fontFamily ?? 'Arial' }}
@@ -190,7 +202,7 @@ export function TextControls({ item, onChange }: { item: Item; onChange: (f: Tex
           ))}
       </select>
       <span className="divider" />
-      {item.type === 'note' && (
+      {full && item.type === 'note' && (
         <select
           aria-label="Vertical text alignment"
           value={f.valign ?? 'middle'}
@@ -206,99 +218,116 @@ export function TextControls({ item, onChange }: { item: Item; onChange: (f: Tex
         { key: 'italic', label: 'Italic', icon: Italic },
         { key: 'underline', label: 'Underline', icon: Underline },
         { key: 'strike', label: 'Strikethrough', icon: Strikethrough },
-      ].map(({ key, label, icon: Icon }) => (
-        <button
-          key={key}
-          className={`icon-button ${(key === 'bold' ? (f.fontWeight ?? (f.bold ? 700 : 400)) >= 600 : f[key as 'bold']) ? 'active' : ''}`}
-          aria-label={label}
-          title={label}
-          aria-pressed={key === 'bold' ? (f.fontWeight ?? (f.bold ? 700 : 400)) >= 600 : !!f[key as 'bold']}
-          onClick={() =>
-            key === 'bold'
-              ? set({
-                  bold: (f.fontWeight ?? (f.bold ? 700 : 400)) < 600,
-                  fontWeight: (f.fontWeight ?? (f.bold ? 700 : 400)) >= 600 ? 400 : 700,
-                })
-              : set({ [key]: !f[key as 'bold'] })
-          }
-        >
-          <Icon size={17} />
-        </button>
-      ))}
-      <select
-        aria-label="Font weight"
-        value={f.fontWeight ?? (f.bold ? 700 : 400)}
-        onChange={e => set({ fontWeight: Number(e.target.value), bold: Number(e.target.value) >= 600 })}
-      >
-        {Array.from(new Set([100, 200, 300, 400, 500, 600, 700, 800, 900, f.fontWeight ?? 400]))
-          .sort((a, b) => a - b)
-          .map(n => (
-            <option key={n} value={n}>
-              {n}
-            </option>
+      ]
+        .filter(({ key }) => full || key === 'bold')
+        .map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            className={`icon-button ${(key === 'bold' ? (f.fontWeight ?? (f.bold ? 700 : 400)) >= 600 : f[key as 'bold']) ? 'active' : ''}`}
+            aria-label={label}
+            title={label}
+            aria-pressed={key === 'bold' ? (f.fontWeight ?? (f.bold ? 700 : 400)) >= 600 : !!f[key as 'bold']}
+            onClick={() =>
+              key === 'bold'
+                ? set({
+                    bold: (f.fontWeight ?? (f.bold ? 700 : 400)) < 600,
+                    fontWeight: (f.fontWeight ?? (f.bold ? 700 : 400)) >= 600 ? 400 : 700,
+                  })
+                : set({ [key]: !f[key as 'bold'] })
+            }
+          >
+            <Icon size={17} />
+          </button>
+        ))}
+      {full && (
+        <>
+          <select
+            aria-label="Font weight"
+            value={f.fontWeight ?? (f.bold ? 700 : 400)}
+            onChange={e => set({ fontWeight: Number(e.target.value), bold: Number(e.target.value) >= 600 })}
+          >
+            {Array.from(new Set([100, 200, 300, 400, 500, 600, 700, 800, 900, f.fontWeight ?? 400]))
+              .sort((a, b) => a - b)
+              .map(n => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+          </select>
+          <span className="divider" />
+          {[
+            { key: 'left', icon: AlignLeft },
+            { key: 'center', icon: AlignCenter },
+            { key: 'right', icon: AlignRight },
+          ].map(({ key, icon: Icon }) => (
+            <button
+              key={key}
+              className={`icon-button ${(f.align ?? 'center') === key ? 'active' : ''}`}
+              aria-label={`Align ${key}`}
+              title={`Align ${key}`}
+              aria-pressed={(f.align ?? 'center') === key}
+              onClick={() => set({ align: key as TextFormat['align'] })}
+            >
+              <Icon size={17} />
+            </button>
           ))}
-      </select>
-      <span className="divider" />
-      {[
-        { key: 'left', icon: AlignLeft },
-        { key: 'center', icon: AlignCenter },
-        { key: 'right', icon: AlignRight },
-      ].map(({ key, icon: Icon }) => (
-        <button
-          key={key}
-          className={`icon-button ${(f.align ?? 'center') === key ? 'active' : ''}`}
-          aria-label={`Align ${key}`}
-          title={`Align ${key}`}
-          aria-pressed={(f.align ?? 'center') === key}
-          onClick={() => set({ align: key as TextFormat['align'] })}
-        >
-          <Icon size={17} />
-        </button>
-      ))}
-      <button
-        className={`icon-button ${f.list === 'bullet' ? 'active' : ''}`}
-        aria-label="Bullet list"
-        title="Bullet list"
-        aria-pressed={f.list === 'bullet'}
-        onClick={() => set({ list: f.list === 'bullet' ? 'none' : 'bullet' })}
-      >
-        <List size={17} />
-      </button>
-      <button
-        className={`icon-button ${f.list === 'number' ? 'active' : ''}`}
-        aria-label="Numbered list"
-        title="Numbered list"
-        aria-pressed={f.list === 'number'}
-        onClick={() => set({ list: f.list === 'number' ? 'none' : 'number' })}
-      >
-        <ListOrdered size={17} />
-      </button>
-      <span className="divider" />
-      <ColorToggle
-        label="Text highlight"
-        icon={<Highlighter size={16} />}
-        value={f.highlight}
-        fallback="#fff27a"
-        onChange={highlight => onChange(withOptional(f, 'highlight', highlight))}
-      />
-      {item.type === 'text' && (
-        <ColorToggle
-          label="Text background"
-          icon={<PaintBucket size={16} />}
-          value={f.background}
-          fallback="#edf0ff"
-          onChange={background => onChange(withOptional(f, 'background', background))}
-        />
+          <button
+            className={`icon-button ${f.list === 'bullet' ? 'active' : ''}`}
+            aria-label="Bullet list"
+            title="Bullet list"
+            aria-pressed={f.list === 'bullet'}
+            onClick={() => set({ list: f.list === 'bullet' ? 'none' : 'bullet' })}
+          >
+            <List size={17} />
+          </button>
+          <button
+            className={`icon-button ${f.list === 'number' ? 'active' : ''}`}
+            aria-label="Numbered list"
+            title="Numbered list"
+            aria-pressed={f.list === 'number'}
+            onClick={() => set({ list: f.list === 'number' ? 'none' : 'number' })}
+          >
+            <ListOrdered size={17} />
+          </button>
+          <span className="divider" />
+          <ColorToggle
+            label="Text highlight"
+            icon={<Highlighter size={16} />}
+            value={f.highlight}
+            fallback="#fff27a"
+            onChange={highlight => onChange(withOptional(f, 'highlight', highlight))}
+          />
+          {item.type === 'text' && (
+            <ColorToggle
+              label="Text background"
+              icon={<PaintBucket size={16} />}
+              value={f.background}
+              fallback="#edf0ff"
+              onChange={background => onChange(withOptional(f, 'background', background))}
+            />
+          )}
+          {item.type === 'text' && (
+            <button
+              className={`icon-button ${f.autoHeight ? 'active' : ''}`}
+              aria-label="Fixed width, auto height"
+              title="Fixed width, auto height: resize the width and the height follows the text"
+              aria-pressed={!!f.autoHeight}
+              onClick={() => onChange(withOptional(f, 'autoHeight', f.autoHeight ? undefined : true))}
+            >
+              <MoveVertical size={17} />
+            </button>
+          )}
+        </>
       )}
-      {item.type === 'text' && (
+      {compact && (
         <button
-          className={`icon-button ${f.autoHeight ? 'active' : ''}`}
-          aria-label="Fixed width, auto height"
-          title="Fixed width, auto height: resize the width and the height follows the text"
-          aria-pressed={!!f.autoHeight}
-          onClick={() => onChange(withOptional(f, 'autoHeight', f.autoHeight ? undefined : true))}
+          className={`icon-button ${expanded ? 'active' : ''}`}
+          aria-label="More text options"
+          title="More text options"
+          aria-pressed={expanded}
+          onClick={() => setExpanded(v => !v)}
         >
-          <MoveVertical size={17} />
+          <Ellipsis size={17} />
         </button>
       )}
     </div>

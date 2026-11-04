@@ -1283,3 +1283,110 @@ kbd {
     opacity: 1;
   }
 }
+/* Top-right bar (item 114): one grouped toolbar, buttons without their own cards, ending in Present. */
+.document-actions.floating {
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+}
+.document-actions.floating > .icon-button,
+.document-actions.floating > .menu-anchor > .icon-button {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+.document-actions.floating > .icon-button:hover,
+.document-actions.floating > .menu-anchor > .icon-button:hover {
+  background: #f1f1f5;
+}
+.present-button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-left: 4px;
+  border-radius: 8px;
+  background: #f1f1f5;
+  color: #25252c;
+}
+.present-button:hover {
+  background: #e4e4ea;
+}
+/* Export now sits in the header beside the main menu; its menu opens below, left-aligned. */
+.export-anchor .export-menu {
+  right: auto;
+  left: -8px;
+  top: calc(100% + 10px);
+}
+/* Zoom menu (item 114): a short menu like the reference, with exact view entry below. */
+.zoom-menu {
+  display: grid;
+  gap: 2px;
+  margin: -4px -4px 8px;
+}
+.zoom-menu > button,
+.camera-controls .zoom-menu > label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-start;
+  grid-template-columns: none;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font-size: 14px;
+  text-align: left;
+}
+.zoom-menu > button:hover,
+.camera-controls .zoom-menu > label:hover {
+  background: #f1f1f5;
+}
+.zoom-menu kbd {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: #696973;
+  font: inherit;
+  font-size: 12px;
+}
+.camera-controls .zoom-menu input[type='checkbox'] {
+  width: auto;
+  padding: 0;
+}
+.exact-view-heading {
+  margin: 14px 0 8px;
+  padding-top: 12px;
+  border-top: 1px solid #ececf0;
+  color: #52525b;
+  font-size: 12px;
+}
+.camera-controls > h2 {
+  display: none;
+}
+.help-anchor .help-menu {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 10px);
+}
+/* Compact sticky-note toolbar (item 114): one row, no type label. */
+.selection-bar.compact {
+  flex-wrap: nowrap;
+  max-width: none;
+}
+.selection-bar.compact > span:first-child {
+  display: none;
+}
+.text-controls.compact {
+  flex-wrap: nowrap;
+}
+@media (max-width: 700px) {
+  .selection-bar.compact,
+  .text-controls.compact {
+    flex-wrap: wrap;
+    max-width: calc(100vw - 80px);
+  }
+}

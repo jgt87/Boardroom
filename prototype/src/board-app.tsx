@@ -250,7 +250,7 @@ function useBoardCore() {
       /* The name still applies for this session when storage is unavailable. */
     }
   };
-  const [minimap, setMinimap] = useState(() => innerWidth > 600),
+  const [minimap, setMinimap] = useState(false),
     [presentPanel, setPresentPanel] = useState(false);
   const [presenting, setPresenting] = useState<{ start: number; camera: Camera; selected: string[] } | null>(null);
   const imageFile = useRef<HTMLInputElement>(null),

@@ -49,7 +49,7 @@ test('opacity and text metrics edit, persist, undo, reopen and export', async ({
   await page.keyboard.press('Control+Shift+z');
   await waitForSave(page, b => b.items[0].format?.baselineOffsetY === 12);
   await page.keyboard.press('Escape');
-  await page.locator('.export-button').click();
+  await page.getByRole('button', { name: 'Export', exact: true }).click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.locator('.dropdown button', { hasText: 'Export as SVG' }).click(),
@@ -63,6 +63,7 @@ test('opacity and text metrics edit, persist, undo, reopen and export', async ({
   await expect(page.getByRole('textbox', { name: 'Edit object text' })).toHaveCSS('font-weight', '800');
   await page.getByRole('textbox', { name: 'Edit object text' }).press('Escape');
   const toolbar = page.locator('.text-controls');
+  await toolbar.getByRole('button', { name: 'More text options' }).click();
   await toolbar.getByRole('combobox', { name: 'Font weight', exact: true }).selectOption('600');
   await expect(toolbar.getByRole('button', { name: 'Bold', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await toolbar.getByRole('button', { name: 'Bold', exact: true }).click();

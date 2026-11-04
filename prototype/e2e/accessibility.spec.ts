@@ -71,7 +71,7 @@ test.describe('accessibility (axe)', () => {
       expectClean(await axeViolations(page), entry);
       await page.getByRole('button', { name: close }).click();
     }
-    await page.locator('.export-button').click();
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
     expectClean(await axeViolations(page), 'export menu');
   });
 

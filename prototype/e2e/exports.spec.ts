@@ -29,7 +29,7 @@ async function seedWithImage(page: Page) {
   await page.keyboard.press('Escape');
 }
 async function exportEntry(page: Page, label: string) {
-  await page.locator('.export-button').click();
+  await page.getByRole('button', { name: 'Export', exact: true }).click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.locator('.dropdown button', { hasText: label }).click(),
@@ -77,7 +77,7 @@ test.describe('exports and backups', () => {
       await page.keyboard.press('Control+A');
       await page.keyboard.press('Delete');
       await waitForSave(page, b => b.items.length === 0, 'board emptied');
-      await page.locator('.export-button').click();
+      await page.getByRole('button', { name: 'Export', exact: true }).click();
       const [chooser] = await Promise.all([
         page.waitForEvent('filechooser'),
         page.locator('.dropdown button', { hasText: 'Import backup' }).click(),

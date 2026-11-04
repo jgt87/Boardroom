@@ -86,7 +86,9 @@ export function SelectionBars() {
         </div>
       )}
       {selected.length > 0 && !selectionLocked && (
-        <div className="selection-bar floating">
+        <div
+          className={`selection-bar floating ${selected.length === 1 && selectedItem?.type === 'note' ? 'compact' : ''}`}
+        >
           <span style={selectedItem?.type === 'drawio' ? { textTransform: 'none' } : undefined}>
             {selected.length === 1
               ? selectedItem && isShapeKind(selectedItem.type)
@@ -108,7 +110,11 @@ export function SelectionBars() {
           {selectedItem &&
             selected.length === 1 &&
             (['note', 'text'].includes(selectedItem.type) || isShapeKind(selectedItem.type)) && (
-              <TextControls item={selectedItem} onChange={format => patch({ format })} />
+              <TextControls
+                item={selectedItem}
+                compact={selectedItem.type === 'note'}
+                onChange={format => patch({ format })}
+              />
             )}
           {selectedItem?.type === 'frame' && selected.length === 1 && (
             <FrameControls

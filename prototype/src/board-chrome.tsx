@@ -1,5 +1,7 @@
 import React from 'react';
-import { StickyNote, Minus, Plus, Maximize, X, Keyboard, Magnet, Map as MapIcon, Frame } from 'lucide-react';
+import { StickyNote, Minus, Plus, X, Frame, CircleHelp } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { useDismiss } from './board-menu';
 import { setLocked } from './arrange';
 import { Minimap } from './minimap';
 import { CameraControls } from './camera-controls';
@@ -28,17 +30,15 @@ export function BoardChrome() {
     selected,
     setCamera,
     setHelp,
-    setMinimap,
     setNotice,
     setOutline,
     setSelected,
-    setSnapping,
     shown,
     size,
-    snapping,
     update,
     zoom,
     commandsOpen,
+    setCommandsOpen,
   } = useApp();
   return (
     <>
@@ -99,26 +99,6 @@ export function BoardChrome() {
         )}
         <div className="zoom floating">
           <button
-            className={`icon-button ${minimap ? 'active' : ''}`}
-            aria-label="Minimap"
-            aria-pressed={minimap}
-            title="Minimap"
-            onClick={() => setMinimap(m => !m)}
-          >
-            <MapIcon size={17} />
-          </button>
-          <span className="divider" />
-          <button
-            className={`icon-button ${snapping ? 'active' : ''}`}
-            aria-label="Snap to objects"
-            aria-pressed={snapping}
-            title="Snap to objects · hold Alt to bypass"
-            onClick={() => setSnapping(!snapping)}
-          >
-            <Magnet size={17} />
-          </button>
-          <span className="divider" />
-          <button
             className={`icon-button ${presentPanel ? 'active' : ''}`}
             aria-label="Frames"
             aria-pressed={presentPanel}
@@ -127,32 +107,14 @@ export function BoardChrome() {
           >
             <Frame size={17} />
           </button>
-          <span className="divider" />
-          <button
-            className="icon-button"
-            aria-label="Fit to screen"
-            title="Fit to screen (Alt 1)"
-            onClick={() => fit()}
-          >
-            <Maximize size={17} />
-          </button>
-          <span className="divider" />
-          <button className="icon-button" aria-label="Zoom out" onClick={() => zoom(1 / 1.2)}>
+          <button className="icon-button" aria-label="Zoom out" title="Zoom out" onClick={() => zoom(1 / 1.2)}>
             <Minus size={17} />
           </button>
           <CameraControls />
-          <button className="icon-button" aria-label="Zoom in" onClick={() => zoom(1.2)}>
+          <button className="icon-button" aria-label="Zoom in" title="Zoom in" onClick={() => zoom(1.2)}>
             <Plus size={17} />
           </button>
-          <span className="divider" />
-          <button
-            className="icon-button"
-            aria-label="Keyboard shortcuts"
-            title="Keyboard shortcuts"
-            onClick={() => setHelp(h => !h)}
-          >
-            <Keyboard size={18} />
-          </button>
+          <HelpMenu onShortcuts={() => setHelp(h => !h)} onCommands={() => setCommandsOpen(true)} />
         </div>
       </footer>
       {commandsOpen && <CommandPalette />}
@@ -235,5 +197,40 @@ export function BoardChrome() {
         </div>
       )}
     </>
+  );
+}
+
+/** Help menu in the bottom bar (item 114), like the reference's question-mark button. */
+function HelpMenu({ onShortcuts, onCommands }: { onShortcuts: () => void; onCommands: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useDismiss(open, ref, () => setOpen(false));
+  const choose = (run: () => void) => () => {
+    setOpen(false);
+    run();
+  };
+  return (
+    <div className="menu-anchor help-anchor" ref={ref}>
+      <button
+        className="icon-button"
+        aria-label="Help and resources"
+        title="Help and resources"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+      >
+        <CircleHelp size={18} />
+      </button>
+      {open && (
+        <div className="dropdown floating help-menu" role="menu" aria-label="Help and resources">
+          <button role="menuitem" onClick={choose(onShortcuts)}>
+            Keyboard shortcuts<span>All tool keys</span>
+          </button>
+          <button role="menuitem" onClick={choose(onCommands)}>
+            Commands<span>Ctrl K</span>
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

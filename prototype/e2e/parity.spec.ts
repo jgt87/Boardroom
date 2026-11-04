@@ -95,8 +95,7 @@ test('dark sticky colours get white text, and spell check and capture panels are
   await seed(page, `return {...m.newBoard(),items:[{...m.createItem('note',0,0,'#1f1f23'),id:'n',text:'Dark'}]};`);
   await expect(item(page, 'n').locator('.object-text')).toHaveCSS('color', 'rgb(255, 255, 255)');
   await expect(page.locator('html')).toHaveAttribute('spellcheck', 'true');
-  await page.getByRole('button', { name: /Zoom and navigation:/ }).click();
-  await page.getByRole('region', { name: 'View controls' }).getByLabel('Spell check').uncheck();
+  await mainMenu(page, 'Preferences', 'Spell check');
   await expect(page.locator('html')).toHaveAttribute('spellcheck', 'false');
   await page.keyboard.press('Escape');
   await openTools(page, 'Formats');
@@ -236,11 +235,9 @@ test('main menu sets status, background and a start view that is used on reload'
 
 test('preferences: single-key shortcuts, undo controls, comments and mouse navigation', async ({ page }) => {
   await openApp(page);
-  await page.getByRole('button', { name: /Zoom and navigation:/ }).click();
-  const view = page.getByRole('region', { name: 'View controls' });
-  await view.getByLabel('Single-character shortcuts').uncheck();
-  await view.getByLabel('Undo/Redo controls').uncheck();
-  await view.getByLabel('Navigate with').selectOption('mouse');
+  await mainMenu(page, 'Accessibility', 'Single-character shortcuts');
+  await mainMenu(page, 'View', 'Undo/Redo controls');
+  await mainMenu(page, 'Preferences', 'Mouse or trackpad', 'Mouse');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Undo' })).toHaveCount(0);
   await page.locator('svg.canvas').click({ position: { x: 250, y: 250 } });
@@ -308,8 +305,7 @@ test('main menu: history restores a deleted note, catch up, details, star and mo
 
 test('Do Not Disturb hides reaction animations but still announces them', async ({ page }) => {
   await openApp(page);
-  await page.getByRole('button', { name: /Zoom and navigation:/ }).click();
-  await page.getByRole('region', { name: 'View controls' }).getByLabel('Do Not Disturb').check();
+  await mainMenu(page, 'Preferences', 'Do Not Disturb');
   await page.keyboard.press('Escape');
   await expect(page.locator('html')).toHaveAttribute('data-dnd', 'on');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('boardroom:reaction', { detail: '👍' })));
@@ -435,4 +431,36 @@ test('opening History moves the tool rail to the right of the panel', async ({ p
   await expect.poll(async () => (await rail.boundingBox())!.x).toBeGreaterThan(panel.x + panel.width);
   await page.getByRole('button', { name: 'Close history' }).click();
   await expect.poll(async () => (await rail.boundingBox())!.x).toBeLessThan(before.x + 5);
+});
+
+test('reference chrome: header export, grouped top bar with Present, bottom bar help, zoom menu, compact note toolbar', async ({
+  page,
+}) => {
+  await seed(page, `return {...m.newBoard(),items:[{...m.createItem('note',300,250),id:'n',text:'Hi'}]};`);
+  const header = page.locator('.board-header');
+  await expect(header.getByRole('button', { name: 'Main menu' })).toBeVisible();
+  await header.getByRole('button', { name: 'Export', exact: true }).click();
+  await expect(page.locator('.export-menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.export-menu')).toHaveCount(0);
+  await expect(page.locator('.document-actions').getByRole('button', { name: 'Present', exact: true })).toBeVisible();
+  await expect(page.locator('.minimap, [aria-label="Minimap"]')).toHaveCount(0);
+  const bar = page.locator('.zoom');
+  for (const name of ['Frames', 'Zoom out', 'Zoom in', 'Help and resources'])
+    await expect(bar.getByRole('button', { name, exact: true })).toBeVisible();
+  await bar.getByRole('button', { name: 'Help and resources' }).click();
+  await page.getByRole('menuitem', { name: /Keyboard shortcuts/ }).click();
+  await expect(page.locator('.help')).toBeVisible();
+  await page.getByRole('button', { name: 'Close shortcuts' }).click();
+  await page.getByRole('button', { name: /Zoom and navigation:/ }).click();
+  const zoomMenu = page.getByRole('group', { name: 'Zoom menu' });
+  await zoomMenu.getByLabel('Show minimap').check();
+  await expect(page.locator('.minimap').first()).toBeVisible();
+  await page.keyboard.press('Escape');
+  await item(page, 'n').click();
+  const toolbar = page.locator('.selection-bar.compact');
+  await expect(toolbar).toBeVisible();
+  await expect(toolbar.getByRole('button', { name: 'Italic' })).toHaveCount(0);
+  await toolbar.getByRole('button', { name: 'More text options' }).click();
+  await expect(toolbar.getByRole('button', { name: 'Italic' })).toBeVisible();
 });

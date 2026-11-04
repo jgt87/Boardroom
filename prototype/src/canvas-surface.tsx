@@ -328,7 +328,7 @@ export function CanvasSurface() {
                             cy={p.y}
                             r={5 / camera.z}
                             fill="white"
-                            stroke="#4262ff"
+                            stroke="#9a9aa3"
                             strokeWidth={1.5 / camera.z}
                             pointerEvents="none"
                           />
@@ -349,10 +349,10 @@ export function CanvasSurface() {
                         <circle
                           cx={p.x}
                           cy={p.y}
-                          r={4.5 / camera.z}
-                          fill="white"
-                          stroke="#4262ff"
-                          strokeWidth={1.5 / camera.z}
+                          r={3.5 / camera.z}
+                          fill="#4262ff"
+                          stroke="#ffffff"
+                          strokeWidth={1 / camera.z}
                           pointerEvents="none"
                         />
                       </g>

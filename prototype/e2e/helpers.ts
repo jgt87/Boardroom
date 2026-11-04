@@ -97,7 +97,9 @@ export async function mouseDrag(
 }
 
 export async function fit(page: Page) {
-  await page.getByRole('button', { name: 'Fit to screen' }).click();
+  // Fit to screen lives in the zoom menu; Alt+1 is its shortcut.
+  await page.locator('svg.canvas').focus();
+  await page.keyboard.press('Alt+1');
 }
 /** Select an object through the Layers panel (row whose label or type starts with `text`). */
 export async function selectViaLayers(page: Page, match: string, by: 'name' | 'type' = 'name') {

@@ -30,7 +30,38 @@ export function CameraControls() {
         {Math.round(camera.z * 100)}%
       </button>
       <section id={id} popover="auto" className="camera-controls floating" aria-label="View controls">
-        <h2>View controls</h2>
+        <div className="zoom-menu" role="group" aria-label="Zoom menu">
+          {canFullscreen && (
+            <button onClick={toggleFullscreen}>{fullscreen ? 'Exit full screen' : 'Enter full screen'}</button>
+          )}
+          <label>
+            <input type="checkbox" checked={minimap} onChange={e => setMinimap(e.target.checked)} />
+            Show minimap
+          </label>
+          <label>
+            <input type="checkbox" checked={viewPrefs.grid} onChange={e => setViewPrefs({ grid: e.target.checked })} />
+            Grid
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={viewPrefs.dimensions}
+              onChange={e => setViewPrefs({ dimensions: e.target.checked })}
+            />
+            Object dimensions
+          </label>
+          <button onClick={() => fit()}>
+            Fit to screen <kbd>Alt 1</kbd>
+          </button>
+        </div>
+        <div className="zoom-presets" role="group" aria-label="Zoom presets">
+          {zoomPresets.map(z => (
+            <button key={z} aria-pressed={Math.abs(camera.z - z) < 0.005} onClick={() => zoom(z / camera.z)}>
+              {Math.round(z * 100)}%
+            </button>
+          ))}
+        </div>
+        <h3 className="exact-view-heading">Exact view</h3>
         <form
           key={`${camera.x},${camera.y},${camera.z}`}
           onSubmit={e => {
@@ -95,93 +126,6 @@ export function CameraControls() {
         <div className="camera-actions">
           <button onClick={() => zoom(1 / camera.z)}>100%</button>
           <button onClick={() => setCamera(centeredCamera({ x: 0, y: 0 }, 1, size))}>Reset view</button>
-        </div>
-        <div className="zoom-presets" role="group" aria-label="Zoom presets">
-          {zoomPresets.map(z => (
-            <button key={z} aria-pressed={Math.abs(camera.z - z) < 0.005} onClick={() => zoom(z / camera.z)}>
-              {Math.round(z * 100)}%
-            </button>
-          ))}
-          <button onClick={() => fit()}>Fit to screen</button>
-        </div>
-        <div className="view-toggles" role="group" aria-label="View options">
-          <label>
-            <input type="checkbox" checked={viewPrefs.grid} onChange={e => setViewPrefs({ grid: e.target.checked })} />
-            Grid
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={viewPrefs.dimensions}
-              onChange={e => setViewPrefs({ dimensions: e.target.checked })}
-            />
-            Object dimensions
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={viewPrefs.spellcheck}
-              onChange={e => setViewPrefs({ spellcheck: e.target.checked })}
-            />
-            Spell check
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={viewPrefs.comments}
-              onChange={e => setViewPrefs({ comments: e.target.checked })}
-            />
-            Comments on board
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={viewPrefs.undoControls}
-              onChange={e => setViewPrefs({ undoControls: e.target.checked })}
-            />
-            Undo/Redo controls
-          </label>
-          <label>
-            <input type="checkbox" checked={minimap} onChange={e => setMinimap(e.target.checked)} />
-            Minimap
-          </label>
-        </div>
-        <div className="view-toggles" role="group" aria-label="Preferences">
-          <label className="select-line">
-            Navigate with
-            <select
-              aria-label="Navigate with"
-              value={viewPrefs.navigation}
-              onChange={e => setViewPrefs({ navigation: e.target.value as 'trackpad' | 'mouse' | 'auto' })}
-            >
-              <option value="auto">Auto-detect</option>
-              <option value="trackpad">Trackpad (scroll pans)</option>
-              <option value="mouse">Mouse (scroll zooms)</option>
-            </select>
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={viewPrefs.singleKeys}
-              onChange={e => setViewPrefs({ singleKeys: e.target.checked })}
-            />
-            Single-character shortcuts
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={viewPrefs.reduceMotion}
-              onChange={e => setViewPrefs({ reduceMotion: e.target.checked })}
-            />
-            Reduce motion
-          </label>
-          <label>
-            <input type="checkbox" checked={viewPrefs.dnd} onChange={e => setViewPrefs({ dnd: e.target.checked })} />
-            Do Not Disturb
-          </label>
-          {canFullscreen && (
-            <button onClick={toggleFullscreen}>{fullscreen ? 'Exit full screen' : 'Enter full screen'}</button>
-          )}
         </div>
       </section>
     </>
