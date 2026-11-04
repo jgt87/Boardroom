@@ -11,6 +11,7 @@ import { peopleSpecs } from './specs-people.ts';
 import { shortcutSpec } from './specs-shortcut.ts';
 import { stickypadSpec } from './specs-stickypad.ts';
 import { chartSpecs } from './specs-charts.ts';
+import { entitySpec } from './specs-entity.ts';
 
 export const widgetSpecs: WidgetSpec[] = [
   ...basicSpecs,
@@ -23,6 +24,7 @@ export const widgetSpecs: WidgetSpec[] = [
   shortcutSpec,
   stickypadSpec,
   ...chartSpecs,
+  entitySpec,
 ];
 const byKind = new Map(widgetSpecs.map(s => [s.kind, s]));
 export const specFor = (kind: string) => byKind.get(kind as WidgetKind);

@@ -7,6 +7,7 @@ import type { CardData } from './facilitation-widgets';
 import { Dialog, data, setData } from './widget-kit';
 import { CanvasField, canvasControl } from './canvas-fields';
 import { createItem } from './model';
+import { spokenColor } from './access-tools';
 import { AlignLeft, Database, Maximize2, X } from 'lucide-react';
 import { schemaOf, validateRecordValues } from './record-schema';
 import { RecordFieldInput } from './record-fields';
@@ -490,7 +491,8 @@ export function CardEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx;
                     type="button"
                     role="radio"
                     aria-checked={tagColor === c}
-                    aria-label={`Tag colour ${c}`}
+                    aria-label={`Tag colour ${spokenColor(c)}`}
+                    title={spokenColor(c)}
                     className={tagColor === c ? 'active' : ''}
                     style={{ background: c }}
                     onClick={() => setTagColor(c)}

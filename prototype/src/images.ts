@@ -1,11 +1,66 @@
 // Image objects: insertion sizing, crop geometry, replacement and portable asset handling.
 // Evidence: ComputedImageWidget exposes cropShape/cropRect/isCroppable and a replace mode.
 // Image bytes live in IndexedDB (see assets-store.ts); JSON backups embed them under `assets`.
-import type { Board, Crop, ImageAsset, Item } from './model.ts';
+import type { Board, Crop, ImageAdjust, ImageAsset, Item } from './model.ts';
 import { createItem } from './model.ts';
 import { imageMimes, MAX_IMAGE_BYTES } from './model-ext.ts';
 
-export const IMAGE_ACCEPT = imageMimes.join(',');
+/**
+ * Formats that are converted to PNG when added (gap b5-8). SVG is never placed in the page as markup: it is
+ * decoded as an image (which runs no scripts and loads nothing external) and drawn to a canvas.
+ */
+export const convertibleImageMimes = ['image/svg+xml', 'image/bmp'];
+export const IMAGE_ACCEPT = [...imageMimes, ...convertibleImageMimes, '.svg', '.bmp'].join(',');
+/** Largest SVG source accepted. */
+export const MAX_SVG_BYTES = 5_000_000;
+/** The image type of a file from its MIME type, or from its extension when the type is missing. */
+export function imageTypeOf(file: { type: string; name?: string }): string {
+  const t = file.type === 'image/x-ms-bmp' ? 'image/bmp' : file.type;
+  if (t) return t;
+  const ext = /\.([a-z0-9]+)$/i.exec(file.name ?? '')?.[1]?.toLowerCase();
+  return (
+    {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      webp: 'image/webp',
+      svg: 'image/svg+xml',
+      bmp: 'image/bmp',
+    }[ext ?? ''] ?? ''
+  );
+}
+/**
+ * Pixel size to rasterise a converted image at. SVG has no fixed resolution, so small drawings are drawn
+ * larger (longest side at least 1,024) to stay sharp when scaled; nothing exceeds the downscale limit.
+ */
+export function rasterSize(width: number, height: number, vector: boolean): { width: number; height: number } {
+  const w = width > 0 ? width : 300,
+    h = height > 0 ? height : 150,
+    longest = Math.max(w, h),
+    target = Math.min(DOWNSCALE_MAX_SIDE, vector ? Math.max(1024, longest) : longest),
+    k = target / longest;
+  return { width: Math.max(1, Math.round(w * k)), height: Math.max(1, Math.round(h * k)) };
+}
+/** Width and height declared on an SVG's root element (attributes, else the viewBox), without parsing it as DOM. */
+export function svgDeclaredSize(text: string): { width: number; height: number } | null {
+  const root = /<svg\b[^>]*>/i.exec(text)?.[0];
+  if (!root) return null;
+  const attr = (name: string) => new RegExp(`\\s${name}\\s*=\\s*["']([^"']*)["']`, 'i').exec(root)?.[1];
+  const px = (v?: string) => (v && /^\s*[\d.]+\s*(px)?\s*$/.test(v) ? parseFloat(v) : NaN);
+  let width = px(attr('width')),
+    height = px(attr('height'));
+  const box = attr('viewBox')
+    ?.trim()
+    .split(/[\s,]+/)
+    .map(Number);
+  if (box && box.length === 4 && box[2] > 0 && box[3] > 0) {
+    if (!(width > 0) && !(height > 0)) [width, height] = [box[2], box[3]];
+    else if (!(width > 0)) width = (height * box[2]) / box[3];
+    else if (!(height > 0)) height = (width * box[3]) / box[2];
+  }
+  return width > 0 && height > 0 ? { width, height } : null;
+}
 export const FULL_CROP: Crop = { x: 0, y: 0, w: 1, h: 1 };
 
 /** Largest file accepted for downscaling (gap B10); stored images are still at most MAX_IMAGE_BYTES. */
@@ -17,9 +72,12 @@ export const DOWNSCALE_MAX_SIDE = 4096;
  * before storing (gap B10); animated GIFs cannot be re-encoded and keep the 4 MB limit.
  */
 export function imageFileError(file: { type: string; size: number; name?: string }): string | null {
-  if (!imageMimes.includes(file.type))
-    return `${file.name ? `"${file.name}" is` : 'This file is'} not a supported image. Use PNG, JPEG, GIF or WebP.`;
-  const limit = file.type === 'image/gif' ? MAX_IMAGE_BYTES : MAX_IMAGE_INPUT_BYTES;
+  const type = imageTypeOf(file);
+  if (!imageMimes.includes(type) && !convertibleImageMimes.includes(type))
+    return `${file.name ? `"${file.name}" is` : 'This file is'} not a supported image. Use PNG, JPEG, GIF, WebP, SVG or BMP.`;
+  if (type === 'image/svg+xml' && file.size > MAX_SVG_BYTES)
+    return `${file.name ? `"${file.name}"` : 'This SVG'} is larger than 5 MB. Choose a smaller SVG.`;
+  const limit = type === 'image/gif' ? MAX_IMAGE_BYTES : MAX_IMAGE_INPUT_BYTES;
   if (file.size > limit)
     return `${file.name ? `"${file.name}"` : 'This image'} is larger than ${limit === MAX_IMAGE_BYTES ? '4' : '50'} MB. Choose a smaller image.`;
   return null;
@@ -32,6 +90,90 @@ export function downscaleSize(
 ): { width: number; height: number } {
   const k = Math.min(1, max / Math.max(width, height, 1));
   return { width: Math.max(1, Math.round(width * k)), height: Math.max(1, Math.round(height * k)) };
+}
+/** MIME type and bytes of a data URL (base64 or percent-encoded). */
+export function decodeDataUrl(url: string): { mime: string; bytes: Uint8Array } {
+  const comma = url.indexOf(','),
+    head = url.slice(5, comma),
+    body = url.slice(comma + 1),
+    mime = head.split(';')[0] || 'application/octet-stream';
+  if (!url.startsWith('data:') || comma < 0) throw new Error('This file is not stored in a readable form.');
+  if (/;base64$/i.test(head)) {
+    const raw = atob(body),
+      bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return { mime, bytes };
+  }
+  return { mime, bytes: new TextEncoder().encode(decodeURIComponent(body)) };
+}
+const extensions: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'application/pdf': 'pdf',
+};
+/** File name to download a stored asset under: its own name, with an extension that matches its type. */
+export function originalFileName(asset: Pick<ImageAsset, 'name' | 'mime'>, fallback = 'file'): string {
+  const ext = extensions[asset.mime] ?? 'bin',
+    base =
+      (asset.name || fallback)
+        .replace(/[\\/:*?"<>|]+/g, ' ')
+        .trim()
+        .slice(0, 120) || fallback;
+  const known = /\.([a-z0-9]{2,5})$/i.exec(base)?.[1]?.toLowerCase();
+  if (known === ext || (ext === 'jpg' && known === 'jpeg')) return base;
+  return `${known && Object.values(extensions).includes(known) ? base.slice(0, -known.length - 1) : base}.${ext}`;
+}
+
+// ---- Non-destructive adjustments (flip, brightness, contrast; gap b6-6) ---------------------------
+/** Brightness and contrast are percentages; 100 leaves the picture unchanged. */
+export const ADJUST_MIN = 0;
+export const ADJUST_MAX = 200;
+/** Drop default values so an unadjusted image carries no `adjust` field. */
+export function cleanAdjust(a: ImageAdjust | undefined): ImageAdjust | undefined {
+  if (!a) return undefined;
+  const out: ImageAdjust = {};
+  if (a.flipX) out.flipX = true;
+  if (a.flipY) out.flipY = true;
+  for (const k of ['brightness', 'contrast'] as const) {
+    const v = a[k];
+    if (typeof v === 'number' && Number.isFinite(v) && Math.round(v) !== 100)
+      out[k] = Math.min(ADJUST_MAX, Math.max(ADJUST_MIN, Math.round(v)));
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+/** Merge `patch` into the adjustments of the given images (other objects are left alone). */
+export function adjustImages(board: Board, ids: string[], patch: (a: ImageAdjust) => ImageAdjust): Board {
+  const set = new Set(ids);
+  return {
+    ...board,
+    items: board.items.map(i => {
+      if (!set.has(i.id) || i.type !== 'image') return i;
+      const next = { ...i },
+        a = cleanAdjust(patch({ ...(i.adjust ?? {}) }));
+      if (a) next.adjust = a;
+      else delete next.adjust;
+      return next;
+    }),
+  };
+}
+/** SVG transform that mirrors a w×h box in place, or undefined when not flipped. */
+export function flipTransform(a: ImageAdjust | undefined, w: number, h: number): string | undefined {
+  if (!a?.flipX && !a?.flipY) return undefined;
+  return `translate(${a.flipX ? w : 0} ${a.flipY ? h : 0}) scale(${a.flipX ? -1 : 1} ${a.flipY ? -1 : 1})`;
+}
+/**
+ * Linear colour transfer for brightness then contrast: v' = c·(b·v) + (1 − c)/2. Returns null when there is
+ * nothing to change. The same numbers drive the canvas filter, so exports match the screen.
+ */
+export function adjustTransfer(a: ImageAdjust | undefined): { slope: number; intercept: number } | null {
+  const b = (a?.brightness ?? 100) / 100,
+    c = (a?.contrast ?? 100) / 100;
+  if (b === 1 && c === 1) return null;
+  return { slope: +(b * c).toFixed(4), intercept: +((1 - c) / 2).toFixed(4) };
 }
 /** Approximate byte size of a base64 data URL. */
 export const dataUrlBytes = (data: string) => Math.floor(((data.length - data.indexOf(',') - 1) * 3) / 4);

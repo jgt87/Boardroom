@@ -112,18 +112,25 @@ export function markdownFileName(title: string): string {
 export const exportMarkdown = (md: string) => (md.endsWith('\n') ? md : md + '\n');
 
 // ---- Keyboard shortcuts in Docs (gap list I1) ----------------------------------------------------------
-export type DocShortcut = { kind: 'strike' } | { kind: 'code' } | { kind: 'block'; block: 'h1' | 'h2' | 'h3' | 'p' };
+export type DocShortcut =
+  | { kind: 'strike' }
+  | { kind: 'code' }
+  | { kind: 'block'; block: 'h1' | 'h2' | 'h3' | 'p' }
+  | { kind: 'list'; list: 'bullet' | 'number' | 'check' };
 type KeyLike = { key: string; code?: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean };
 /**
  * Doc editing shortcut for a key press, or null: Ctrl+Shift+X strikethrough, Ctrl+E inline code,
- * Ctrl+Alt+1–3 headings and Ctrl+Alt+0 normal text (Cmd instead of Ctrl on a Mac).
+ * Ctrl+Alt+1–3 headings, Ctrl+Alt+0 normal text and Ctrl+Alt+4–6 bulleted, numbered and check lists
+ * (Cmd instead of Ctrl on a Mac).
  */
 export function docShortcut(e: KeyLike): DocShortcut | null {
   if (!(e.ctrlKey || e.metaKey)) return null;
   const key = e.key.toLowerCase(),
-    digit = e.code?.match(/^(?:Digit|Numpad)([0-3])$/)?.[1] ?? (/^[0-3]$/.test(e.key) ? e.key : null);
+    digit = e.code?.match(/^(?:Digit|Numpad)([0-6])$/)?.[1] ?? (/^[0-6]$/.test(e.key) ? e.key : null);
   if (e.altKey && !e.shiftKey && digit !== null)
-    return { kind: 'block', block: digit === '0' ? 'p' : (`h${digit}` as 'h1' | 'h2' | 'h3') };
+    return Number(digit) >= 4
+      ? { kind: 'list', list: (['bullet', 'number', 'check'] as const)[Number(digit) - 4] }
+      : { kind: 'block', block: digit === '0' ? 'p' : (`h${digit}` as 'h1' | 'h2' | 'h3') };
   if (e.altKey) return null;
   if (e.shiftKey && (key === 'x' || e.code === 'KeyX')) return { kind: 'strike' };
   if (!e.shiftKey && (key === 'e' || e.code === 'KeyE')) return { kind: 'code' };
@@ -138,4 +145,13 @@ export const docShortcutHelp = [
   ['Ctrl+E', 'Inline code'],
   ['Ctrl+Alt+1–3', 'Heading 1–3'],
   ['Ctrl+Alt+0', 'Normal text'],
+  ['Ctrl+Alt+4', 'Bulleted list'],
+  ['Ctrl+Alt+5', 'Numbered list'],
+  ['Ctrl+Alt+6', 'Checklist'],
 ] as const;
+
+/** The ":name" being typed right before the caret (at least two characters), or null. */
+export function emojiQuery(textBefore: string): { query: string; length: number } | null {
+  const m = /(?:^|\s):([a-z0-9_+-]{2,30})$/i.exec(textBefore);
+  return m ? { query: m[1].replace(/_/g, ' '), length: m[1].length + 1 } : null;
+}

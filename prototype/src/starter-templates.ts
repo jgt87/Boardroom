@@ -10,6 +10,7 @@ export const templateCategories = [
   'Research',
   'Planning',
   'Diagramming',
+  'Meetings',
 ] as const;
 export type TemplateCategory = (typeof templateCategories)[number];
 export type StarterName =
@@ -20,7 +21,13 @@ export type StarterName =
   | 'Business model canvas'
   | 'PEST analysis'
   | 'Lean canvas'
-  | 'Mind dump';
+  | 'Mind dump'
+  | 'RICE scoring'
+  | 'PI planning'
+  | 'Meeting agenda'
+  | 'Icebreaker'
+  | 'Brainwriting'
+  | 'User story map';
 export const starterNames: StarterName[] = [
   'Brainstorm',
   'Kanban retro',
@@ -30,6 +37,12 @@ export const starterNames: StarterName[] = [
   'PEST analysis',
   'Lean canvas',
   'Mind dump',
+  'RICE scoring',
+  'PI planning',
+  'Meeting agenda',
+  'Icebreaker',
+  'Brainwriting',
+  'User story map',
 ];
 export type TemplateInfo = { name: string; category: TemplateCategory; about: string; keywords?: string };
 /** Every gallery template (the original four first), with its category and description. */
@@ -90,6 +103,42 @@ export const templateCatalog: TemplateInfo[] = [
     category: 'Brainstorming',
     about: 'Write everything down, then sort it into groups',
     keywords: 'notes sort affinity',
+  },
+  {
+    name: 'RICE scoring',
+    category: 'Strategy',
+    about: 'Score ideas by reach, impact, confidence and effort',
+    keywords: 'prioritise prioritize backlog ranking',
+  },
+  {
+    name: 'PI planning',
+    category: 'Agile',
+    about: 'Teams by iterations with objectives, risks and dependencies',
+    keywords: 'program increment safe iteration release train',
+  },
+  {
+    name: 'Meeting agenda',
+    category: 'Meetings',
+    about: 'Goal, timed topics, decisions and action items',
+    keywords: 'agenda notes minutes actions',
+  },
+  {
+    name: 'Icebreaker',
+    category: 'Meetings',
+    about: 'Warm-up questions with space for everyone to answer',
+    keywords: 'warm up energizer team check-in',
+  },
+  {
+    name: 'Brainwriting',
+    category: 'Brainstorming',
+    about: 'Each person writes ideas, then builds on the others in rounds',
+    keywords: 'ideas silent 635 ideation',
+  },
+  {
+    name: 'User story map',
+    category: 'Agile',
+    about: 'Activities and steps across the top, stories in release slices below',
+    keywords: 'backlog mvp journey release',
   },
 ];
 /** Templates matching a search text (name, category, description, keywords) and an optional category. */
@@ -224,5 +273,97 @@ export function starterItems(name: StarterName, at: Point, make: Make): Item[] {
         ),
         ...grid(['Group A', 'Group B', 'Group C'], 3, 300, 360).map(f => ({ ...f, x: f.x + 780, y: f.y })),
       ];
+    case 'RICE scoring': {
+      const cols = ['Idea', 'Reach', 'Impact', 'Confidence', 'Effort', 'Score'],
+        widths = [300, 140, 140, 160, 140, 160];
+      const xs = widths.map((_, k) => widths.slice(0, k).reduce((a, b) => a + b + 10, 0));
+      return [
+        label('RICE scoring: (Reach × Impact × Confidence) ÷ Effort', 0, -80, 1100, 24),
+        ...cols.map((c, k) => frame(c, xs[k], 0, widths[k], 600)),
+        ...[0, 1, 2].map(r => note(`Idea ${r + 1}`, 70, 60 + r * 180, colors.yellow)),
+        note('People per quarter', xs[1] - 10, 60, colors.blue),
+        note('0.25 to 3', xs[2] - 10, 60, colors.green),
+        note('50% to 100%', xs[3], 60, colors.pink),
+        note('Person-months', xs[4] - 10, 60, colors.orange),
+      ];
+    }
+    case 'PI planning': {
+      const iterations = ['Iteration 1', 'Iteration 2', 'Iteration 3', 'Iteration 4'],
+        teams = ['Team A', 'Team B', 'Team C'];
+      return [
+        ...iterations.map((t, k) => label(t, 180 + k * 260, 0, 240, 22)),
+        ...teams.map((t, k) => label(t, 0, 80 + k * 220, 160, 22)),
+        ...teams.flatMap((_, r) =>
+          iterations.map((it, c) => frame(`${teams[r]} · ${it}`, 180 + c * 260, 60 + r * 220, 240, 200)),
+        ),
+        frame('PI objectives', 1260, 60, 300, 300),
+        frame('Risks (resolve, own, accept, mitigate)', 1260, 380, 300, 300),
+        note('Feature', 200, 110, colors.blue),
+        note('Dependency', 460, 330, colors.pink),
+        note('Objective', 1290, 120, colors.green),
+        note('Risk', 1290, 440, colors.orange),
+      ];
+    }
+    case 'Meeting agenda':
+      return [
+        label('Meeting title · date', 0, -80, 700, 28),
+        frame('Goal', 0, 0, 360, 240),
+        frame('Agenda (topic · owner · minutes)', 380, 0, 520, 520),
+        frame('Decisions', 920, 0, 360, 250),
+        frame('Action items', 920, 270, 360, 250),
+        frame('Parking lot', 0, 260, 360, 260),
+        note('What should this meeting achieve?', 30, 60, colors.yellow),
+        note('1. Topic · owner · 10 min', 410, 60, colors.blue),
+        note('2. Topic · owner · 15 min', 590, 60, colors.blue),
+        note('Owner: action by date', 950, 330, colors.green),
+      ];
+    case 'Icebreaker': {
+      const questions = [
+        'What made you smile this week?',
+        'One thing on your desk and why',
+        'Your perfect weekend in three words',
+        'A skill you would like to learn',
+      ];
+      return [
+        label('Icebreaker: pick a question and add a note', 0, -80, 900, 24),
+        ...questions.map((q, k) => frame(q, (k % 2) * 520, Math.floor(k / 2) * 380, 500, 360)),
+        ...questions.map((_, k) =>
+          note(
+            'My answer',
+            (k % 2) * 520 + 30,
+            Math.floor(k / 2) * 380 + 60,
+            [colors.yellow, colors.green, colors.pink, colors.violet][k],
+          ),
+        ),
+      ];
+    }
+    case 'Brainwriting': {
+      const people = ['Person 1', 'Person 2', 'Person 3'],
+        rounds = ['Round 1', 'Round 2', 'Round 3'];
+      return [
+        label('Write three ideas, pass them on, build on the ideas you receive', 0, -80, 1100, 22),
+        ...rounds.map((r, k) => label(r, 180 + k * 300, 0, 280, 22)),
+        ...people.map((p, k) => label(p, 0, 80 + k * 220, 160, 22)),
+        ...people.flatMap((p, r) =>
+          rounds.map((rd, c) => frame(`${p} · ${rd}`, 180 + c * 300, 60 + r * 220, 280, 200)),
+        ),
+        note('Idea', 200, 110, colors.yellow),
+        note('Builds on…', 500, 330, colors.green),
+        note('Builds on…', 800, 550, colors.blue),
+      ];
+    }
+    case 'User story map': {
+      const activities = ['Discover', 'Sign up', 'Use', 'Share'],
+        releases = ['Release 1 (MVP)', 'Release 2', 'Later'];
+      return [
+        ...activities.map((a, k) => ({ ...note(a, 200 + k * 260, 0, colors.orange), h: 100 })),
+        ...activities.map((_, k) => ({ ...note('Step', 200 + k * 260, 120, colors.blue), h: 100 })),
+        ...releases.map((r, k) => frame(r, 180, 250 + k * 240, 4 * 260, 220)),
+        ...releases.map((r, k) => label(r, 0, 300 + k * 240, 170, 18)),
+        note('Story', 200, 300, colors.yellow),
+        note('Story', 460, 300, colors.yellow),
+        note('Story', 720, 540, colors.yellow),
+      ];
+    }
   }
 }

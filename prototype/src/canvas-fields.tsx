@@ -8,6 +8,7 @@ export function CanvasField({
   multiline = false,
   onKeyDown,
   maxLength = 6000,
+  placeholder,
 }: {
   value: string;
   label: string;
@@ -15,10 +16,12 @@ export function CanvasField({
   multiline?: boolean;
   onKeyDown?: (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   maxLength?: number;
+  placeholder?: string;
 }) {
   const props = {
     className: 'canvas-field',
     'aria-label': label,
+    placeholder,
     defaultValue: value,
     maxLength,
     onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),

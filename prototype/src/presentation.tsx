@@ -13,8 +13,15 @@ import {
   LayoutGrid,
   Moon,
   ExternalLink,
+  Timer as TimerIcon,
+  Vote,
+  SmilePlus,
+  Map as MapIcon,
+  ArrowDownWideNarrow,
 } from 'lucide-react';
 import type { Board, Item, FrameFormat } from './model';
+import { slideObjectAt, slideObjects } from './presentation-tools';
+import { reactionChoices, sendReaction } from './collab-extras';
 import { framePresets, presetSize } from './frame-presets';
 import { presentationFrames, fitFrame, slideFrames, isHiddenSlide, frameNotes, FRAME_NOTES_LIMIT } from './navigation';
 import { useLatest } from './use-latest';
@@ -127,9 +134,12 @@ export function PresentationPanel({
   onAdd,
   onHide,
   onNotes,
+  onSort,
 }: {
   board: Board;
   onAdd?: () => void;
+  /** Order the frames by their position on the board (track R5). */
+  onSort?: () => void;
   onMove: (id: string, delta: number) => void;
   /** Index into the visible slides (hidden frames excluded). */
   onStart: (index: number) => void;
@@ -242,6 +252,11 @@ export function PresentationPanel({
               );
             })}
           </ol>
+          {onSort && frames.length > 1 && (
+            <button className="add-frame" onClick={onSort} title="Order frames by rows, top to bottom, left to right">
+              <ArrowDownWideNarrow size={15} /> Sort by position
+            </button>
+          )}
           <button className="primary present-start" disabled={!slides.length} onClick={() => onStart(0)}>
             <Play size={16} />
             Present from the start
@@ -376,12 +391,29 @@ export function PresentOverlay({
   size,
   onCamera,
   onExit,
+  getOrigin = () => ({ x: 0, y: 0 }),
+  onCanvas,
+  timerOn,
+  onTimer,
+  onStartVote,
+  onEndVote,
+  onVote,
 }: {
   board: Board;
   start: number;
   size: { w: number; h: number };
   onCamera: (c: Camera) => void;
   onExit: () => void;
+  /** Screen position of the canvas, for click-to-zoom and vote badges. */
+  getOrigin?: () => { x: number; y: number };
+  /** Leave the presentation and stay on the current frame. */
+  onCanvas?: (frame: Item) => void;
+  timerOn?: boolean;
+  onTimer?: () => void;
+  /** Start a dot-voting session on the objects of the current slide. */
+  onStartVote?: (ids: string[]) => void;
+  onEndVote?: () => void;
+  onVote?: (id: string, delta: 1 | -1) => void;
 }) {
   const frames = useMemo(() => slideFrames(board), [board]),
     [index, setIndex] = useState(start),
@@ -390,21 +422,27 @@ export function PresentOverlay({
     [dark, setDark] = useState(false),
     [blocked, setBlocked] = useState(false),
     [popup, setPopup] = useState<Window | null>(null),
+    [reacting, setReacting] = useState(false),
+    [zoomed, setZoomed] = useState<{ frame: string; item: Item } | null>(null),
     exit = useRef<HTMLButtonElement>(null);
   const safe = Math.max(0, Math.min(index, frames.length - 1)),
     frame = frames[safe],
     next = frames[safe + 1],
+    zoom = zoomed && frame && zoomed.frame === frame.id ? zoomed.item : null,
     exitRef = useLatest(onExit),
     cameraRef = useLatest(onCamera),
     frameRef = useLatest(frame),
     gridRef = useLatest(grid),
-    frameKey = frame ? [frame.id, frame.x, frame.y, frame.w, frame.h].join('|') : '';
+    zoomRef = useLatest(zoom),
+    frameKey = frame ? [frame.id, frame.x, frame.y, frame.w, frame.h].join('|') : '',
+    zoomKey = zoom ? [zoom.id, zoom.x, zoom.y, zoom.w, zoom.h].join('|') : '';
   useEffect(() => {
     if (!frames.length) exitRef.current();
   }, [frames.length, exitRef]);
   useEffect(() => {
-    if (frameRef.current) cameraRef.current(fitFrame(frameRef.current, { w: size.w, h: size.h }));
-  }, [frameKey, size.w, size.h, frameRef, cameraRef]);
+    const target = zoomRef.current ?? frameRef.current;
+    if (target) cameraRef.current(fitFrame(target, { w: size.w, h: size.h }, zoomRef.current ? 96 : 48));
+  }, [frameKey, zoomKey, size.w, size.h, frameRef, cameraRef, zoomRef]);
   useEffect(() => {
     exit.current?.focus();
   }, []);
@@ -472,6 +510,7 @@ export function PresentOverlay({
         e.preventDefault();
         e.stopImmediatePropagation();
         if (gridRef.current) setGrid(false);
+        else if (zoomRef.current) setZoomed(null);
         else exitRef.current();
       } else if (plain && (e.key === 'g' || e.key === 'G')) {
         e.stopImmediatePropagation();
@@ -483,9 +522,10 @@ export function PresentOverlay({
     };
     addEventListener('keydown', key, true);
     return () => removeEventListener('keydown', key, true);
-  }, [frames.length, exitRef, gridRef]);
+  }, [frames.length, exitRef, gridRef, zoomRef]);
+  if (zoomed && frame && zoomed.frame !== frame.id) setZoomed(null);
   if (!frame) return null;
-  const cam = fitFrame(frame, size),
+  const cam = zoom ? fitFrame(zoom, size, 96) : fitFrame(frame, size),
     hole = {
       left: frame.x * cam.z + cam.x,
       top: frame.y * cam.z + cam.y,
@@ -509,16 +549,50 @@ export function PresentOverlay({
     setPopup(w);
   };
   const notes = frameNotes(frame);
+  const voting = board.voting?.active ? board.voting : null,
+    onSlide = slideObjects(board, frame),
+    voteTargets = voting ? onSlide.filter(i => voting.targets.includes(i.id)) : [],
+    origin = getOrigin();
+  /** Click an object on the slide to zoom to it; click again (or press Escape) to return. */
+  const clickZoom = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target !== e.currentTarget && !target.classList.contains('present-hole')) return;
+    if (zoom) return setZoomed(null);
+    const hit = slideObjectAt(board, frame, {
+      x: (e.clientX - origin.x - cam.x) / cam.z,
+      y: (e.clientY - origin.y - cam.y) / cam.z,
+    });
+    if (hit) setZoomed({ frame: frame.id, item: hit });
+  };
   return (
     <div
-      className="present-overlay"
+      className={`present-overlay ${zoom ? 'zoomed' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label="Presentation mode"
       onPointerDown={e => e.stopPropagation()}
       onWheel={e => e.stopPropagation()}
+      onClick={clickZoom}
     >
       {dark && <div className="present-hole" style={hole} aria-hidden="true" />}
+      {voteTargets.map(i => (
+        <span
+          key={i.id}
+          className="present-vote"
+          role="group"
+          aria-label={`Votes for ${i.text?.trim().slice(0, 40) || i.type}`}
+          style={{ left: origin.x + (i.x + i.w / 2) * cam.z + cam.x, top: origin.y + i.y * cam.z + cam.y }}
+        >
+          <button aria-label="Remove vote" onClick={() => onVote?.(i.id, -1)}>
+            −
+          </button>
+          <b>{voting!.votes[i.id] ?? 0}</b>
+          <button aria-label="Add vote" onClick={() => onVote?.(i.id, 1)}>
+            +
+          </button>
+        </span>
+      ))}
+      {zoom && <p className="present-zoom-hint">Zoomed in. Click anywhere or press Esc to return to the slide.</p>}
       {showNotes && (
         <aside className="present-notes floating" aria-label="Presenter notes">
           <div className="panel-heading">
@@ -621,7 +695,60 @@ export function PresentOverlay({
         >
           <Moon size={17} />
         </button>
+        {onTimer && (
+          <button
+            className={`icon-button ${timerOn ? 'active' : ''}`}
+            aria-label="Timer"
+            aria-pressed={!!timerOn}
+            title="Show or hide the timer"
+            onClick={onTimer}
+          >
+            <TimerIcon size={17} />
+          </button>
+        )}
+        {(onStartVote || onEndVote) && (
+          <button
+            className={`icon-button ${voting ? 'active' : ''}`}
+            aria-label={voting ? 'End voting' : 'Vote on this slide'}
+            aria-pressed={!!voting}
+            title={voting ? 'End voting and keep the results' : 'Start dot voting on the objects of this slide'}
+            disabled={!voting && !onSlide.length}
+            onClick={() => (voting ? onEndVote?.() : onStartVote?.(onSlide.map(i => i.id)))}
+          >
+            <Vote size={17} />
+          </button>
+        )}
+        <div className="present-react-wrap">
+          <button
+            className={`icon-button ${reacting ? 'active' : ''}`}
+            aria-label="Reactions"
+            aria-expanded={reacting}
+            title="Send a reaction"
+            onClick={() => setReacting(!reacting)}
+          >
+            <SmilePlus size={17} />
+          </button>
+          {reacting && (
+            <span className="present-reactions floating" role="group" aria-label="Send a reaction">
+              {reactionChoices.map(r => (
+                <button key={r.emoji} aria-label={r.label} title={r.label} onClick={() => sendReaction(r.emoji)}>
+                  {r.emoji}
+                </button>
+              ))}
+            </span>
+          )}
+        </div>
         <span className="divider" />
+        {onCanvas && (
+          <button
+            className="icon-button"
+            aria-label="Go to canvas"
+            title="Leave the presentation and stay on this frame"
+            onClick={() => onCanvas(frame)}
+          >
+            <MapIcon size={17} />
+          </button>
+        )}
         <button ref={exit} onClick={onExit}>
           <X size={16} />
           Exit

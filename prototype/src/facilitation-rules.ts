@@ -53,6 +53,14 @@ export function renameVotingResult(board: Board, index: number, name: string): B
     }),
   };
 }
+/** Text for a voting result placed on the board: a title line, then one ranked line per object. */
+export function votingResultText(result: NonNullable<Board['votingResults']>[number], limit = 20): string {
+  const title = result.name || `Voting results · ${result.endedAt.slice(0, 10)}`;
+  const lines = result.totals
+    .slice(0, limit)
+    .map((t, k) => `${k + 1}. ${t.label} — ${t.votes} ${t.votes === 1 ? 'vote' : 'votes'}`);
+  return [title, ...lines].join('\n');
+}
 export function deleteVotingResult(board: Board, index: number): Board {
   const results = board.votingResults ?? [];
   if (!results[index]) throw new Error('That result no longer exists.');
@@ -99,6 +107,60 @@ export function toggleReaction(board: Board, threadId: string, messageId: string
     return n;
   });
 }
+/** Comment pin colours. The default (no colour stored) is the amber pin. */
+export const commentColors = [
+  { name: 'Red', value: '#c92a2a' },
+  { name: 'Green', value: '#2b8a3e' },
+  { name: 'Blue', value: '#3b5bdb' },
+  { name: 'Purple', value: '#7048e8' },
+  { name: 'Grey', value: '#5c5f66' },
+];
+export const DEFAULT_COMMENT_COLOR = '#ffb020';
+export const setCommentColor = (board: Board, id: string, color: string | null) =>
+  mapThread(board, id, t => {
+    if (color && !commentColors.some(c => c.value === color)) throw new Error('Choose one of the offered colours.');
+    const n = { ...t };
+    if (color) n.color = color;
+    else delete n.color;
+    return n;
+  });
+/** Time of the newest message (edits count), as epoch milliseconds. */
+export const threadUpdatedAt = (t: CommentThread) =>
+  Math.max(0, ...t.messages.map(m => Math.max(Date.parse(m.at) || 0, Date.parse(m.editedAt ?? '') || 0)));
+/**
+ * Unread state on this device: a thread is unread when it changed after it was last opened here.
+ * `seen` maps thread ids to the time they were last opened. Threads never opened are unread.
+ */
+export const isUnread = (t: CommentThread, seen: Record<string, number>) =>
+  !t.resolved && threadUpdatedAt(t) > (seen[t.id] ?? 0);
+export const COMMENT_SEEN_KEY = 'boardroom.comments.seen.v1';
+export const COMMENT_DRAFT_KEY = 'boardroom.comments.drafts.v1';
+/** Parse a stored map of string keys to numbers or strings, dropping anything else. */
+export function readStoredMap<T extends number | string>(
+  raw: string | null,
+  kind: 'number' | 'string',
+): Record<string, T> {
+  try {
+    const value = JSON.parse(raw ?? '{}');
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([k, v]) => k.length <= 200 && typeof v === kind && (kind === 'number' || (v as string).length <= 2000))
+        .slice(0, 500),
+    ) as Record<string, T>;
+  } catch {
+    return {};
+  }
+}
+/** Store a draft (empty text removes it); keeps the newest 100 drafts. */
+export function withDraft(drafts: Record<string, string>, key: string, text: string): Record<string, string> {
+  const next = { ...drafts };
+  delete next[key];
+  if (text.trim()) next[key] = text.slice(0, 2000);
+  const keys = Object.keys(next);
+  return keys.length > 100 ? Object.fromEntries(keys.slice(-100).map(k => [k, next[k]])) : next;
+}
+
 /** Pinned threads first; otherwise the stored order. */
 export const orderThreads = (threads: CommentThread[]) =>
   [...threads].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
@@ -109,6 +171,8 @@ const isoish = (v: unknown) => typeof v === 'string' && v.length <= 40 && Number
 export function validateComments(b: Board): void {
   for (const t of b.comments ?? []) {
     if (t.pinned !== undefined && typeof t.pinned !== 'boolean') throw new Error('Invalid comments.');
+    if (t.color !== undefined && !commentColors.some(c => c.value === t.color))
+      throw new Error('Invalid comment colour.');
     for (const m of t.messages) {
       if (m.editedAt !== undefined && !isoish(m.editedAt)) throw new Error('Invalid comments.');
       if (

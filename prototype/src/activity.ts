@@ -144,6 +144,15 @@ export function previousVisit(kv: { getItem(k: string): string | null }, boardId
     return undefined;
   }
 }
+/** When the board was last opened in this browser (ISO), for the dashboard's "Last opened" sort. */
+export function lastVisit(kv: { getItem(k: string): string | null }, boardId: string): string | undefined {
+  try {
+    const at = JSON.parse(kv.getItem(visitKey(boardId)) ?? '{}')?.current;
+    return typeof at === 'string' && Number.isFinite(Date.parse(at)) ? at : undefined;
+  } catch {
+    return undefined;
+  }
+}
 /** Ids of objects added or edited since `since` that still exist on the board. */
 export const changedSince = (log: Activity[], since: number, existing: Set<string>) => [
   ...new Set(

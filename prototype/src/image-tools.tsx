@@ -1,7 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, RotateCcw } from 'lucide-react';
-import type { Crop, ImageAsset, Item } from './model';
-import { FULL_CROP, clampCrop, cropViewBox, cropAspect } from './images';
+import { X, RotateCcw, FlipHorizontal2, FlipVertical2, SunMedium, Download } from 'lucide-react';
+import type { Crop, ImageAdjust, ImageAsset, Item } from './model';
+import {
+  ADJUST_MAX,
+  ADJUST_MIN,
+  FULL_CROP,
+  adjustTransfer,
+  clampCrop,
+  cropViewBox,
+  cropAspect,
+  flipTransform,
+} from './images';
+import { saveAssetFile } from './widget-kit';
 
 /** Canvas rendering of an image object, showing only its crop region. */
 export function ImageBody({ item, asset }: { item: Item; asset?: ImageAsset }) {
@@ -14,7 +24,12 @@ export function ImageBody({ item, asset }: { item: Item; asset?: ImageAsset }) {
         </text>
       </>
     );
-  const body = (
+  // Flip, brightness and contrast (gap b6-6) are drawn with an SVG transform and filter inside the object's
+  // own group, so every export that clones the canvas carries them.
+  const flip = flipTransform(item.adjust, item.w, item.h),
+    transfer = adjustTransfer(item.adjust),
+    filterId = `image-adjust-${item.id}`;
+  const picture = (
     <svg
       width={item.w}
       height={item.h}
@@ -25,6 +40,32 @@ export function ImageBody({ item, asset }: { item: Item; asset?: ImageAsset }) {
       <image href={asset.data} width={asset.width} height={asset.height} preserveAspectRatio="none" />
     </svg>
   );
+  const body =
+    flip || transfer ? (
+      <>
+        {transfer && (
+          <defs>
+            <filter id={filterId} x="0" y="0" width="1" height="1" colorInterpolationFilters="sRGB">
+              <feComponentTransfer>
+                <feFuncR type="linear" slope={transfer.slope} intercept={transfer.intercept} />
+                <feFuncG type="linear" slope={transfer.slope} intercept={transfer.intercept} />
+                <feFuncB type="linear" slope={transfer.slope} intercept={transfer.intercept} />
+              </feComponentTransfer>
+            </filter>
+          </defs>
+        )}
+        <g
+          className="image-adjusted"
+          transform={flip}
+          filter={transfer ? `url(#${filterId})` : undefined}
+          data-flip={flip ? `${item.adjust?.flipX ? 'x' : ''}${item.adjust?.flipY ? 'y' : ''}` : undefined}
+        >
+          {picture}
+        </g>
+      </>
+    ) : (
+      picture
+    );
   const s = item.style;
   if (!s) return body;
   // Border, corner radius and circle crop (gap D11). The clip path lives inside the object's own group,
@@ -63,6 +104,120 @@ export function ImageBody({ item, asset }: { item: Item; asset?: ImageAsset }) {
           pointerEvents: 'none',
         })}
     </>
+  );
+}
+
+/**
+ * Selection-bar controls for an image (gap b6-6 and b3-4): flip, a brightness/contrast popover and
+ * download of the original file. Every change is one undo step; sliders commit when released.
+ */
+export function ImageAdjustControls({
+  item,
+  asset,
+  onAdjust,
+}: {
+  item: Item;
+  asset?: ImageAsset;
+  onAdjust: (change: (a: ImageAdjust) => ImageAdjust) => void;
+}) {
+  const [open, setOpen] = useState(false),
+    a = item.adjust ?? {};
+  return (
+    <>
+      <button
+        className={`icon-button ${a.flipX ? 'active' : ''}`}
+        aria-label="Flip horizontally"
+        title="Flip horizontally"
+        aria-pressed={!!a.flipX}
+        onClick={() => onAdjust(x => ({ ...x, flipX: !x.flipX }))}
+      >
+        <FlipHorizontal2 size={17} />
+      </button>
+      <button
+        className={`icon-button ${a.flipY ? 'active' : ''}`}
+        aria-label="Flip vertically"
+        title="Flip vertically"
+        aria-pressed={!!a.flipY}
+        onClick={() => onAdjust(x => ({ ...x, flipY: !x.flipY }))}
+      >
+        <FlipVertical2 size={17} />
+      </button>
+      <span className="menu-anchor">
+        <button
+          className={`icon-button ${a.brightness !== undefined || a.contrast !== undefined ? 'active' : ''}`}
+          aria-label="Brightness and contrast"
+          title="Brightness and contrast"
+          aria-expanded={open}
+          onClick={() => setOpen(v => !v)}
+        >
+          <SunMedium size={17} />
+        </button>
+        {open && (
+          <div
+            className="dropdown floating image-adjust"
+            role="group"
+            aria-label="Image adjustments"
+            onKeyDown={e => {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                setOpen(false);
+              }
+            }}
+          >
+            <AdjustSlider
+              key={`b${a.brightness ?? 100}`}
+              label="Brightness"
+              value={a.brightness ?? 100}
+              onCommit={v => onAdjust(x => ({ ...x, brightness: v }))}
+            />
+            <AdjustSlider
+              key={`c${a.contrast ?? 100}`}
+              label="Contrast"
+              value={a.contrast ?? 100}
+              onCommit={v => onAdjust(x => ({ ...x, contrast: v }))}
+            />
+            <div className="row">
+              <button onClick={() => onAdjust(x => ({ ...x, brightness: 100, contrast: 100 }))}>
+                <RotateCcw size={14} /> Reset
+              </button>
+            </div>
+          </div>
+        )}
+      </span>
+      <button
+        className="icon-button"
+        aria-label="Download original image"
+        title="Download original image"
+        disabled={!asset}
+        onClick={() => asset && saveAssetFile(asset, item.text || 'image')}
+      >
+        <Download size={17} />
+      </button>
+    </>
+  );
+}
+function AdjustSlider({ label, value, onCommit }: { label: string; value: number; onCommit: (v: number) => void }) {
+  const [draft, setDraft] = useState(value),
+    commit = () => {
+      if (draft !== value) onCommit(draft);
+    };
+  return (
+    <label>
+      {label}
+      <input
+        type="range"
+        min={ADJUST_MIN}
+        max={ADJUST_MAX}
+        step={5}
+        value={draft}
+        aria-label={label}
+        onChange={e => setDraft(Number(e.target.value))}
+        onPointerUp={commit}
+        onKeyUp={commit}
+        onBlur={commit}
+      />
+      <span>{draft}%</span>
+    </label>
   );
 }
 

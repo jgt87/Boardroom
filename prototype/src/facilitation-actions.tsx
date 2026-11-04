@@ -1,13 +1,15 @@
 // Selection-bar actions for presentation and facilitation (gaps G1, G2, G6, G7, G8, G11) and the clock that
 // ends timed voting sessions (G5). Rendered by the selection bar and the floating panels through useApp().
 import React, { useEffect, useState } from 'react';
-import { NotebookPen, MonitorOff, Palette, Group, FileText, Shuffle } from 'lucide-react';
+import { NotebookPen, MonitorOff, Palette, Group, FileText, Shuffle, CopyPlus, Heading } from 'lucide-react';
+import { frameTitleHidden, setFrameTitleHidden } from './frame-workflow';
+import { copyFrame, shuffleFrameStyle, FRAME_COPIES_MAX } from './frame-tools';
 import { useApp } from './board-app';
 import { expandGroups } from './arrange';
 import { frameNotes, isHiddenSlide, setFrameNotes, setHiddenSlide } from './navigation';
 import { NotesEditor } from './presentation';
 import { applyFrameStyle, framePalettes, frameStyleOf, removeFrameStyle } from './frame-styles';
-import { clusterLabels, clusterSelection } from './cluster';
+import { clusterLabels, clusterSelection, clusterAsOne } from './cluster';
 import type { ClusterBy } from './cluster';
 import { notesToDoc } from './notes';
 import type { OutlineBy } from './notes';
@@ -17,7 +19,7 @@ import { votingExpired, voteLabel } from './facilitation-rules';
 import { useLatest } from './use-latest';
 import './facilitation.css';
 
-type Open = 'notes' | 'style' | 'cluster' | 'doc' | null;
+type Open = 'notes' | 'style' | 'cluster' | 'doc' | 'copies' | null;
 
 /** Popover below a selection-bar button. Keys and pointer presses stay inside it. */
 function Popover({ label, children, onClose }: { label: string; children: React.ReactNode; onClose: () => void }) {
@@ -40,6 +42,7 @@ function Popover({ label, children, onClose }: { label: string; children: React.
 export function FacilitationActions() {
   const { board, boardRef, selected, selectedItem, run, update, setSelected, display, setEditing } = useApp();
   const [open, setOpen] = useState<Open>(null),
+    [copies, setCopies] = useState(3),
     [openFor, setOpenFor] = useState(selected.join());
   // Close any popover when the selection changes.
   if (openFor !== selected.join()) {
@@ -65,8 +68,20 @@ export function FacilitationActions() {
       setSelected([...r.clusters.flatMap(c => c.ids), ...r.titleIds]);
       setOpen(null);
       display(
-        `Grouped ${r.clusters.reduce((s, c) => s + c.ids.length, 0)} notes into ${r.clusters.length} cluster${r.clusters.length === 1 ? '' : 's'}. Undo restores the layout.`,
+        `Grouped ${r.clusters.reduce((s, c) => s + c.ids.length, 0)} notes into ${r.clusters.length} cluster frame${r.clusters.length === 1 ? '' : 's'}. Undo restores the layout.`,
       );
+    } catch (err) {
+      display((err as Error).message);
+    }
+  };
+  const clusterOne = () => {
+    try {
+      const r = clusterAsOne(boardRef.current, ids);
+      update(r.board);
+      setSelected([r.frameId]);
+      setOpen(null);
+      setEditing(r.frameId);
+      display('Put the notes in one cluster frame. Type a name for it.');
     } catch (err) {
       display((err as Error).message);
     }
@@ -122,6 +137,64 @@ export function FacilitationActions() {
           >
             <MonitorOff size={17} />
           </button>
+          <button
+            className={`icon-button ${frameTitleHidden(frame) ? 'active' : ''}`}
+            aria-label={frameTitleHidden(frame) ? 'Show frame title' : 'Hide frame title'}
+            aria-pressed={frameTitleHidden(frame)}
+            title={frameTitleHidden(frame) ? 'Show frame title' : 'Hide frame title'}
+            onClick={() => run(b => setFrameTitleHidden(b, frame.id, !frameTitleHidden(frame)))}
+          >
+            <Heading size={17} />
+          </button>
+          <span className="fx-wrap">
+            <button
+              className="icon-button"
+              aria-label="Make copies of frame"
+              aria-expanded={open === 'copies'}
+              title="Make copies of this frame and its contents"
+              onClick={() => toggle('copies')}
+            >
+              <CopyPlus size={17} />
+            </button>
+            {open === 'copies' && (
+              <Popover label="Make copies of frame" onClose={() => setOpen(null)}>
+                <h3>Make copies</h3>
+                <form
+                  className="fx-copies"
+                  onSubmit={e => {
+                    e.preventDefault();
+                    try {
+                      const r = copyFrame(boardRef.current, frame.id, copies);
+                      update(r.board);
+                      setSelected(r.frames);
+                      setOpen(null);
+                      display(`Made ${copies} ${copies === 1 ? 'copy' : 'copies'} of the frame. Undo removes them.`);
+                    } catch (err) {
+                      display((err as Error).message);
+                    }
+                  }}
+                >
+                  <label>
+                    Copies
+                    <input
+                      type="number"
+                      min={1}
+                      max={FRAME_COPIES_MAX}
+                      value={copies}
+                      aria-label="Number of copies"
+                      onChange={e =>
+                        setCopies(Math.max(1, Math.min(FRAME_COPIES_MAX, Math.round(Number(e.target.value)) || 1)))
+                      }
+                    />
+                  </label>
+                  <button type="submit" className="primary">
+                    Make copies
+                  </button>
+                </form>
+                <p className="fx-hint">Copies are placed in a row to the right, with everything inside the frame.</p>
+              </Popover>
+            )}
+          </span>
         </>
       )}
       {onlyFrames && (
@@ -165,6 +238,19 @@ export function FacilitationActions() {
               </div>
               <button
                 className="fx-remove"
+                onClick={() =>
+                  run(b =>
+                    shuffleFrameStyle(
+                      b,
+                      frames.map(f => f.id),
+                    ),
+                  )
+                }
+              >
+                <Shuffle size={14} /> Shuffle style
+              </button>
+              <button
+                className="fx-remove"
                 disabled={!styled}
                 onClick={() =>
                   run(b =>
@@ -204,6 +290,10 @@ export function FacilitationActions() {
                   ))}
                 </div>
                 <p className="fx-hint">Keyword groups notes that share words. It runs on this device.</p>
+                <div className="fx-choices">
+                  <button onClick={clusterOne}>One cluster</button>
+                </div>
+                <p className="fx-hint">Each cluster is a frame: rename it, resize it, drag notes in or out.</p>
               </Popover>
             )}
           </span>

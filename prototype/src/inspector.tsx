@@ -9,6 +9,7 @@ import { canRotate } from './rotation';
 import { isShapeKind, shapeLabels } from './shapes';
 import { specFor } from './widget-specs';
 import { layerLabel } from './board-tools';
+import { timeLabel } from './item-times';
 import {
   MIXED,
   type Shared,
@@ -473,6 +474,23 @@ export function PropertiesInspector({ board, selected, onChange, onClose }: Prop
             <span>Kind</span>
             <span>{kindLabel(single)}</span>
           </p>
+        </fieldset>
+      )}
+      {single && (
+        <fieldset className="inspector-section">
+          <legend>Info</legend>
+          <dl className="inspector-summary" aria-label="Object info">
+            <dt>Created</dt>
+            <dd>{timeLabel(single.createdAt)}</dd>
+            <dt>Last modified</dt>
+            <dd>{timeLabel(single.modifiedAt)}</dd>
+            {single.author && (
+              <>
+                <dt>Author</dt>
+                <dd>{single.author}</dd>
+              </>
+            )}
+          </dl>
         </fieldset>
       )}
     </aside>

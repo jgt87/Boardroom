@@ -1,7 +1,7 @@
 // Views for video, PDF, bookmark, embed, doc, wireframe and prototype-screen widgets (items 30–33, 37, 38).
 // Public libraries only: pdfjs-dist (lazy) for PDFs and marked (via markdown.ts) for docs.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Dialog as WidgetDialog } from './widget-kit';
+import { Dialog as WidgetDialog, saveAssetFile } from './widget-kit';
 import {
   X,
   Play,
@@ -670,7 +670,11 @@ function EmbedView({ item }: { item: Item; ctx: WidgetCtx }) {
     src = '';
   }
   if (!url)
-    return <div className="embed-object empty">{missing('Double-click to add a video, map, design or code link')}</div>;
+    return (
+      <div className="embed-object empty">
+        {missing('Double-click to add a video, map, design, code or document link')}
+      </div>
+    );
   if (!src) return <div className="embed-object empty">{missing('This embed link is no longer supported')}</div>;
   const label = providerLabels[d.provider as EmbedProvider] ?? 'Embed';
   return (
@@ -740,7 +744,7 @@ function EmbedEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
   return (
     <Dialog
       title="Embed"
-      hint="Supported: YouTube, Vimeo, map embed links, Figma and CodePen."
+      hint="Supported: YouTube, Vimeo, Loom, map embed links, Figma, CodePen and Google documents, spreadsheets and presentations."
       onClose={onClose}
       onDone={done}
     >
@@ -1447,6 +1451,23 @@ function ScreenEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onCl
   );
 }
 
+/** Selection-bar action that downloads the stored file under its original name (gap b3-4). */
+const downloadOriginal = (item: Item, ctx: WidgetCtx, what: string) => {
+  const asset = item.assetId ? ctx.assets[item.assetId] : undefined;
+  return {
+    label: `Download original ${what}`,
+    icon: <Download size={17} />,
+    disabled: !asset,
+    run: () => {
+      if (!asset) return;
+      try {
+        saveAssetFile(asset, item.text || what);
+      } catch (err) {
+        ctx.display((err as Error).message);
+      }
+    },
+  };
+};
 const updateItem = (ctx: WidgetCtx, id: string, patch: Partial<Item>) =>
   ctx.update(b => ({ ...b, items: b.items.map(i => (i.id === id ? { ...i, ...patch } : i)) }));
 export const mediaViews: WidgetView[] = [
@@ -1457,6 +1478,7 @@ export const mediaViews: WidgetView[] = [
     Render: p => <VideoView {...p} />,
     Editor: p => <VideoEditor {...p} />,
     fromFile: { accept: 'video/mp4,video/webm,video/quicktime,.mov', load: loadVideo },
+    actions: (item, ctx) => [downloadOriginal(item, ctx, 'video')],
   },
   {
     kind: 'pdf',
@@ -1464,6 +1486,7 @@ export const mediaViews: WidgetView[] = [
     Render: p => <PdfView {...p} />,
     Editor: p => <PdfEditor {...p} />,
     fromFile: { accept: 'application/pdf', load: loadPdf },
+    actions: (item, ctx) => [downloadOriginal(item, ctx, 'document')],
   },
   {
     kind: 'bookmark',

@@ -22,7 +22,9 @@ import type { WidgetCtx } from './widget-types';
 import { useApp } from './board-app';
 import { CanvasRecords } from './canvas-records';
 import { gridOwner } from './grid-canvas';
+import { itemAriaLabel, nextNoteBeside } from './access-tools';
 import './canvas-workflows.css';
+import { autoList, autoListKinds } from './text-auto';
 
 /** Renders one board object (shape, note, connector, widget, media) with its overlays. */
 export function useRenderItem() {
@@ -78,7 +80,7 @@ export function useRenderItem() {
           opacity={i.opacity}
           data-connector-path={i.connector?.path ?? 'straight'}
           role="img"
-          aria-label={i.text ? `Connector: ${i.text}` : 'Connector'}
+          aria-label={i.name || i.text ? `Connector: ${i.name || i.text}` : 'Connector'}
           onDoubleClick={e => {
             e.stopPropagation();
             setSelected([i.id]);
@@ -149,7 +151,7 @@ export function useRenderItem() {
           }
         }}
         role={viewFor(i.type)?.interactive || ['table', 'kanban', 'timeline'].includes(i.type) ? 'group' : 'img'}
-        aria-label={`${i.type}: ${i.text || 'Untitled'}`}
+        aria-label={itemAriaLabel(i)}
       >
         <rect className="object-hit-area" width={i.w} height={i.h} fill="transparent" pointerEvents="all" />
         {i.type === 'note' && (
@@ -196,9 +198,17 @@ export function useRenderItem() {
         {frame && (
           <>
             <rect width={i.w} height={i.h} fill={i.fill} fillOpacity=".5" stroke="#c5c5ce" strokeWidth={1 / camera.z} />
-            <text y={-12 / camera.z} fill="#52525b" fontSize={13 / camera.z}>
-              {i.text || 'Untitled frame'}
-            </text>
+            {(!i.data?.hideTitle || isSelected) && (
+              <text
+                className="frame-title"
+                y={-12 / camera.z}
+                fill="#52525b"
+                fontSize={13 / camera.z}
+                opacity={i.data?.hideTitle ? 0.5 : 1}
+              >
+                {i.text || 'Untitled frame'}
+              </text>
+            )}
           </>
         )}
         {i.type === 'pen' &&
@@ -287,10 +297,33 @@ export function useRenderItem() {
                 editSeed.current = null;
                 update({
                   ...boardRef.current,
-                  items: boardRef.current.items.map(n => (n.id === i.id ? { ...n, text } : n)),
+                  items: boardRef.current.items.map(n => {
+                    if (n.id !== i.id) return n;
+                    // "- " and "1. " lines become a list (track R5).
+                    const listed = autoListKinds(n, shape) ? autoList(text, n.format) : null;
+                    return listed ? { ...n, ...listed } : { ...n, text };
+                  }),
                 });
                 setEditing(null);
               }}
+              onTab={
+                i.type === 'note'
+                  ? text => {
+                      // Tab while editing a sticky note saves it and starts the next note beside it (one undo step).
+                      editSeed.current = null;
+                      const base = boardRef.current,
+                        source = base.items.find(n => n.id === i.id);
+                      if (!source) return;
+                      const next = nextNoteBeside(source);
+                      update({
+                        ...base,
+                        items: [...base.items.map(n => (n.id === i.id ? { ...n, text } : n)), next],
+                      });
+                      setSelected([next.id]);
+                      setEditing(next.id);
+                    }
+                  : undefined
+              }
             />
           </foreignObject>
         )}

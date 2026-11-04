@@ -18,6 +18,7 @@ import { useApp } from './board-app';
 import { useRenderItem } from './use-render-item';
 import { RECORD_CARD_MIME } from './record-card-handle';
 import { mermaidItem } from './smart-paste';
+import { droppedImage } from './web-drop';
 import { TOOL_MIME } from './formats';
 import { ESTIMATE_MIME, estimatePatch, patchCards } from './card-tools';
 import { inHiddenLayer } from './layers';
@@ -53,6 +54,7 @@ export function CanvasSurface() {
     guides,
     insertImages,
     insertText,
+    insertWebImage,
     insertMedia,
     placeAt,
     marquee,
@@ -185,6 +187,17 @@ export function CanvasSurface() {
             // Links and text dragged from other apps (gap B7). Drags that start inside the page (Kanban cards,
             // table rows, selected text) or that a widget already handled are left alone.
             if (e.defaultPrevented || pageDrag) return;
+            // A picture dragged from a web page becomes an image object when its bytes can be read (gap b6-7).
+            const picture = droppedImage(
+              e.dataTransfer.getData('text/html'),
+              e.dataTransfer.getData('text/uri-list'),
+              e.dataTransfer.getData('text/plain'),
+            );
+            if (picture) {
+              e.preventDefault();
+              void insertWebImage(picture, toWorld(e.clientX, e.clientY));
+              return;
+            }
             const uri = e.dataTransfer
               .getData('text/uri-list')
               .split(/\r?\n/)
@@ -220,9 +233,16 @@ export function CanvasSurface() {
               y: p.y + k * 40,
             });
           }
+          // A spreadsheet dropped on a Grid fills that grid (gap b3-5); elsewhere it becomes a Table.
+          const dropId = (e.target as Element).closest?.('[data-item]')?.getAttribute('data-item'),
+            dropGrid = boardRef.current.items.find(i => i.id === dropId && i.type === 'grid');
           for (const [k, f] of documents.slice(0, 5).entries()) {
             const p = toWorld(e.clientX, e.clientY);
-            void importDocument(f, { x: p.x + k * 40, y: p.y + k * 40 });
+            void importDocument(
+              f,
+              { x: p.x + k * 40, y: p.y + k * 40 },
+              dropGrid && k === 0 && /\.(csv|tsv|xlsx)$/i.test(f.name) ? { gridId: dropGrid.id } : undefined,
+            );
           }
           if (diagrams.length) void insertDrawio(diagrams, toWorld(e.clientX, e.clientY));
           if (images.length) void insertImages(images, toWorld(e.clientX, e.clientY));
@@ -353,15 +373,23 @@ export function CanvasSurface() {
                   transform={`translate(${p.x} ${p.y}) scale(${1 / camera.z})`}
                   style={{ cursor: 'pointer' }}
                   role="button"
-                  aria-label={`Comment: ${t.messages[0].text.slice(0, 60)}`}
+                  aria-label={`${t.messages.length} ${t.messages.length === 1 ? 'comment' : 'comments'}: ${t.messages[0].text.slice(0, 60)}`}
                 >
                   <path
                     d="M0,0 L0,-18 Q0,-30 12,-30 L30,-30 Q42,-30 42,-18 L42,-12 Q42,0 30,0 Z"
-                    fill={t.resolved ? '#d4d4da' : '#ffb020'}
+                    fill={t.resolved ? '#d4d4da' : (t.color ?? '#ffb020')}
                     stroke="#ffffff"
                     strokeWidth="2"
                   />
-                  <text x="21" y="-11" textAnchor="middle" fontSize="12" fontWeight="700" fill="#25252c">
+                  <text
+                    aria-hidden="true"
+                    x="21"
+                    y="-11"
+                    textAnchor="middle"
+                    fontSize="12"
+                    fontWeight="700"
+                    fill={t.color && !t.resolved ? '#ffffff' : '#25252c'}
+                  >
                     {t.messages.length}
                   </text>
                 </g>

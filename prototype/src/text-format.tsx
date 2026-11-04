@@ -15,7 +15,9 @@ import {
   Ellipsis,
 } from 'lucide-react';
 import type { Item, TextFormat } from './model';
-import { fontFamilies, fontStack } from './model';
+import { fontStack } from './model';
+import { useBrandKit } from './brand-kit-panel';
+import { fontsBrandFirst } from './brand-kit';
 import { fitText, wrappedLineCount } from './text-layout';
 let measuring: CanvasRenderingContext2D | null = null;
 const layoutCache = new Map<string, { size: number; lines: number; height: number }>();
@@ -70,11 +72,15 @@ export function CanvasTextEditor({
   item,
   initialText,
   onCommit,
+  onTab,
 }: {
   item: Item;
   initialText?: string;
   onCommit: (text: string) => void;
+  /** Tab (without modifiers): save and hand over to the caller instead of committing on blur. */
+  onTab?: (text: string) => void;
 }) {
+  const handedOver = useRef(false);
   const [text, setText] = useState(initialText ?? item.text),
     live = { ...item, text },
     layout = textLayout(live),
@@ -129,9 +135,17 @@ export function CanvasTextEditor({
       }
       onPointerDown={e => e.stopPropagation()}
       onChange={e => setText(e.target.value)}
-      onBlur={() => onCommit(text)}
+      onBlur={() => {
+        if (!handedOver.current) onCommit(text);
+      }}
       onKeyDown={e => {
         e.stopPropagation();
+        if (onTab && e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          handedOver.current = true;
+          onTab(text);
+          return;
+        }
         if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) e.currentTarget.blur();
       }}
     />
@@ -157,6 +171,7 @@ export function TextControls({
 }) {
   const f = item.format ?? {},
     set = (change: TextFormat) => onChange({ ...f, ...change });
+  const brandKit = useBrandKit();
   const [expanded, setExpanded] = useState(false),
     full = !compact || expanded;
   return (
@@ -167,7 +182,7 @@ export function TextControls({
         value={f.fontFamily ?? 'Arial'}
         onChange={e => set({ fontFamily: e.target.value as TextFormat['fontFamily'] })}
       >
-        {fontFamilies.map(ff => (
+        {fontsBrandFirst(brandKit).map(ff => (
           <option key={ff} value={ff} style={{ fontFamily: fontStack(ff) }}>
             {ff === 'monospace' ? 'Monospace' : ff}
           </option>

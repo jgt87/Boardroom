@@ -39,7 +39,15 @@ export type BoardMeta = {
  * `spaces` lists spaces created explicitly, so an empty space is kept; spaces named only by boards
  * (older indexes) still count. Every new field is optional, so older indexes load unchanged.
  */
-export type Library = { version: 1; activeId: string; boards: BoardMeta[]; spaces?: string[] };
+export type Library = {
+  version: 1;
+  activeId: string;
+  boards: BoardMeta[];
+  spaces?: string[];
+  /** Optional emoji and description per space name (track R3). */
+  spaceInfo?: Record<string, SpaceInfo>;
+};
+export type SpaceInfo = { emoji?: string; description?: string };
 
 export const INDEX_KEY = 'boardroom.boards.v1';
 export const LEGACY_KEY = 'boardroom.document.v1';
@@ -78,6 +86,25 @@ export function previewOf(board: Board): PreviewShape[] {
       fill: /^#[0-9a-f]{6}$/i.test(i.fill) ? i.fill : '#d4d4da',
       kind: i.type === 'note' ? 'note' : i.type === 'frame' ? 'frame' : i.type === 'arrow' ? 'line' : 'shape',
     }));
+}
+/** Preview shapes from untrusted data (saved templates, imports): valid shapes only, or undefined. */
+export function cleanPreview(v: unknown): PreviewShape[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const num = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n >= -1 && n <= 2;
+  return v
+    .filter(
+      (s): s is PreviewShape =>
+        !!s &&
+        num(s.x) &&
+        num(s.y) &&
+        num(s.w) &&
+        num(s.h) &&
+        typeof s.fill === 'string' &&
+        /^#[0-9a-f]{6}$/i.test(s.fill) &&
+        ['note', 'frame', 'line', 'shape'].includes(s.kind),
+    )
+    .slice(0, 60)
+    .map(s => ({ x: s.x, y: s.y, w: s.w, h: s.h, fill: s.fill, kind: s.kind }));
 }
 export const DESCRIPTION_MAX = 1000;
 /** Copy the board's status and description onto its index entry (removing them when absent). */
@@ -157,10 +184,63 @@ export function renameSpace(kv: KeyValueStore, lib: Library, from: string, to: s
   const clean = cleanSpace(to);
   if (!clean) throw new Error('Give the space a name.');
   const listed = (lib.spaces ?? []).filter(s => s !== from && s !== clean);
-  const next = withSpaces({ ...lib, boards: lib.boards.map(b => (b.space === from ? { ...b, space: clean } : b)) }, [
+  const info = lib.spaceInfo?.[from];
+  let next = withSpaces({ ...lib, boards: lib.boards.map(b => (b.space === from ? { ...b, space: clean } : b)) }, [
     ...listed,
     clean,
   ]);
+  if (info && from !== clean) next = withInfo(withInfo(next, from, null), clean, info);
+  writeIndex(kv, next);
+  return next;
+}
+
+// ---- Space emoji and description (track R3) ---------------------------------------------------------
+export const SPACE_DESCRIPTION_MAX = 500;
+/** One short emoji or symbol (at most 16 code units, no markup or control characters), or ''. */
+export const cleanEmoji = (v: string) =>
+  [...v.trim()].some(ch => ch.charCodeAt(0) < 32 || ch === '<' || ch === '>') || v.trim().length > 16 ? '' : v.trim();
+export const cleanSpaceDescription = (v: string) =>
+  [...v]
+    .filter(ch => (ch.charCodeAt(0) >= 32 || ch === '\n') && ch !== '<' && ch !== '>')
+    .join('')
+    .replace(/[ \t]+/g, ' ')
+    .trim()
+    .slice(0, SPACE_DESCRIPTION_MAX);
+/** A space's emoji and description, cleaned (the index is untrusted: it may come from older or edited data). */
+export function spaceInfoOf(lib: Library, name: string): SpaceInfo {
+  const raw = lib.spaceInfo && typeof lib.spaceInfo === 'object' ? lib.spaceInfo[name] : undefined;
+  const out: SpaceInfo = {};
+  if (raw && typeof raw.emoji === 'string' && cleanEmoji(raw.emoji)) out.emoji = cleanEmoji(raw.emoji);
+  if (raw && typeof raw.description === 'string' && cleanSpaceDescription(raw.description))
+    out.description = cleanSpaceDescription(raw.description);
+  return out;
+}
+function withInfo(lib: Library, name: string, info: SpaceInfo | null): Library {
+  const all = { ...(lib.spaceInfo ?? {}) };
+  if (info && (info.emoji || info.description)) all[name] = info;
+  else delete all[name];
+  const next = { ...lib };
+  if (Object.keys(all).length) next.spaceInfo = all;
+  else delete next.spaceInfo;
+  return next;
+}
+/** Set a space's emoji and/or description ('' removes one). The space is created when it does not exist yet. */
+export function setSpaceInfo(kv: KeyValueStore, lib: Library, name: string, patch: SpaceInfo): Library {
+  const space = cleanSpace(name);
+  if (!space) throw new Error('Give the space a name.');
+  const info = { ...spaceInfoOf(lib, space) };
+  if (patch.emoji !== undefined) {
+    const e = cleanEmoji(patch.emoji);
+    if (e) info.emoji = e;
+    else delete info.emoji;
+  }
+  if (patch.description !== undefined) {
+    const d = cleanSpaceDescription(patch.description);
+    if (d) info.description = d;
+    else delete info.description;
+  }
+  let next = withInfo(lib, space, info);
+  if (!spacesOf(next).includes(space)) next = withSpaces(next, [...(next.spaces ?? []), space]);
   writeIndex(kv, next);
   return next;
 }
@@ -178,8 +258,9 @@ export function deleteSpace(kv: KeyValueStore, lib: Library, name: string): Libr
     },
     (lib.spaces ?? []).filter(s => s !== name),
   );
-  writeIndex(kv, next);
-  return next;
+  const cleaned = withInfo(next, name, null);
+  writeIndex(kv, cleaned);
+  return cleaned;
 }
 /** File boards under a space ('' or null removes it) and/or star them. Index-only; board data is untouched. */
 export function setBoardMeta(
@@ -514,61 +595,104 @@ export function addBoards(
   return { library: next, ids };
 }
 
-/** Lower-case searchable text of a board: title, description, item text and short strings in widget data. */
-export function boardContentText(board: { title?: unknown; description?: unknown; items?: unknown }): string {
-  const parts: string[] = [];
-  const add = (v: unknown) => {
-    if (typeof v === 'string' && v.trim() && v.length <= 20000) parts.push(v);
+/** Where a piece of searchable text comes from: an object, a comment thread, or the board itself (neither). */
+export type ContentPart = { text: string; itemId?: string; threadId?: string };
+/**
+ * Searchable pieces of a board, lower-case with markup removed: title, description, item text, short strings
+ * in widget data, and comment messages (track R3), each with the object or thread it belongs to.
+ */
+export function boardContentParts(board: {
+  title?: unknown;
+  description?: unknown;
+  items?: unknown;
+  comments?: unknown;
+}): ContentPart[] {
+  const parts: ContentPart[] = [];
+  const add = (v: unknown, where: Omit<ContentPart, 'text'> = {}) => {
+    if (typeof v !== 'string' || !v.trim() || v.length > 20000) return;
+    const text = v
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/[ \t]+/g, ' ')
+      .toLowerCase();
+    if (text.trim()) parts.push({ text, ...where });
   };
   add(board.title);
   add(board.description);
   for (const raw of Array.isArray(board.items) ? board.items : []) {
-    const i = raw as { text?: unknown; data?: unknown } | null;
-    add(i?.text);
+    const i = raw as { id?: unknown; text?: unknown; data?: unknown } | null;
+    const where = typeof i?.id === 'string' ? { itemId: i.id } : {};
+    add(i?.text, where);
     if (i?.data && typeof i.data === 'object' && !Array.isArray(i.data))
       for (const v of Object.values(i.data as Record<string, unknown>))
-        if (typeof v === 'string' && v.length <= 2000) add(v);
+        if (typeof v === 'string' && v.length <= 2000) add(v, where);
   }
-  return parts
-    .join('\n')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/[ \t]+/g, ' ')
-    .toLowerCase();
+  for (const raw of Array.isArray(board.comments) ? board.comments : []) {
+    const t = raw as { id?: unknown; itemId?: unknown; messages?: unknown } | null;
+    if (typeof t?.id !== 'string') continue;
+    const where: Omit<ContentPart, 'text'> = { threadId: t.id };
+    if (typeof t.itemId === 'string') where.itemId = t.itemId;
+    for (const m of Array.isArray(t.messages) ? t.messages : []) add((m as { text?: unknown } | null)?.text, where);
+  }
+  return parts;
 }
-export type ContentCache = Map<string, { stamp: string; text: string }>;
+/** Lower-case searchable text of a board: title, description, item text, widget strings and comments. */
+export const boardContentText = (board: Parameters<typeof boardContentParts>[0]): string =>
+  boardContentParts(board)
+    .map(p => p.text)
+    .join('\n');
+export type ContentCache = Map<string, { stamp: string; parts: ContentPart[] }>;
+/** Where to land when a board is opened from a search or comment match. */
+export type OpenTarget = { itemId?: string; threadId?: string };
+/** A content match: a short excerpt and, when the match is in an object or a comment, where it is. */
+export type ContentMatch = { excerpt: string; itemId?: string; threadId?: string };
 /**
- * Boards outside the trash whose content matches `query`, each with a short excerpt around the first
- * match. Board text is read from storage once per saved version and kept in `cache`.
+ * Boards outside the trash whose content matches `query`, with an excerpt around the first match and the
+ * object or comment thread it is in. Board text is read from storage once per saved version and kept in `cache`.
  */
+export function searchBoardMatches(
+  kv: KeyValueStore,
+  lib: Library,
+  query: string,
+  cache: ContentCache = new Map(),
+): Map<string, ContentMatch> {
+  const q = query.trim().toLowerCase(),
+    out = new Map<string, ContentMatch>();
+  if (!q) return out;
+  for (const b of liveBoards(lib)) {
+    let entry = cache.get(b.id);
+    if (!entry || entry.stamp !== b.updatedAt) {
+      let parts: ContentPart[] = [];
+      try {
+        parts = boardContentParts(JSON.parse(kv.getItem(boardKey(b.id)) ?? 'null') ?? {});
+      } catch {
+        // Unreadable board: nothing to match.
+      }
+      entry = { stamp: b.updatedAt, parts };
+      cache.set(b.id, entry);
+    }
+    for (const p of entry.parts) {
+      const at = p.text.indexOf(q);
+      if (at < 0) continue;
+      const start = Math.max(0, at - 30),
+        end = Math.min(p.text.length, at + q.length + 30),
+        excerpt = p.text.slice(start, end).replace(/\s+/g, ' ').trim();
+      const match: ContentMatch = { excerpt: `${start ? '…' : ''}${excerpt}${end < p.text.length ? '…' : ''}` };
+      if (p.itemId) match.itemId = p.itemId;
+      if (p.threadId) match.threadId = p.threadId;
+      out.set(b.id, match);
+      break;
+    }
+  }
+  return out;
+}
+/** Boards outside the trash whose content matches `query`, each with a short excerpt around the first match. */
 export function searchBoardContent(
   kv: KeyValueStore,
   lib: Library,
   query: string,
   cache: ContentCache = new Map(),
 ): Map<string, string> {
-  const q = query.trim().toLowerCase(),
-    out = new Map<string, string>();
-  if (!q) return out;
-  for (const b of liveBoards(lib)) {
-    let entry = cache.get(b.id);
-    if (!entry || entry.stamp !== b.updatedAt) {
-      let text = '';
-      try {
-        text = boardContentText(JSON.parse(kv.getItem(boardKey(b.id)) ?? 'null') ?? {});
-      } catch {
-        // Unreadable board: nothing to match.
-      }
-      entry = { stamp: b.updatedAt, text };
-      cache.set(b.id, entry);
-    }
-    const at = entry.text.indexOf(q);
-    if (at < 0) continue;
-    const start = Math.max(0, at - 30),
-      end = Math.min(entry.text.length, at + q.length + 30),
-      excerpt = entry.text.slice(start, end).replace(/\s+/g, ' ').trim();
-    out.set(b.id, `${start ? '…' : ''}${excerpt}${end < entry.text.length ? '…' : ''}`);
-  }
-  return out;
+  return new Map([...searchBoardMatches(kv, lib, query, cache)].map(([id, m]) => [id, m.excerpt]));
 }
 
 /**

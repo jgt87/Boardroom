@@ -24,6 +24,8 @@ import {
   FileDown,
 } from 'lucide-react';
 import { insertShapeOnConnector } from './diagram-gaps';
+import { ImageAdjustControls } from './image-tools';
+import { adjustImages } from './images';
 import { mindLayoutKinds, mindOutlineMarkdown } from './mindmap-style';
 import type { MindLayoutKind } from './mindmap-style';
 import { saveText } from './widget-kit';
@@ -41,13 +43,18 @@ import { applyFrameFormat } from './frame-presets';
 import { urlsIn, setPrivate, setFrameContentHidden, frameContentHidden } from './board-tools';
 import { viewFor } from './widgets';
 import { useApp } from './board-app';
+import { useRovingToolbar } from './use-roving-toolbar';
+import { spokenColor } from './access-tools';
 import { manualMindNodes, mindStyleOf } from './mindmap-style';
 const mindLayoutLabels: Record<MindLayoutKind, string> = {
   right: 'Grow right',
   both: 'Both sides',
   down: 'Top down',
 };
+import { BrandSwatches } from './brand-kit-panel';
 import { CardBar, NoteReactButton, SwitchToCard, SwitchTypeMenu } from './card-bar';
+import { ColorMenu } from './color-menu';
+import { rememberColor } from './color-store';
 
 export function SelectionBars() {
   const {
@@ -83,10 +90,19 @@ export function SelectionBars() {
     authorName,
     setSelected,
   } = useApp();
+  const lockedBar = useRovingToolbar<HTMLDivElement>(),
+    bar = useRovingToolbar<HTMLDivElement>();
   return (
     <>
       {selected.length > 0 && selectionLocked && (
-        <div className="selection-bar floating">
+        <div
+          ref={lockedBar.ref}
+          role="toolbar"
+          aria-label="Selection actions"
+          onFocus={lockedBar.onFocus}
+          onKeyDown={lockedBar.onKeyDown}
+          className="selection-bar floating"
+        >
           <span>
             <Lock size={14} />{' '}
             {selected.length === 1 ? `Locked ${selectedItem?.type}` : `${selected.length} objects, some locked`}
@@ -101,6 +117,11 @@ export function SelectionBars() {
       )}
       {selected.length > 0 && !selectionLocked && (
         <div
+          ref={bar.ref}
+          role="toolbar"
+          aria-label="Selection actions"
+          onFocus={bar.onFocus}
+          onKeyDown={bar.onKeyDown}
           className={`selection-bar floating ${selected.length === 1 && selectedItem?.type === 'note' ? 'compact' : ''}`}
         >
           <span style={selectedItem?.type === 'drawio' ? { textTransform: 'none' } : undefined}>
@@ -113,12 +134,18 @@ export function SelectionBars() {
               : `${selected.length} objects`}
           </span>
           {selectedItem && selectedItem.type !== 'drawio' && (
-            <input
-              type="color"
-              aria-label={selectedItem.type === 'arrow' ? 'Line color' : 'Object color'}
-              value={selectedItem.fill}
-              onChange={e => patch({ fill: e.target.value })}
-            />
+            <>
+              <BrandSwatches value={selectedItem.fill} onPick={c => patch({ fill: c })} />
+              <input
+                type="color"
+                aria-label={`${selectedItem.type === 'arrow' ? 'Line color' : 'Object color'}: ${spokenColor(selectedItem.fill)}`}
+                title={spokenColor(selectedItem.fill)}
+                value={selectedItem.fill}
+                onChange={e => patch({ fill: e.target.value })}
+                onBlur={e => rememberColor(e.target.value)}
+              />
+              <ColorMenu value={selectedItem.fill} board={board} onPick={fill => patch({ fill })} />
+            </>
           )}
           {allShapes && firstShape && <BorderControls item={firstShape} mixed={mixedBorders} onChange={patchStyle} />}
           {selectedItem &&
@@ -160,6 +187,11 @@ export function SelectionBars() {
               >
                 <ImageUp size={17} />
               </button>
+              <ImageAdjustControls
+                item={selectedItem}
+                asset={assets[selectedItem.assetId!]}
+                onAdjust={change => run(b => adjustImages(b, [selectedItem.id], change))}
+              />
             </>
           )}
           {selectedItem?.type === 'note' && selected.length === 1 && (

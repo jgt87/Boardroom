@@ -10,6 +10,7 @@ import { reorderLayer, setHidden, renameItem } from './board-tools';
 import { LayersPanel } from './board-panels';
 import { NamedLayers } from './layers-panel';
 import { PassphraseHost } from './passphrase-dialog';
+import { BoardOutline } from './board-outline';
 import { useApp } from './board-app';
 import { tools } from './board-app';
 
@@ -209,13 +210,53 @@ export function BoardChrome() {
             <dd>
               <kbd>Tab / Shift Tab</kbd> <kbd>Ctrl + arrow</kbd>
             </dd>
-            <dt>Enter or leave a frame</dt>
+            <dt>Enter or leave a frame or group</dt>
             <dd>
               <kbd>Ctrl Shift ↓ / Ctrl Shift ↑</kbd>
+            </dd>
+            <dt>Add the next object to the selection</dt>
+            <dd>
+              <kbd>Ctrl Shift ← / Ctrl Shift →</kbd>
+            </dd>
+            <dt>First / last object in the container</dt>
+            <dd>
+              <kbd>Alt Home / Alt End</kbd>
+            </dd>
+            <dt>Resize the selection</dt>
+            <dd>
+              <kbd>Alt Shift + arrow</kbd>
+            </dd>
+            <dt>Place the chosen tool at the centre</dt>
+            <dd>
+              <kbd>Enter</kbd>
+            </dd>
+            <dt>Focus the selection toolbar</dt>
+            <dd>
+              <kbd>Ctrl Enter</kbd>
+            </dd>
+            <dt>Focus the board</dt>
+            <dd>
+              <kbd>B</kbd>
+            </dd>
+            <dt>Next sticky note while editing</dt>
+            <dd>
+              <kbd>Tab</kbd>
             </dd>
             <dt>Board summary</dt>
             <dd>
               <kbd>Alt S</kbd>
+            </dd>
+            <dt>Object details / repeat announcement</dt>
+            <dd>
+              <kbd>Alt I / Alt R</kbd>
+            </dd>
+            <dt>Comment on the selection</dt>
+            <dd>
+              <kbd>Alt C</kbd>
+            </dd>
+            <dt>Board outline by frame</dt>
+            <dd>
+              <kbd>Alt O</kbd>
             </dd>
             <dt>Copy or paste style</dt>
             <dd>
@@ -255,6 +296,7 @@ export function BoardChrome() {
         </aside>
       )}
       <PassphraseHost />
+      <BoardOutline />
       <div id="sr-announcer" className="sr-only" aria-live="polite" aria-atomic="true" />
       {backView && (
         <div className="notice floating go-back-toast" role="status">

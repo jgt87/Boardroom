@@ -29,6 +29,8 @@ export type RecordViewConfig = {
   collapsed?: string[];
   /** Id of the saved view this configuration was last loaded from or saved to. */
   activeView?: string;
+  /** Kanban columns (status names or single-select options; '' is Unassigned) hidden from this view. */
+  hiddenColumns?: string[];
 };
 export const recordFieldOptions = (schema: RecordSchema) => [
   { id: 'title', name: 'Title' },
@@ -76,6 +78,14 @@ export function withRecordValue(row: RecordRow, field: string, value: string, sc
   }
   if (!['title', 'status', 'assignee', 'start', 'end'].includes(field)) throw new Error('Choose an existing field.');
   return { ...row, [field]: value };
+}
+/** Show or hide one Kanban column in a view; the field is dropped when nothing is hidden. */
+export function toggleHiddenColumn(view: RecordViewConfig, column: string): RecordViewConfig {
+  const current = view.hiddenColumns ?? [],
+    hiddenColumns = current.includes(column) ? current.filter(c => c !== column) : [...current, column];
+  const next: RecordViewConfig = { ...view, hiddenColumns };
+  if (!hiddenColumns.length) delete next.hiddenColumns;
+  return next;
 }
 export function cleanRecordView(view: RecordViewConfig, schema: RecordSchema): RecordViewConfig {
   const valid = new Set(recordFieldOptions(schema).map(f => f.id));
@@ -150,7 +160,12 @@ export function validateRecordView(view: RecordViewConfig, schema: RecordSchema)
       (!Array.isArray(view.collapsed) ||
         view.collapsed.length > 1000 ||
         view.collapsed.some(v => typeof v !== 'string' || v.length > 200))) ||
-    (view.activeView !== undefined && (typeof view.activeView !== 'string' || view.activeView.length > 80))
+    (view.activeView !== undefined && (typeof view.activeView !== 'string' || view.activeView.length > 80)) ||
+    (view.hiddenColumns !== undefined &&
+      (!Array.isArray(view.hiddenColumns) ||
+        view.hiddenColumns.length > 100 ||
+        new Set(view.hiddenColumns).size !== view.hiddenColumns.length ||
+        view.hiddenColumns.some(v => typeof v !== 'string' || v.length > 80)))
   )
     throw new Error('Invalid record view settings.');
 }

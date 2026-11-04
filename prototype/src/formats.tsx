@@ -102,6 +102,7 @@ export const kindIcons: Record<string, typeof Layers3> = {
   'import:markdown': FileDown,
   'import:pptx': Presentation,
   'import:table': FileSpreadsheet,
+  'import:grid': Grid3x3,
   'import:docx': FileText,
   chart: BarChart3,
 };
@@ -124,6 +125,7 @@ import {
   manualMindNodes,
   MIND_NODE_H,
   mindTopicColor,
+  mindShapeRx,
   mindHiddenCount,
   toggleMindCollapse,
   revealMindNode,
@@ -232,10 +234,39 @@ export function MindPreview({
                 y={p.y}
                 width={MIND_NODE_W}
                 height={MIND_NODE_H}
-                rx="9"
-                fill={n.parent ? (tinted ? color + '22' : '#edf0ff') : (n.color ?? '#4262ff')}
-                stroke={n.parent && tinted ? color : 'none'}
+                rx={mindShapeRx(n.shape)}
+                fill={
+                  n.shape === 'underline'
+                    ? 'transparent'
+                    : n.parent
+                      ? tinted
+                        ? color + '22'
+                        : '#edf0ff'
+                      : (n.color ?? '#4262ff')
+                }
+                stroke={n.shape !== 'underline' && n.parent && tinted ? color : 'none'}
               />
+              {n.shape === 'underline' && (
+                <line
+                  x1={p.x}
+                  x2={p.x + MIND_NODE_W}
+                  y1={p.y + MIND_NODE_H}
+                  y2={p.y + MIND_NODE_H}
+                  stroke={color}
+                  strokeWidth="2.5"
+                />
+              )}
+              {n.link && (
+                <g className="mind-link-badge" aria-label="Topic has a link">
+                  <circle cx={p.x + MIND_NODE_W - 10} cy={p.y + 10} r="7" fill="#4262ff" />
+                  <path
+                    d={`M${p.x + MIND_NODE_W - 13} ${p.y + 13} l6 -6 m-4 0 h4 v4`}
+                    stroke="#ffffff"
+                    strokeWidth="1.4"
+                    fill="none"
+                  />
+                </g>
+              )}
               {more > 0 && (
                 <g className="mind-collapsed-badge">
                   <rect
@@ -260,7 +291,7 @@ export function MindPreview({
               <text
                 x={p.x + 12}
                 y={p.y + 29 - (mindLabelLines(n.text).length - 1) * 8}
-                fill={n.parent ? '#25252c' : '#ffffff'}
+                fill={n.parent || n.shape === 'underline' ? '#25252c' : '#ffffff'}
                 fontSize={mindLabelLines(n.text).length > 2 ? 11 : 14}
               >
                 {mindLabelLines(n.text).map((line, k) => (
@@ -390,6 +421,7 @@ export function ToolGallery({
         kind: 'import:table',
         description: 'A .csv or .xlsx file becomes Table records',
       },
+      { label: 'Spreadsheet as Grid', kind: 'import:grid', description: 'A .csv or .xlsx file fills a Grid' },
     ],
     wireframes: wireframeComponents.map(c => ({
       label: c.label,
@@ -692,7 +724,10 @@ export function FormatEditor({
                   >
                     Convert to shapes
                   </button>
-                  <span className="format-hint">Flowcharts become editable shapes and connectors.</span>
+                  <span className="format-hint">
+                    Flowchart, sequence, class, state and ER diagrams become editable shapes and connectors; subgraphs
+                    become frames.
+                  </span>
                 </div>
               )}
               {convertError && (

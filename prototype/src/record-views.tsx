@@ -5,6 +5,7 @@ import type { RecordRow } from './model';
 import type { RecordColumnSettings } from './record-schema';
 import { statuses, moveRecord, shiftRecord, deleteRecord, columnLoad } from './records';
 import { CanvasField, canvasControl } from './canvas-fields';
+import { EyeOff } from 'lucide-react';
 import './record-gaps.css';
 
 /** A horizontal swimlane: cards whose lane field has `value`. */
@@ -30,6 +31,7 @@ export function KanbanView({
   laneOf,
   withLane,
   onToggleLane,
+  onHideColumn,
 }: {
   rows: RecordRow[];
   allRows?: RecordRow[];
@@ -44,6 +46,8 @@ export function KanbanView({
   laneOf?: (row: RecordRow) => string;
   withLane?: (row: RecordRow, lane: string) => RecordRow;
   onToggleLane?: (value: string) => void;
+  /** Hide a column from this view (it can be shown again from the view's column list). */
+  onHideColumn?: (column: string) => void;
 }) {
   const [dragging, setDragging] = useState<string | null>(null),
     [over, setOver] = useState<string | null>(null),
@@ -123,6 +127,17 @@ export function KanbanView({
             }
           >
             {s || 'Unassigned'} <span>{cards.length}</span>
+            {onHideColumn && lane === undefined && (
+              <button
+                {...canvasControl}
+                className="kanban-hide-column"
+                aria-label={`Hide column: ${s || 'Unassigned'}`}
+                title="Hide this column"
+                onClick={() => onHideColumn(s)}
+              >
+                <EyeOff size={11} />
+              </button>
+            )}
             {settings?.limit !== undefined && (
               <span className="kanban-capacity">
                 {load}/{settings.limit}
@@ -159,6 +174,8 @@ export function KanbanView({
               key={r.id}
               data-card={r.id}
               className={`record-card ${dragging === r.id ? 'dragging' : ''} ${over === `card:${r.id}` ? 'drop-before' : ''}`}
+              data-record-color={r.color}
+              style={r.color ? { background: r.color } : undefined}
               draggable={live}
               onPointerDown={live ? e => e.stopPropagation() : undefined}
               onDoubleClick={live ? e => e.stopPropagation() : undefined}

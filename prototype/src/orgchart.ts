@@ -3,7 +3,10 @@
 import { parseDelimited } from './smart-paste.ts';
 import { toCsv } from './csv.ts';
 
-/** `team` and `location` are optional extra fields (gap E8). */
+/**
+ * `team` and `location` are optional extra fields (gap E8). `hiring` marks an open position, `description`
+ * holds a longer note and `color` sets the branch colour for this person and their reports (track R5).
+ */
 export type OrgNode = {
   id: string;
   parent: string | null;
@@ -12,7 +15,22 @@ export type OrgNode = {
   collapsed?: boolean;
   team?: string;
   location?: string;
+  hiring?: boolean;
+  description?: string;
+  color?: string;
 };
+export const ORG_DESCRIPTION_MAX = 1000;
+/** Branch colour: the nearest colour set on the person or one of their managers. */
+export function orgBranchColor(nodes: OrgNode[], id: string): string | undefined {
+  const map = new Map(nodes.map(n => [n.id, n]));
+  for (
+    let n = map.get(id), guard = 0;
+    n && guard <= nodes.length;
+    n = n.parent ? map.get(n.parent) : undefined, guard++
+  )
+    if (n.color) return n.color;
+  return undefined;
+}
 export const ORG_NODE_W = 170,
   ORG_NODE_H = 64,
   ORG_GAP_X = 24,
@@ -34,7 +52,11 @@ export function validateOrgNodes(nodes: unknown): asserts nodes is OrgNode[] {
         typeof n.role !== 'string' ||
         n.role.length > 200 ||
         (n.collapsed !== undefined && typeof n.collapsed !== 'boolean') ||
-        [n.team, n.location].some(v => v !== undefined && (typeof v !== 'string' || v.length > 200)),
+        [n.team, n.location].some(v => v !== undefined && (typeof v !== 'string' || v.length > 200)) ||
+        (n.hiring !== undefined && typeof n.hiring !== 'boolean') ||
+        (n.description !== undefined &&
+          (typeof n.description !== 'string' || n.description.length > ORG_DESCRIPTION_MAX)) ||
+        (n.color !== undefined && (typeof n.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(n.color))),
     )
   )
     throw new Error('Invalid org chart node.');
@@ -188,7 +210,7 @@ export const starterOrg = (): OrgNode[] => {
 };
 
 // ---- CSV import and export (gap B13) ---------------------------------------------------------
-export const ORG_CSV_HEADER = ['ID', 'Name', 'Role', 'Team', 'Location', 'Manager ID'];
+export const ORG_CSV_HEADER = ['ID', 'Name', 'Role', 'Team', 'Location', 'Manager ID', 'Hiring', 'Description'];
 /** People as CSV, managers before their reports (tree order). */
 export function orgToCsv(nodes: OrgNode[]): string {
   const out: OrgNode[] = [],
@@ -200,17 +222,40 @@ export function orgToCsv(nodes: OrgNode[]): string {
   if (root) visit(root);
   return toCsv([
     ORG_CSV_HEADER,
-    ...out.map(n => [n.id, n.name, n.role, n.team ?? '', n.location ?? '', n.parent ?? '']),
+    ...out.map(n => [
+      n.id,
+      n.name,
+      n.role,
+      n.team ?? '',
+      n.location ?? '',
+      n.parent ?? '',
+      n.hiring ? 'Yes' : '',
+      n.description ?? '',
+    ]),
   ]);
 }
-const headerAliases: Record<'id' | 'name' | 'role' | 'team' | 'location' | 'manager', string[]> = {
-  id: ['id', 'employee id', 'person id'],
+type OrgColumn = 'id' | 'name' | 'role' | 'team' | 'location' | 'manager' | 'hiring' | 'description';
+const headerAliases: Record<OrgColumn, string[]> = {
+  id: ['id', 'employee id', 'person id', 'personid', 'employeeid'],
   name: ['name', 'full name', 'person', 'employee'],
   role: ['role', 'title', 'job title', 'position'],
   team: ['team', 'department', 'group'],
   location: ['location', 'office', 'city'],
-  manager: ['manager id', 'manager', 'reports to', 'parent', 'parent id', 'supervisor'],
+  manager: [
+    'manager id',
+    'manager',
+    'reports to',
+    'parent',
+    'parent id',
+    'supervisor',
+    'supervisor id',
+    'supervisorid',
+    'managerid',
+  ],
+  hiring: ['hiring', 'open role', 'vacancy', 'open position'],
+  description: ['description', 'notes', 'about'],
 };
+const truthy = (v: string) => /^(true|yes|y|1|x|hiring|open)$/i.test(v.trim());
 /** Undo the apostrophe the CSV writer puts before formula-like cells. */
 const unguard = (v: string) => v.replace(/^'(?=[=+\-@\t])/, '').trim();
 /**
@@ -250,9 +295,12 @@ export function orgFromCsv(text: string): OrgNode[] {
       manager: cell(r, 'manager'),
     };
     const team = cell(r, 'team'),
-      location = cell(r, 'location');
+      location = cell(r, 'location'),
+      description = col.description < 0 ? '' : unguard(r[col.description] ?? '').slice(0, ORG_DESCRIPTION_MAX);
     if (team) node.team = team;
     if (location) node.location = location;
+    if (truthy(cell(r, 'hiring'))) node.hiring = true;
+    if (description) node.description = description;
     return node;
   });
   for (const n of nodes) {

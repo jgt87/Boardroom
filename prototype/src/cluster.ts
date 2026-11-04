@@ -126,10 +126,12 @@ export function clusterNotes(board: Board, ids: string[], by: ClusterBy): Cluste
   return [...map.values()];
 }
 
-export type ClusterLayout = { gap?: number; columnGap?: number; titleHeight?: number };
+export type ClusterLayout = { gap?: number; columnGap?: number; padding?: number; perColumn?: number };
 /**
- * Lay clusters out in columns from `origin`: a bold title text above each column and the notes stacked below.
- * Returns the new board and the ids of the created titles. One call is one undo step.
+ * Lay clusters out side by side from `origin`. Each cluster is a frame named "Title (count)" that holds its
+ * notes (track R5): a real container, so it can be renamed, resized and moved with its notes, and notes can
+ * be dragged in and out. Notes stack in columns of up to `perColumn` (6). Returns the new board and the ids
+ * of the created frames (`titleIds`). One call is one undo step.
  */
 export function layoutClusters(
   board: Board,
@@ -139,35 +141,60 @@ export function layoutClusters(
 ): { board: Board; titleIds: string[] } {
   const gap = opts.gap ?? 20,
     columnGap = opts.columnGap ?? 60,
-    titleHeight = opts.titleHeight ?? 56;
+    pad = opts.padding ?? 24,
+    perColumn = opts.perColumn ?? 6;
   const byId = new Map(board.items.map(i => [i.id, i]));
   const moved = new Map<string, { x: number; y: number }>(),
-    titles: Item[] = [];
+    frames: Item[] = [];
   let x = origin.x;
   for (const c of clusters) {
     const notes = c.ids.map(id => byId.get(id)).filter((i): i is Item => !!i);
     if (!notes.length) continue;
-    const width = Math.max(...notes.map(n => n.w));
-    const title: Item = {
-      ...createItem('text', x, origin.y),
-      w: Math.max(width, 160),
-      h: 40,
-      text: `${c.title} (${notes.length})`,
-      format: { fontSize: 24, bold: true },
-    };
-    titles.push(title);
-    let y = origin.y + titleHeight;
-    for (const n of notes) {
-      moved.set(n.id, { x: x + (width - n.w) / 2, y });
-      y += n.h + gap;
+    const width = Math.max(...notes.map(n => n.w)),
+      columns = Math.ceil(notes.length / perColumn);
+    let bottom = origin.y;
+    for (let col = 0; col < columns; col++) {
+      let y = origin.y + pad;
+      for (const n of notes.slice(col * perColumn, (col + 1) * perColumn)) {
+        moved.set(n.id, { x: x + pad + col * (width + gap) + (width - n.w) / 2, y });
+        y += n.h + gap;
+      }
+      bottom = Math.max(bottom, y - gap + pad);
     }
-    x += Math.max(width, 160) + columnGap;
+    const frameW = Math.max(columns * (width + gap) - gap + pad * 2, 160);
+    frames.push({
+      ...createItem('frame', x, origin.y),
+      w: Math.round(frameW),
+      h: Math.round(bottom - origin.y),
+      text: `${c.title} (${notes.length})`.slice(0, 200),
+    });
+    x += frameW + columnGap;
   }
   const items = board.items.map(i => {
     const p = moved.get(i.id);
     return p ? { ...i, x: Math.round(p.x), y: Math.round(p.y) } : i;
   });
-  return { board: { ...board, items: [...items, ...titles] }, titleIds: titles.map(t => t.id) };
+  // Frames go before the first clustered note in paint order, so they sit behind it.
+  const first = Math.max(
+    0,
+    items.findIndex(i => moved.has(i.id)),
+  );
+  return {
+    board: { ...board, items: [...items.slice(0, first), ...frames, ...items.slice(first)] },
+    titleIds: frames.map(t => t.id),
+  };
+}
+
+/** Wrap the editable selected notes into one cluster frame named `title` (track R5). */
+export function clusterAsOne(board: Board, ids: string[], title = 'Cluster'): { board: Board; frameId: string } {
+  const editable = new Set(editableIds(board, ids));
+  const notes = selectedNotes(board, ids).filter(n => editable.has(n.id));
+  if (!notes.length) throw new Error('Select at least one unlocked sticky note to cluster.');
+  const origin = { x: Math.min(...notes.map(n => n.x)), y: Math.min(...notes.map(n => n.y)) };
+  const r = layoutClusters(board, [{ title, ids: notes.map(n => n.id) }], origin, {
+    perColumn: Math.max(3, Math.ceil(Math.sqrt(notes.length))),
+  });
+  return { board: r.board, frameId: r.titleIds[0] };
 }
 
 /** Cluster the editable selected notes and lay them out at the selection's top-left corner. */

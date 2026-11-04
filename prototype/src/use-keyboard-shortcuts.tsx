@@ -5,15 +5,17 @@ import { translate } from './interactions';
 import { clearContent, duplicateItems, expandGroups, moveIds, reorderZ } from './arrange';
 import { gridOwner } from './grid-canvas';
 import { copyStyle, pasteStyle, styleClipboard } from './switch-type';
+import { boardSummary, describeItem, nearestInDirection, readingOrder, stepInOrder } from './navigation';
 import {
-  boardSummary,
-  describeItem,
-  firstInFrame,
-  frameAroundItem,
-  nearestInDirection,
-  stepInOrder,
-} from './navigation';
-import { announce } from './announce';
+  addInDirection,
+  containerSiblings,
+  enterContainer,
+  leaveContainer,
+  resizeBy,
+  selectionSummary,
+} from './access-tools';
+import { announce, lastAnnouncement } from './announce';
+import type { Kind } from './model';
 import type { BoardCore } from './board-app';
 import { tools } from './board-app';
 import { isShapeKind } from './shapes';
@@ -69,6 +71,12 @@ export function useKeyboardShortcuts(core: BoardCore, gestures: { cancelGesture:
     setPanel,
     setViewPrefs,
     setMinimap,
+    makePlacedItem,
+    finishPlacedItem,
+    setCodeId,
+    setThread,
+    setBoardOutline,
+    setDashboard,
   } = core;
   const { cancelGesture } = gestures;
   useEffect(() => {
@@ -109,11 +117,74 @@ export function useKeyboardShortcuts(core: BoardCore, gestures: { cancelGesture:
         setCommandsOpen(o => !o);
         return;
       }
+      // Ctrl+E opens the boards dashboard with its search focused (track R3).
+      if (mod && !e.altKey && !e.shiftKey && key === 'e') {
+        e.preventDefault();
+        setDashboard(true);
+        return;
+      }
       if (gesture.current) {
         if (key === 'escape') {
           e.preventDefault();
           cancelGesture();
         }
+        return;
+      }
+      const active = document.activeElement as HTMLElement | null;
+      const onBoard = !active || active === document.body || !!svg.current?.contains(active);
+      // Keyboard access (track R1): B focuses the board, Enter places an armed tool, Ctrl+Enter focuses the
+      // selection toolbar.
+      if (
+        key === 'b' &&
+        !mod &&
+        !e.altKey &&
+        !e.shiftKey &&
+        viewPrefs.singleKeys &&
+        svg.current &&
+        !svg.current.contains(active)
+      ) {
+        e.preventDefault();
+        svg.current.focus();
+        announce(
+          selected.length
+            ? `Board. ${selectionSummary(boardRef.current, selected)}`
+            : 'Board. Tab moves to the first object.',
+        );
+        return;
+      }
+      if (
+        key === 'enter' &&
+        !mod &&
+        !e.altKey &&
+        !['select', 'hand', 'pen', 'comment', 'stack'].includes(tool) &&
+        !active?.closest?.('button,a,[role=button],[role=menuitem],[role=option],[role=radio]')
+      ) {
+        e.preventDefault();
+        const centre = { x: (size.w / 2 - camera.x) / camera.z, y: (size.h / 2 - camera.y) / camera.z };
+        const placed = makePlacedItem(tool as Kind, centre);
+        if (placed.type === 'arrow') {
+          placed.w = 180;
+          placed.h = 0;
+        }
+        placed.x -= placed.w / 2;
+        placed.y -= placed.h / 2;
+        update(finishPlacedItem(boardRef.current, placed));
+        setSelected([placed.id]);
+        setTool('select');
+        setEraser(false);
+        if (placed.type === 'mindmap') setMindEditId(placed.id);
+        else if (placed.type === 'code') setCodeId(placed.id);
+        else if (['note', 'text', 'frame'].includes(placed.type) || isShapeKind(placed.type)) setEditing(placed.id);
+        announce(`Placed ${describeItem(placed)} at the centre of the view.`);
+        return;
+      }
+      if (key === 'enter' && mod && !e.shiftKey && !e.altKey && selected.length) {
+        e.preventDefault();
+        const control = document.querySelector<HTMLElement>(
+          '.selection-bar[role=toolbar] :is(button,input,select):not(:disabled)',
+        );
+        if (control) control.focus();
+        else announce('There is no toolbar for this selection.');
         return;
       }
       if (
@@ -170,32 +241,85 @@ export function useKeyboardShortcuts(core: BoardCore, gestures: { cancelGesture:
       }
       // Keyboard object navigation (gap F1, F2): Tab / Shift+Tab in reading order while the board has focus,
       // Ctrl+Arrow to the nearest object in that direction, Alt+S for a board summary.
-      const reveal = (id: string) => {
+      const reveal = (id: string, ids: string[] = [id], message?: string) => {
         const it = boardRef.current.items.find(i => i.id === id);
         if (!it) return;
-        setSelected([id]);
+        setSelected(ids);
         const sx = (it.x + it.w / 2) * camera.z + camera.x,
           sy = (it.y + it.h / 2) * camera.z + camera.y;
         if (sx < 60 || sy < 60 || sx > size.w - 60 || sy > size.h - 60)
           setCamera(c => ({ ...c, x: size.w / 2 - (it.x + it.w / 2) * c.z, y: size.h / 2 - (it.y + it.h / 2) * c.z }));
-        announce(describeItem(it));
+        announce(message ?? describeItem(it));
       };
-      const active = document.activeElement;
-      const onBoard = !active || active === document.body || !!svg.current?.contains(active);
       if (key === 'tab' && !mod && !e.altKey && onBoard && boardRef.current.items.length) {
         e.preventDefault();
         const next = stepInOrder(boardRef.current, selected.length === 1 ? selected[0] : undefined, e.shiftKey);
         if (next) reveal(next);
         return;
       }
-      if (mod && e.shiftKey && !e.altKey && (key === 'arrowdown' || key === 'arrowup') && selected.length === 1) {
+      if (mod && e.shiftKey && !e.altKey && (key === 'arrowdown' || key === 'arrowup') && selected.length) {
+        // Enter or leave a container: frames and groups (gap F2, track R1).
         e.preventDefault();
         const next =
-          key === 'arrowdown'
-            ? firstInFrame(boardRef.current, selected[0])
-            : frameAroundItem(boardRef.current, selected[0]);
+          key === 'arrowdown' ? enterContainer(boardRef.current, selected) : leaveContainer(boardRef.current, selected);
+        if (next?.length) reveal(next[0], next, next.length > 1 ? `Group of ${next.length} objects` : undefined);
+        else announce(key === 'arrowdown' ? 'Nothing inside to enter.' : 'Not inside a frame or group.');
+        return;
+      }
+      if (mod && e.shiftKey && !e.altKey && (key === 'arrowleft' || key === 'arrowright') && selected.length) {
+        // Add the nearest object in that direction to the selection (track R1).
+        e.preventDefault();
+        const next = addInDirection(boardRef.current, selected, key === 'arrowleft' ? 'left' : 'right');
+        if (!next) return announce('No object in that direction.');
+        const added = boardRef.current.items.find(i => i.id === next[next.length - 1])!;
+        reveal(added.id, next, `${describeItem(added)}. ${next.length} objects selected.`);
+        return;
+      }
+      if (e.altKey && !mod && (key === 'home' || key === 'end')) {
+        // First or last object of the surrounding container (track R1).
+        e.preventDefault();
+        const order = selected.length
+          ? containerSiblings(boardRef.current, selected[0])
+          : readingOrder(boardRef.current);
+        const next = key === 'home' ? order[0] : order[order.length - 1];
         if (next) reveal(next);
-        else announce(key === 'arrowdown' ? 'Nothing inside to enter.' : 'Not inside a frame.');
+        return;
+      }
+      if (e.altKey && !mod && !e.shiftKey && (key === 'i' || key === 'r')) {
+        // Alt+I: details of the selection; Alt+R: repeat the last announcement (track R1).
+        e.preventDefault();
+        const text =
+          key === 'r' && lastAnnouncement() ? lastAnnouncement() : selectionSummary(boardRef.current, selected);
+        announce(text);
+        return;
+      }
+      if (e.altKey && !mod && !e.shiftKey && key === 'c' && selected.length) {
+        // Alt+C: comment on the selection (track R1).
+        e.preventDefault();
+        const b = selectionBounds(boardRef.current.items, selected);
+        if (!b) return;
+        setThread({ x: b.x + b.w, y: b.y, itemId: selected.length === 1 ? selected[0] : undefined });
+        return;
+      }
+      if (e.altKey && !mod && !e.shiftKey && key === 'o') {
+        e.preventDefault();
+        setBoardOutline(o => !o);
+        return;
+      }
+      if (e.altKey && e.shiftKey && !mod && key.startsWith('arrow') && selected.length) {
+        // Alt+Shift+Arrow resizes the selection by 10 px; Right and Down grow, Left and Up shrink (track R1).
+        e.preventDefault();
+        const step = 10,
+          r = resizeBy(
+            boardRef.current,
+            selected,
+            key === 'arrowright' ? step : key === 'arrowleft' ? -step : 0,
+            key === 'arrowdown' ? step : key === 'arrowup' ? -step : 0,
+          );
+        if (!r.resized) return display('Locked objects cannot be resized.');
+        update(r.board);
+        const one = selected.length === 1 ? r.board.items.find(i => i.id === selected[0]) : undefined;
+        announce(one ? `${Math.round(one.w)} by ${Math.round(one.h)}` : `Resized ${r.resized} objects.`);
         return;
       }
       if (mod && !e.shiftKey && !e.altKey && key.startsWith('arrow') && selected.length === 1) {

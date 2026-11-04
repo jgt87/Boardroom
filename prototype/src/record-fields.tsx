@@ -5,14 +5,17 @@ import type { WidgetCtx } from './widget-types';
 import type { RecordField, RecordSchema } from './record-schema';
 import {
   fieldTypes,
+  formatFieldNumber,
   formulaError,
   normalizeRecordUrl,
   renameRecordField,
+  ruleColor,
+  ruleOpLabels,
+  ruleOps,
   schemaOf,
   setRecordSchema,
 } from './record-schema';
 import { numericFieldValue } from './record-formula';
-import { formatCalc } from './record-query';
 import { CanvasField, canvasControl } from './canvas-fields';
 import './record-gaps.css';
 const typeNames: Record<RecordField['type'], string> = {
@@ -38,9 +41,25 @@ export function ProgressBar({ field, value }: { field: RecordField; value: numbe
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={value ?? undefined}
-      title={value === null ? 'No value' : `${formatCalc(value)} of ${max}`}
+      title={value === null ? 'No value' : `${formatFieldNumber(field, value)} of ${formatFieldNumber(field, max)}`}
     >
-      <span style={{ width: `${ratio * 100}%` }} />
+      <span
+        style={{
+          width: `${ratio * 100}%`,
+          ...((ruleColor(field, value) ?? field.color) ? { background: ruleColor(field, value) ?? field.color } : {}),
+        }}
+      />
+    </span>
+  );
+}
+/** A number in its field's format, with the colour of the first matching colour rule as a dot. */
+export function NumberValue({ field, value }: { field: RecordField; value: number | null }) {
+  const color = ruleColor(field, value);
+  if (field.display === 'progress' && field.hideLabel) return null;
+  return (
+    <span className="record-number-value" data-rule-color={color}>
+      {color && <span className="record-rule-dot" style={{ background: color }} aria-hidden="true" />}
+      {formatFieldNumber(field, value)}
     </span>
   );
 }
@@ -67,7 +86,7 @@ export function RecordFieldInput({
     return (
       <span className="record-formula-value" aria-label={label} title={field.formula}>
         {field.display === 'progress' && <ProgressBar field={field} value={computed} />}
-        {formatCalc(computed)}
+        <NumberValue field={field} value={computed} />
       </span>
     );
   }
@@ -135,10 +154,20 @@ export function RecordFieldInput({
       }
     />
   );
-  return field.type === 'number' && field.display === 'progress' ? (
+  if (field.type !== 'number') return input;
+  const n = typeof value === 'number' ? value : null;
+  if (field.display === 'progress')
+    return (
+      <span className="record-progress-field">
+        <ProgressBar field={field} value={n} />
+        {input}
+        {field.format && !field.hideLabel && n !== null && <NumberValue field={field} value={n} />}
+      </span>
+    );
+  return field.format || field.rules?.length ? (
     <span className="record-progress-field">
-      <ProgressBar field={field} value={typeof value === 'number' ? value : null} />
       {input}
+      {n !== null && <NumberValue field={field} value={n} />}
     </span>
   ) : (
     input
@@ -150,9 +179,90 @@ const hex = /^#[0-9a-f]{6}$/i;
 function ProgressSettings({ field, onField }: { field: RecordField; onField: (next: RecordField) => void }) {
   const set = (patch: Partial<RecordField>) => {
     const next: RecordField = { ...field, ...patch };
-    for (const k of ['display', 'min', 'max'] as const) if (next[k] === undefined) delete next[k];
+    if (next.display !== 'progress') delete next.hideLabel;
+    if (next.format !== 'currency') delete next.currency;
+    if (!next.rules?.length) delete next.rules;
+    for (const k of ['display', 'min', 'max', 'format', 'currency', 'color', 'hideLabel'] as const)
+      if (next[k] === undefined) delete next[k];
     onField(next);
   };
+  const rules = field.rules ?? [];
+  const setRule = (k: number, patch: Partial<NonNullable<RecordField['rules']>[number]>) =>
+    set({ rules: rules.map((r, i) => (i === k ? { ...r, ...patch } : r)) });
+  return (
+    <span className="record-number-settings">
+      <label>
+        Format
+        <select
+          aria-label={`Number format: ${field.name}`}
+          value={field.format ?? ''}
+          onChange={e => set({ format: (e.target.value || undefined) as RecordField['format'] })}
+        >
+          <option value="">Plain number</option>
+          <option value="percent">Percent</option>
+          <option value="currency">Currency</option>
+        </select>
+      </label>
+      {field.format === 'currency' && (
+        <CanvasField
+          label={`Currency code: ${field.name}`}
+          value={field.currency ?? 'USD'}
+          maxLength={3}
+          onCommit={v => {
+            const code = v.trim().toUpperCase();
+            if (/^[A-Z]{3}$/.test(code)) set({ currency: code });
+          }}
+        />
+      )}
+      <ProgressToggle field={field} set={set} />
+      <span className="record-rules" role="group" aria-label={`Colour rules: ${field.name}`}>
+        {rules.map((r, k) => (
+          <span className="record-rule" key={k}>
+            <select
+              aria-label={`Rule ${k + 1} comparison: ${field.name}`}
+              value={r.op}
+              onChange={e => setRule(k, { op: e.target.value as (typeof ruleOps)[number] })}
+            >
+              {ruleOps.map(op => (
+                <option key={op} value={op}>
+                  {ruleOpLabels[op]}
+                </option>
+              ))}
+            </select>
+            <CanvasField
+              label={`Rule ${k + 1} value: ${field.name}`}
+              value={String(r.value)}
+              maxLength={20}
+              onCommit={v => {
+                const n = Number(v);
+                if (v.trim() && Number.isFinite(n)) setRule(k, { value: n });
+              }}
+            />
+            <input
+              type="color"
+              aria-label={`Rule ${k + 1} colour: ${field.name}`}
+              value={r.color}
+              onChange={e => hex.test(e.target.value) && setRule(k, { color: e.target.value })}
+            />
+            <button
+              aria-label={`Remove rule ${k + 1}: ${field.name}`}
+              onClick={() => set({ rules: rules.filter((_, i) => i !== k) })}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <button
+          disabled={rules.length >= 10}
+          onClick={() => set({ rules: [...rules, { op: 'gt', value: 0, color: '#f0524f' }] })}
+        >
+          + Colour rule
+        </button>
+      </span>
+    </span>
+  );
+}
+function ProgressToggle({ field, set }: { field: RecordField; set: (patch: Partial<RecordField>) => void }) {
   return (
     <span className="record-progress-settings">
       <label>
@@ -176,6 +286,21 @@ function ProgressSettings({ field, onField }: { field: RecordField; onField: (ne
             value={String(field.max ?? 100)}
             onCommit={v => set({ max: v.trim() === '' ? undefined : Number(v) })}
           />
+          <input
+            type="color"
+            aria-label={`Progress bar colour: ${field.name}`}
+            value={field.color ?? '#4262ff'}
+            onChange={e => hex.test(e.target.value) && set({ color: e.target.value })}
+          />
+          <label>
+            <input
+              type="checkbox"
+              aria-label={`Hide number: ${field.name}`}
+              checked={!!field.hideLabel}
+              onChange={e => set({ hideLabel: e.target.checked || undefined })}
+            />
+            Hide number
+          </label>
         </>
       )}
     </span>

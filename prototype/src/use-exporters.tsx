@@ -6,26 +6,35 @@ import { cardsCsv } from './card-tools';
 import { boardTextCsv } from './csv';
 import { standaloneHtml } from './html-export';
 import { useApp } from './board-app';
+import { exportIds, frameExportRegion, FRAME_TITLE_OFFSET, FRAME_TITLE_SIZE, type Region } from './export-area';
 
 /** SVG, PNG/JPG, PDF and CSV export of the board or selection. */
 export function useExporters() {
   const { assets, boardRef, display, download, selected, selectedItem, setMenu, svg, setRenderAll } = useApp();
-  const exportSvg = () => {
-    const built = buildSvg();
+  /** SVG of a dragged area, of the selection only (gap b3-4), or of the whole board. */
+  const exportSvg = (area?: Region) => {
+    const only = area ? undefined : selectionOnly(),
+      built = buildSvg(area ?? (only ? selectionRegion() : undefined), only);
     download(built.svg, 'boardroom.svg', 'image/svg+xml');
+    if (area || only) setMenu(false);
+  };
+  /** Ids kept by a selection-only export, or undefined when nothing is selected. */
+  const selectionOnly = () => {
+    const ids = selected.filter(id => boardRef.current.items.some(i => i.id === id));
+    return ids.length ? exportIds(boardRef.current.items, ids) : undefined;
   };
   /** Serialise the board (or a region) as standalone SVG. Large boards render every object first (gap A2). */
-  const buildSvg = (region?: { x: number; y: number; w: number; h: number }) => {
-    if (boardRef.current.items.length < 400) return buildRenderedSvg(region);
+  const buildSvg = (region?: Region, only?: Set<string>) => {
+    if (boardRef.current.items.length < 400) return buildRenderedSvg(region, only);
     flushSync(() => setRenderAll(true));
     try {
-      return buildRenderedSvg(region);
+      return buildRenderedSvg(region, only);
     } finally {
       setRenderAll(false);
     }
   };
-  /** Serialise what is currently rendered, with the page styles embedded. */
-  const buildRenderedSvg = (region?: { x: number; y: number; w: number; h: number }) => {
+  /** Serialise what is currently rendered, with the page styles embedded. `only` keeps just those objects. */
+  const buildRenderedSvg = (region?: Region, only?: Set<string>) => {
     const ns = 'http://www.w3.org/2000/svg',
       out = document.createElementNS(ns, 'svg');
     out.setAttribute('xmlns', ns);
@@ -33,6 +42,12 @@ export function useExporters() {
     const group = svg.current!.querySelector('#objects')!.cloneNode(true) as SVGGElement;
     group.removeAttribute('transform');
     group.querySelectorAll('.selection,.search-hit,.lock-badge,textarea').forEach(n => n.remove());
+    // Frame titles are sized for the current zoom on screen; exports draw them at a fixed world size so
+    // they fit the title band kept above each frame page.
+    group.querySelectorAll('text.frame-title').forEach(t => {
+      t.setAttribute('font-size', String(FRAME_TITLE_SIZE));
+      t.setAttribute('y', String(-FRAME_TITLE_OFFSET));
+    });
     out.append(group);
     const liveTexts = svg.current!.querySelectorAll<HTMLElement>('#objects .object-text');
     group.querySelectorAll<HTMLElement>('.object-text').forEach((node, index) => {
@@ -86,6 +101,13 @@ export function useExporters() {
         node.style.setProperty(key, computed.getPropertyValue(key));
     });
     group.querySelectorAll('.link-badge,.vote-badge,.comment-pin').forEach(n => n.remove());
+    // Selection-only export: drop every object outside the kept set (styles were copied above, by index).
+    if (only)
+      group.querySelectorAll('[data-item]').forEach(n => {
+        if (only.has(n.getAttribute('data-item') ?? '')) return;
+        const owner = n.parentElement?.closest('[data-item]');
+        if (!owner || !only.has(owner.getAttribute('data-item') ?? '')) n.remove();
+      });
     const b = (svg.current!.querySelector('#objects') as SVGGElement).getBBox(),
       box = region ?? { x: b.x - 30, y: b.y - 45, w: Math.max(200, b.width + 60), h: Math.max(200, b.height + 90) };
     out.setAttribute('viewBox', `${box.x} ${box.y} ${box.w} ${box.h}`);
@@ -156,9 +178,9 @@ export function useExporters() {
     return { x: b.x - 20, y: b.y - 20, w: b.w + 40, h: b.h + 40 };
   };
   /** PNG or JPEG of the selection or whole board; `scale` 1, 2 or 4 (gap B12). */
-  const exportRaster = async (type: 'image/png' | 'image/jpeg', scale = 2) => {
+  const exportRaster = async (type: 'image/png' | 'image/jpeg', scale = 2, area?: Region) => {
     try {
-      const built = buildSvg(selectionRegion());
+      const built = buildSvg(area ?? selectionRegion());
       saveBlob(await rasterize(built.svg, built.box, type, scale), `boardroom.${type === 'image/png' ? 'png' : 'jpg'}`);
     } catch (err) {
       display((err as Error).message);
@@ -185,13 +207,14 @@ export function useExporters() {
       display((err as Error).message || 'The image could not be copied.');
     }
   };
-  const exportPdf = async () => {
+  /** PDF with one page per frame (title band included), or one page of a dragged area. */
+  const exportPdf = async (area?: Region) => {
     try {
       const { jsPDF } = await import('jspdf'),
         // Selected frames only when frames are selected; otherwise the slides as presented (hidden frames skipped).
-        chosen = boardRef.current.items.filter(i => i.type === 'frame' && selected.includes(i.id)),
-        frames = chosen.length ? chosen : slideFrames(boardRef.current),
-        regions = frames.length ? frames.map(f => ({ x: f.x, y: f.y, w: f.w, h: f.h })) : [buildSvg().box];
+        chosen = area ? [] : boardRef.current.items.filter(i => i.type === 'frame' && selected.includes(i.id)),
+        frames = area ? [] : chosen.length ? chosen : slideFrames(boardRef.current),
+        regions = area ? [area] : frames.length ? frames.map(frameExportRegion) : [buildSvg().box];
       let pdf: InstanceType<typeof jsPDF> | null = null;
       for (const r of regions) {
         const built = buildSvg(r),
@@ -211,6 +234,38 @@ export function useExporters() {
         display(`PDF exported with ${frames.length} page${frames.length === 1 ? '' : 's'} in presentation order.`);
     } catch (err) {
       display((err as Error).message || 'The PDF could not be created.');
+    }
+  };
+  /**
+   * Print the selection (only the selected objects) or the whole board (gap b3-4). The drawing is placed in a
+   * print-only element shown by `@media print` rules, so no new window or script is needed under the CSP.
+   */
+  const printBoard = async (area?: Region) => {
+    setMenu(false);
+    try {
+      const only = area ? undefined : selectionOnly(),
+        built = buildSvg(area ?? (only ? selectionRegion() : undefined), only),
+        root = document.createElement('div'),
+        img = document.createElement('img');
+      root.id = 'print-root';
+      img.alt = boardRef.current.title || 'Board';
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(built.svg);
+      root.append(img);
+      document.querySelector('#print-root')?.remove();
+      document.body.append(root);
+      document.body.classList.add('printing');
+      await img.decode().catch(() => undefined);
+      const done = () => {
+        root.remove();
+        document.body.classList.remove('printing');
+        window.removeEventListener('afterprint', done);
+      };
+      window.addEventListener('afterprint', done);
+      window.print();
+      // Browsers without the afterprint event still clean up.
+      if (!('onafterprint' in window)) setTimeout(done, 1000);
+    } catch (err) {
+      display((err as Error).message || 'The board could not be printed.');
     }
   };
   /** Portable backup with media stored as files instead of base64 text. */
@@ -288,6 +343,7 @@ export function useExporters() {
     exportRaster,
     copyImage,
     exportPdf,
+    printBoard,
     exportCsv,
     exportTextCsv,
     exportHtml,

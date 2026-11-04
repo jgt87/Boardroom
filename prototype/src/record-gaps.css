@@ -1,4 +1,88 @@
 /* Record views: swimlanes, column capacity, progress bars, footers, outline rows, saved views. */
+/* Record colours, hidden Kanban columns, Timeline jumps and number formats (track R4). */
+.record-color {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #b9b9c3;
+  border-radius: 50%;
+  color: transparent;
+  appearance: none;
+  cursor: pointer;
+  flex: none;
+}
+.record-color option {
+  color: #25252c;
+  background: #ffffff;
+}
+.record-card[data-record-color] small {
+  color: #3f3f46;
+}
+.kanban-hide-column {
+  margin-left: auto;
+  padding: 1px 3px;
+  border: 0;
+  background: transparent;
+  color: #5a5a66;
+  line-height: 0;
+}
+.record-column-menu {
+  display: inline-block;
+  margin: 0 0 6px 8px;
+  font-size: 12px;
+}
+.record-column-menu summary {
+  cursor: pointer;
+}
+.record-column-menu > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 4px 0;
+}
+.timeline-jump {
+  position: absolute;
+  z-index: 2;
+  top: 9px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 18px;
+  border: 1px solid #4262ff;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #2a3fb3;
+}
+.timeline-jump-before {
+  left: 4px;
+}
+.timeline-jump-after {
+  right: 4px;
+}
+.record-number-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.record-rule-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 4px;
+  border-radius: 50%;
+  vertical-align: middle;
+  box-shadow: 0 0 0 1px #00000026;
+}
+.record-number-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  width: 100%;
+}
+.record-rule {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .kanban-preview.kanban-has-lanes {
   display: block;
 }

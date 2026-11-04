@@ -4,7 +4,9 @@ import type { WidgetCtx } from './widget-types';
 import { renderMarkdown } from './markdown';
 import { canvasControl } from './canvas-fields';
 import { useLatest } from './use-latest';
-import { filterSlash, docTemplates, calloutLabels, DOC_MAX, docShortcut } from './doc-tools';
+import { filterSlash, docTemplates, calloutLabels, DOC_MAX, docShortcut, emojiQuery } from './doc-tools';
+import { loadEmojiGroups, searchEmojis } from './emoji-data';
+import type { EmojiEntry, EmojiGroup } from './emoji-data';
 import { StatusChip } from './status-chip';
 import type { SlashCommand, CalloutKind } from './doc-tools';
 
@@ -85,7 +87,15 @@ export function markdownFrom(node: Node): string {
 
 export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const editor = useRef<HTMLDivElement>(null),
-    [slash, setSlash] = useState<{ query: string; top: number; active: number } | null>(null);
+    [slash, setSlash] = useState<{ query: string; top: number; active: number } | null>(null),
+    [emoji, setEmoji] = useState<{
+      query: string;
+      length: number;
+      top: number;
+      active: number;
+      results: EmojiEntry[];
+    } | null>(null),
+    emojiGroups = useRef<EmojiGroup[] | null>(null);
   const md = String(item.data?.markdown ?? '');
   const save = (next: string) => {
     if (item.locked || next === md.trim()) return;
@@ -120,6 +130,13 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       top = (range.getBoundingClientRect().bottom - wrap.top) / (ctx.zoom || 1);
     setSlash(s => ({ query: m[1], top, active: s && s.query === m[1] ? s.active : 0 }));
   };
+  const insertList = (list: 'bullet' | 'number' | 'check') => {
+    if (list === 'number') document.execCommand('insertOrderedList');
+    else {
+      document.execCommand('insertUnorderedList');
+      if (list === 'check') document.execCommand('insertText', false, '[ ] ');
+    }
+  };
   const apply = (c: SlashCommand) => {
     const root = editor.current;
     setSlash(null);
@@ -136,11 +153,8 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       sel.addRange(range);
     }
     if (c.block) document.execCommand('formatBlock', false, c.block === 'p' ? 'p' : c.block);
-    else if (c.list === 'number') document.execCommand('insertOrderedList');
-    else if (c.list) {
-      document.execCommand('insertUnorderedList');
-      if (c.list === 'check') document.execCommand('insertText', false, '[ ] ');
-    } else if (c.callout) {
+    else if (c.list) insertList(c.list);
+    else if (c.callout) {
       const label = calloutLabels[c.callout];
       document.execCommand(
         'insertHTML',
@@ -174,9 +188,73 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     sel.removeAllRanges();
     sel.addRange(range);
   };
+  /** Show emoji suggestions while ":name" is typed right before the caret. */
+  const watchEmoji = () => {
+    const root = editor.current,
+      sel = getSelection(),
+      node = sel?.anchorNode;
+    if (!root || item.locked || !node || node.nodeType !== Node.TEXT_NODE || !root.contains(node))
+      return setEmoji(null);
+    const q = emojiQuery((node.textContent ?? '').slice(0, sel!.anchorOffset));
+    if (!q) return setEmoji(null);
+    const range = document.createRange();
+    range.setStart(node, sel!.anchorOffset);
+    range.collapse(true);
+    const wrap = root.parentElement!.getBoundingClientRect(),
+      rect = range.getBoundingClientRect(),
+      top = (rect.bottom - wrap.top) / (ctx.zoom || 1);
+    const show = (groups: EmojiGroup[]) =>
+      setEmoji(s => ({
+        query: q.query,
+        length: q.length,
+        top,
+        results: searchEmojis(groups, q.query, 6),
+        active: s && s.query === q.query ? s.active : 0,
+      }));
+    if (emojiGroups.current) show(emojiGroups.current);
+    else
+      loadEmojiGroups()
+        .then(groups => {
+          emojiGroups.current = groups;
+          show(groups);
+        })
+        .catch(() => setEmoji(null));
+  };
+  const applyEmoji = (entry: EmojiEntry) => {
+    const sel = getSelection(),
+      node = sel?.anchorNode,
+      length = emoji?.length ?? 0;
+    setEmoji(null);
+    if (!node || node.nodeType !== Node.TEXT_NODE || !editor.current?.contains(node)) return;
+    const end = sel!.anchorOffset,
+      range = document.createRange();
+    range.setStart(node, Math.max(0, end - length));
+    range.setEnd(node, end);
+    sel!.removeAllRanges();
+    sel!.addRange(range);
+    document.execCommand('insertText', false, entry.emoji);
+  };
   const matches = slash ? filterSlash(slash.query) : [];
   const keyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     e.stopPropagation();
+    if (emoji && emoji.results.length) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        setEmoji({ ...emoji, active: (emoji.active + step + emoji.results.length) % emoji.results.length });
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        applyEmoji(emoji.results[Math.min(emoji.active, emoji.results.length - 1)]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setEmoji(null);
+        return;
+      }
+    }
     if (slash && matches.length) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -200,6 +278,7 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       e.preventDefault();
       if (shortcut.kind === 'strike') document.execCommand('strikethrough');
       else if (shortcut.kind === 'block') document.execCommand('formatBlock', false, shortcut.block);
+      else if (shortcut.kind === 'list') insertList(shortcut.list);
       else toggleCode();
       return;
     }
@@ -214,9 +293,11 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   };
   const live = useLatest({
     watchSlash,
+    watchEmoji,
     keyDown,
     blur: () => {
       setSlash(null);
+      setEmoji(null);
       commit();
     },
   });
@@ -238,7 +319,10 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         {...canvasControl}
         dangerouslySetInnerHTML={{ __html: renderMarkdown(md) }}
         onBlur={() => live.current.blur()}
-        onInput={() => live.current.watchSlash()}
+        onInput={() => {
+          live.current.watchSlash();
+          live.current.watchEmoji();
+        }}
         onPaste={e => {
           e.preventDefault();
           document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
@@ -260,6 +344,22 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
           </button>
           <button disabled={!!item.locked} aria-label="Italic document text" onClick={() => command('italic')}>
             I
+          </button>
+          <button
+            disabled={!!item.locked}
+            aria-label="Underline document text"
+            title="Underline (Ctrl+U)"
+            onClick={() => command('underline')}
+          >
+            <u>U</u>
+          </button>
+          <button
+            disabled={!!item.locked}
+            aria-label="Strikethrough document text"
+            title="Strikethrough (Ctrl+Shift+X)"
+            onClick={() => command('strikethrough')}
+          >
+            <s>S</s>
           </button>
           <button disabled={!!item.locked} onClick={() => command('formatBlock', 'h1')}>
             H1
@@ -291,6 +391,29 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       </div>
       <div className="canvas-doc-wrap">
         {editable}
+        {emoji && emoji.results.length > 0 && (
+          <ul
+            className="doc-slash-menu doc-emoji-menu"
+            role="listbox"
+            aria-label="Insert emoji"
+            style={{ top: emoji.top + 4 }}
+            onMouseDown={e => e.preventDefault()}
+            {...canvasControl}
+          >
+            {emoji.results.map((entry, k) => (
+              <li
+                key={entry.emoji}
+                role="option"
+                aria-selected={k === emoji.active}
+                onMouseEnter={() => setEmoji({ ...emoji, active: k })}
+                onClick={() => applyEmoji(entry)}
+              >
+                <b>{entry.emoji}</b>
+                <small>{entry.name}</small>
+              </li>
+            ))}
+          </ul>
+        )}
         {slash && matches.length > 0 && (
           <ul
             className="doc-slash-menu"

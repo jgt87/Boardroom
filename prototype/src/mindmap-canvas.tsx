@@ -2,7 +2,8 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Item, MindNode } from './model';
 import { removeBranch } from './model';
 import { useLatest } from './use-latest';
-import { GripVertical, Minus, Plus } from 'lucide-react';
+import { ExternalLink, GripVertical, Minus, Plus } from 'lucide-react';
+import { mindNodeShapes } from './model';
 import { mindViewport } from './mindmap-bounds';
 import {
   mindLayout,
@@ -22,7 +23,43 @@ import {
   mindDropTarget,
   MIND_COL,
   MIND_ROW,
+  mindShapeRx,
+  mindShapeLabels,
+  setMindTopic,
 } from './mindmap-style';
+import './r5-canvas.css';
+
+/** Web link field for the chosen topic: commits on Enter or blur; keys never reach the topic editor. */
+function TopicLink({ value, onCommit }: { value: string; onCommit: (link: string) => boolean }) {
+  const [text, setText] = useState(value),
+    [invalid, setInvalid] = useState(false);
+  const commit = () => {
+    if (text !== value) setInvalid(!onCommit(text));
+  };
+  return (
+    <input
+      aria-label="Topic link"
+      aria-invalid={invalid}
+      placeholder="Add a link"
+      maxLength={2048}
+      value={text}
+      title={invalid ? 'Use an http or https website link.' : undefined}
+      onChange={e => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commit();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setText(value);
+          setInvalid(false);
+        }
+      }}
+    />
+  );
+}
 
 /**
  * In-place mind-map editing on the canvas (item 40). Mount inside the item's foreignObject.
@@ -191,7 +228,7 @@ export function MindmapCanvasEditor({
       className="mind-canvas-editor"
       onPointerDown={e => e.stopPropagation()}
       onMouseDown={e => {
-        if (e.target !== input.current) e.preventDefault();
+        if (e.target !== input.current && !(e.target as Element).closest('.mind-shape-row input')) e.preventDefault();
       }}
       onDoubleClick={e => e.stopPropagation()}
       onBlur={e => {
@@ -278,13 +315,31 @@ export function MindmapCanvasEditor({
                       strokeWidth="2"
                     />
                   )}
+                  {n.shape === 'underline' && (
+                    <line
+                      x1={q.x}
+                      x2={q.x + MIND_NODE_W}
+                      y1={q.y + MIND_NODE_H}
+                      y2={q.y + MIND_NODE_H}
+                      stroke={color}
+                      strokeWidth="2.5"
+                    />
+                  )}
                   <rect
                     x={q.x}
                     y={q.y}
                     width={MIND_NODE_W}
                     height={MIND_NODE_H}
-                    rx="9"
-                    fill={n.parent ? (tinted ? color + '22' : '#edf0ff') : (n.color ?? '#4262ff')}
+                    rx={mindShapeRx(n.shape)}
+                    fill={
+                      n.shape === 'underline'
+                        ? 'transparent'
+                        : n.parent
+                          ? tinted
+                            ? color + '22'
+                            : '#edf0ff'
+                          : (n.color ?? '#4262ff')
+                    }
                     stroke={
                       dragPreview?.target === n.id
                         ? '#4262ff'
@@ -301,7 +356,7 @@ export function MindmapCanvasEditor({
                     <text
                       x={q.x + 12}
                       y={q.y + 29 - (mindLabelLines(n.text).length - 1) * 8}
-                      fill={n.parent ? '#25252c' : '#ffffff'}
+                      fill={n.parent || n.shape === 'underline' ? '#25252c' : '#ffffff'}
                       fontSize={mindLabelLines(n.text).length > 2 ? 11 : 14}
                     >
                       {mindLabelLines(n.text).map((line, k) => (
@@ -410,6 +465,38 @@ export function MindmapCanvasEditor({
               ? 'Move branch · Ctrl keeps its parent'
               : 'Drop on a topic to attach'}
         </p>
+      )}
+      {chosen && (
+        <div className="mind-shape-row" role="group" aria-label="Topic shape and link">
+          {mindNodeShapes.map(s => (
+            <button
+              key={s}
+              className={(chosen.shape ?? 'rounded') === s ? 'active' : ''}
+              aria-pressed={(chosen.shape ?? 'rounded') === s}
+              aria-label={`Topic shape ${mindShapeLabels[s]}`}
+              onClick={() => setNodes(setMindTopic(nodes, chosen.id, { shape: s }))}
+            >
+              {mindShapeLabels[s]}
+            </button>
+          ))}
+          <TopicLink
+            key={chosen.id}
+            value={chosen.link ?? ''}
+            onCommit={link => {
+              try {
+                setNodes(setMindTopic(nodes, chosen.id, { link }));
+                return true;
+              } catch {
+                return false;
+              }
+            }}
+          />
+          {chosen.link && (
+            <a href={chosen.link} target="_blank" rel="noopener noreferrer" aria-label="Open topic link">
+              <ExternalLink size={13} />
+            </a>
+          )}
+        </div>
       )}
       {chosen && (
         <div className="mind-color-row" role="group" aria-label="Topic colour">

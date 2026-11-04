@@ -84,7 +84,7 @@ test('keyword clustering lays notes out in titled columns as one undo step', asy
     page,
     b =>
       b.items.length === 6 &&
-      ['Onboarding (2)', 'Pricing (2)'].every(t => b.items.some(i => i.type === 'text' && i.text === t)),
+      ['Onboarding (2)', 'Pricing (2)'].every(t => b.items.some(i => i.type === 'frame' && i.text === t)),
     'clusters created',
   );
   const after = await savedBoard(page);

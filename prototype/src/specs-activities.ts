@@ -27,7 +27,10 @@ export type Slide = {
   background: string;
   /** Poll options for activity slides. */
   options?: SlideOption[];
+  /** Presenter notes, shown only to the presenter (N while presenting the deck). */
+  notes?: string;
 };
+export const SLIDE_NOTES_MAX = 2000;
 export type DeckData = { slides: Slide[]; current: number };
 export const DECK_MAX = 100;
 export const SLIDE_TITLE_MAX = 300;
@@ -103,6 +106,7 @@ export function validateDeck(d: DeckData): void {
       !str(s.title, SLIDE_TITLE_MAX) ||
       !str(s.body, SLIDE_BODY_MAX) ||
       (s.body2 !== undefined && !str(s.body2, SLIDE_BODY_MAX)) ||
+      (s.notes !== undefined && !str(s.notes, SLIDE_NOTES_MAX)) ||
       !hex(s.background)
     )
       fail('Invalid slide.');

@@ -253,7 +253,7 @@ test('mermaid flowcharts convert to shapes and bound connectors with labels, cha
   roundTrip(board(...items));
   const td = mermaidToNative('graph TD\nA-->B-->C', { x: 0, y: 0 }).items.filter(i => i.type !== 'arrow');
   assert.ok(td[1].y > td[0].y && td[2].y > td[1].y);
-  assert.throws(() => mermaidToNative('sequenceDiagram\nA->>B: hi', { x: 0, y: 0 }), /flowcharts/);
+  assert.throws(() => mermaidToNative('pie\n"A": 1', { x: 0, y: 0 }), /flowcharts, sequence/);
   assert.throws(() => parseFlowchart('flowchart TD\n'), /no nodes/);
 });
 test('mind-map styles validate and shape branches; older maps keep defaults', () => {

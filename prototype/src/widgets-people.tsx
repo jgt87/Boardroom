@@ -5,6 +5,7 @@ import './widgets-people.css';
 import type { Item } from './model';
 import type { WidgetCtx, WidgetView } from './widget-types';
 import { Dialog, data, setData } from './widget-kit';
+import { spokenColor } from './access-tools';
 import { AUTHOR_KEY, cleanAuthor, initials } from './authors';
 import { addMember, colorFor, personColors, removeMember, PEOPLE_MAX } from './specs-people';
 import type { PeopleData, UserCardData } from './specs-people';
@@ -196,7 +197,8 @@ function UserCardEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; on
           {personColors.map(c => (
             <button
               key={c}
-              aria-label={`Avatar colour ${c}`}
+              aria-label={`Avatar colour ${spokenColor(c)}`}
+              title={spokenColor(c)}
               aria-pressed={d.color === c}
               style={{ background: c }}
               onClick={() => setD({ ...d, color: c })}

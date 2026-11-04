@@ -47,7 +47,7 @@ const history = (current: Board) =>
 test('images keep their aspect ratio, reject unsupported files and round-trip through JSON with their data', () => {
   assert.deepEqual(fitImage(800, 400), { w: 480, h: 240 });
   assert.deepEqual(fitImage(100, 50), { w: 100, h: 50 });
-  assert.match(imageFileError({ type: 'image/svg+xml', size: 10 })!, /not a supported image/);
+  assert.match(imageFileError({ type: 'image/tiff', size: 10 })!, /not a supported image/);
   // Large still images are downscaled before storing (gap B10); GIFs keep the 4 MB limit.
   assert.equal(imageFileError({ type: 'image/png', size: 5e6 }), null);
   assert.match(imageFileError({ type: 'image/png', size: 6e7 })!, /larger than 50 MB/);

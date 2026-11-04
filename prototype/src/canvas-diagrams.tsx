@@ -14,7 +14,9 @@ import {
   ORG_NODE_H,
 } from './orgchart';
 import type { OrgNode } from './orgchart';
-import { orgMeta } from './orgchart';
+import { orgMeta, orgBranchColor } from './orgchart';
+import { storyCardMeta } from './storymap';
+import './r5-canvas.css';
 import { addActivity, addRelease, addCard, removeCard, renameCard, rename, cellCards, moveCard } from './storymap';
 import type { StoryMap } from './storymap';
 const PERSON = 'application/x-boardroom-person',
@@ -99,7 +101,11 @@ export function CanvasOrg({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
               )}
               <foreignObject x={p.x} y={p.y} width={ORG_NODE_W} height={ORG_NODE_H + 10}>
                 <div
-                  className={`canvas-person ${active === n.id ? 'active' : ''}`}
+                  className={`canvas-person ${active === n.id ? 'active' : ''} ${n.hiring ? 'hiring' : ''}`}
+                  style={
+                    orgBranchColor(nodes, n.id) ? { borderLeft: `4px solid ${orgBranchColor(nodes, n.id)}` } : undefined
+                  }
+                  title={n.description || undefined}
                   data-person={n.id}
                   draggable={!item.locked && !!n.parent}
                   {...canvasControl}
@@ -128,6 +134,7 @@ export function CanvasOrg({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                       <strong>{n.name}</strong>
                       <span>{n.role}</span>
                       {(n.team || n.location) && <small className="canvas-person-meta">{orgMeta(n)}</small>}
+                      {n.hiring && <small className="canvas-person-flag">Hiring</small>}
                     </>
                   ) : (
                     <>
@@ -146,6 +153,7 @@ export function CanvasOrg({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                         }
                       />
                       {(n.team || n.location) && <small className="canvas-person-meta">{orgMeta(n)}</small>}
+                      {n.hiring && <small className="canvas-person-flag">Hiring</small>}
                     </>
                   )}
                 </div>
@@ -235,6 +243,7 @@ export function CanvasStory({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                     <div
                       key={c.id}
                       className="canvas-story-card"
+                      style={c.color ? { background: c.color } : undefined}
                       data-story={c.id}
                       draggable={!item.locked}
                       onDragStart={e => {
@@ -251,6 +260,18 @@ export function CanvasStory({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                           value={c.title}
                           onCommit={title => run(v => renameCard(v, c.id, title))}
                         />
+                      )}
+                      {(storyCardMeta(c).length > 0 || c.link) && (
+                        <div className="canvas-story-meta">
+                          {storyCardMeta(c).map(t => (
+                            <span key={t}>{t}</span>
+                          ))}
+                          {c.link && (
+                            <a href={c.link} target="_blank" rel="noopener noreferrer" {...canvasControl}>
+                              Link
+                            </a>
+                          )}
+                        </div>
                       )}
                       {!item.locked && (
                         <button aria-label={`Delete story: ${c.title}`} onClick={() => run(v => removeCard(v, c.id))}>

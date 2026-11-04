@@ -2,6 +2,7 @@
 // properties inspector (item 59).
 import React from 'react';
 import { createItem, newBoard } from './model';
+import { singleFormatBoard } from './deep-link';
 import { boardFromTemplate } from './user-templates';
 import { useLibraryFiles } from './use-library-files';
 import { expandGroups, canGroup, isGrouped, reorderZ } from './arrange';
@@ -20,9 +21,15 @@ import { BoardsDashboard } from './dashboard';
 import { ContextMenu } from './context-menu';
 import { deckItemFor } from './deck-tools';
 import type { MenuEntry } from './context-menu';
+import { nativeToMermaid } from './mermaid-native';
+import { mermaidItem } from './smart-paste';
+import { selectionBounds } from './interactions';
+import { isShapeKind } from './shapes';
+import { makeCustomShape, addCustomShape, loadCustomShapes, storeCustomShapes } from './custom-shapes';
 import { PropertiesInspector } from './inspector';
 import { DeckPresenter } from './widgets-activities';
 import { ReactionLayer } from './collab-extras';
+import { copyText, objectLink } from './use-deep-links';
 
 export function BoardOverlays() {
   const app = useApp();
@@ -58,8 +65,27 @@ export function BoardOverlays() {
     fit,
     clipRef,
     display,
+    objectLink: focusLink,
   } = app;
   const libraryFiles = useLibraryFiles();
+  /** Copy a link; plain HTTP on the LAN has no async clipboard, so fall back to a hidden text field. */
+  const copyLink = (url: string, what: string) => {
+    const done = () => display(`${what} copied. It opens this object in this browser, where the board is stored.`);
+    if (window.isSecureContext && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(done, () => display(url));
+      return;
+    }
+    const field = document.createElement('textarea');
+    field.value = url;
+    field.setAttribute('readonly', '');
+    field.style.cssText = 'position:fixed;opacity:0;left:0;top:0';
+    document.body.append(field);
+    field.select();
+    const ok = document.execCommand('copy');
+    field.remove();
+    if (ok) done();
+    else display(url);
+  };
   const entries = (): MenuEntry[] => {
     if (!contextMenu) return [];
     const { world } = contextMenu,
@@ -151,8 +177,19 @@ export function BoardOverlays() {
         ? ([
             { label: 'Link to…', run: () => setPanel('link') },
             {
+              label: single.type === 'frame' ? 'Copy link to frame' : 'Copy link to object',
+              run: () => {
+                const url = objectLink(single, library.activeId);
+                void copyText(url).then(ok => display(ok ? 'Link copied.' : `Copy this link: ${url}`));
+              },
+            },
+            {
+              label: 'Copy link to focus view',
+              run: () => copyLink(focusLink(single.id, true), 'Focus link'),
+            },
+            {
               label: 'Comment',
-              shortcut: 'C',
+              shortcut: 'Alt C',
               run: () => setThread({ x: single.x + single.w, y: single.y, itemId: single.id }),
             },
           ] as MenuEntry[])
@@ -187,6 +224,38 @@ export function BoardOverlays() {
             } as MenuEntry,
           ]
         : []),
+      ...(types.some(t => isShapeKind(t.type) || t.type === 'note' || t.type === 'frame')
+        ? [
+            {
+              label: 'Convert to Mermaid code',
+              run: () => {
+                try {
+                  const b = boardRef.current,
+                    code = nativeToMermaid(b, selected),
+                    bounds = selectionBounds(b.items, selected)!,
+                    item = { ...mermaidItem(code, { x: bounds.x + bounds.w + 80, y: bounds.y }) };
+                  update({ ...b, items: [...b.items, item] });
+                  setSelected([item.id]);
+                  display('Created a Mermaid diagram from the selection. The shapes are kept.');
+                } catch (err) {
+                  display((err as Error).message);
+                }
+              },
+            } as MenuEntry,
+          ]
+        : []),
+      {
+        label: 'Save as shape',
+        run: () => {
+          const made = makeCustomShape(boardRef.current, selected, crypto.randomUUID(), new Date());
+          if ('error' in made) return display(made.error);
+          display(
+            storeCustomShapes(addCustomShape(loadCustomShapes(), made))
+              ? `Saved "${made.name}" to My shapes in the Shapes menu.`
+              : 'This browser has no room to store the shape.',
+          );
+        },
+      } as MenuEntry,
       'separator',
       ...(single
         ? [
@@ -242,6 +311,18 @@ export function BoardOverlays() {
           library={library}
           onOpen={boardActions.open}
           onCreate={boardActions.create}
+          onCreateFormat={(kind, space) => {
+            const made = singleFormatBoard(kind, newBoard(), (k, x, y) => createItem(k, x, y));
+            if (!boardActions.createFrom(made.board, space)) return;
+            // Open the new board straight into the format's focus view.
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => {
+                setSelected([made.id]);
+                fit(made.board.items);
+                openEditor(made.id);
+              }),
+            );
+          }}
           onCreateFromTemplate={(t, space) => {
             const made = boardFromTemplate(t, newBoard());
             if (made) boardActions.createFrom(made, space);
@@ -254,6 +335,10 @@ export function BoardOverlays() {
           onBackupAll={libraryFiles.backupAll}
           onRename={boardActions.rename}
           onDuplicate={boardActions.duplicate}
+          onDuplicateMany={boardActions.duplicateMany}
+          onSpaceInfo={boardActions.spaceInfo}
+          onBlueprint={boardActions.fromBlueprint}
+          onFlush={boardActions.flush}
           onDelete={boardActions.remove}
           onMeta={boardActions.setMeta}
           onClose={() => setDashboard(false)}

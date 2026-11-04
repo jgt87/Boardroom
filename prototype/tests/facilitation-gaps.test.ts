@@ -235,9 +235,10 @@ test('clusterSelection lays clusters out in titled columns in one change and ski
     titles.map(t => t.text),
     ['Light yellow (1)', 'Light blue (2)'],
   );
-  assert.ok(titles.every(t => t.type === 'text' && t.y === 100));
-  // Columns start at the selection's top-left; notes sit below their title, stacked.
-  assert.equal(get('b').x, 100);
+  assert.ok(titles.every(t => t.type === 'frame' && t.y === 100));
+  // Cluster frames start at the selection's top-left; notes sit inside them, stacked.
+  assert.equal(titles[0].x, 100);
+  assert.equal(get('b').x, 124);
   assert.equal(get('a').x, get('c').x);
   assert.ok(get('a').x > get('b').x);
   assert.ok(get('a').y > titles[1].y && get('c').y >= get('a').y + get('a').h);

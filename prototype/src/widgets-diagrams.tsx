@@ -29,7 +29,10 @@ import {
   orgMeta,
   ORG_NODE_W,
   ORG_NODE_H,
+  ORG_DESCRIPTION_MAX,
+  orgBranchColor,
 } from './orgchart';
+import { mindPalette, mindColorNames } from './mindmap-style';
 import { saveText } from './widget-kit';
 import type { OrgNode } from './orgchart';
 import {
@@ -43,7 +46,21 @@ import {
   cellCards,
   moveCard,
   shiftCard,
+  updateCard,
 } from './storymap';
+import './r5-canvas.css';
+/** Story card colours (track R5): the sticky note palette's light colours. */
+const storyColors: [string, string][] = [
+  ['#fff49b', 'Yellow'],
+  ['#ffb879', 'Orange'],
+  ['#ffa0a7', 'Red'],
+  ['#f7c5ef', 'Pink'],
+  ['#d3b7f6', 'Violet'],
+  ['#a8cdff', 'Blue'],
+  ['#8ce3eb', 'Cyan'],
+  ['#a9e8bb', 'Green'],
+  ['#ffffff', 'White'],
+];
 import type { StoryMap } from './storymap';
 import { setLayoutOption, AUTOLAYOUT_HEADER } from './autolayout';
 import type { AutoLayoutData } from './autolayout';
@@ -244,9 +261,18 @@ function OrgDiagram({
               height={ORG_NODE_H}
               rx="8"
               fill={n.parent ? '#ffffff' : '#edf0ff'}
-              stroke={n.id === active ? '#4262ff' : '#d4d4da'}
+              stroke={n.id === active ? '#4262ff' : n.hiring ? '#f59f00' : '#d4d4da'}
+              strokeDasharray={n.hiring && n.id !== active ? '5 3' : undefined}
               strokeWidth={n.id === active ? 2.5 : 1.2}
             />
+            {orgBranchColor(nodes, n.id) && (
+              <rect x={p.x} y={p.y + 6} width="4" height={ORG_NODE_H - 12} fill={orgBranchColor(nodes, n.id)} />
+            )}
+            {n.hiring && (
+              <text x={p.x + ORG_NODE_W - 8} y={p.y + 14} fontSize="9" fontWeight="700" fill="#b45309" textAnchor="end">
+                HIRING
+              </text>
+            )}
             <text x={p.x + 12} y={p.y + 26} fontSize="14" fontWeight="600" fill="#25252c">
               {n.name.length > 20 ? n.name.slice(0, 19) + '…' : n.name || 'Unnamed'}
             </text>
@@ -318,13 +344,23 @@ function OrgEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose
       setError((err as Error).message);
     }
   };
-  const setField = (field: 'name' | 'role' | 'team' | 'location', value: string) =>
+  const setField = (field: 'name' | 'role' | 'team' | 'location' | 'description', value: string) =>
     run(() =>
       nodes.map(n => {
         if (n.id !== active) return n;
-        const next = { ...n, [field]: value.slice(0, 200) };
+        const next = { ...n, [field]: value.slice(0, field === 'description' ? ORG_DESCRIPTION_MAX : 200) };
         // Optional fields are left out when empty so older boards keep their shape.
-        if ((field === 'team' || field === 'location') && !value.trim()) delete next[field];
+        if ((field === 'team' || field === 'location' || field === 'description') && !value.trim()) delete next[field];
+        return next;
+      }),
+    );
+  const setExtra = (patch: { hiring?: boolean; color?: string }) =>
+    run(() =>
+      nodes.map(n => {
+        if (n.id !== active) return n;
+        const next: OrgNode = { ...n, ...patch };
+        if (!next.hiring) delete next.hiring;
+        if (!next.color) delete next.color;
         return next;
       }),
     );
@@ -459,6 +495,40 @@ function OrgEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose
                 value={chosen.location ?? ''}
                 onCommit={v => setField('location', v)}
               />
+            </label>
+            <label>
+              Description
+              <CommitInput
+                key={`description-${active}`}
+                aria-label="Person description"
+                maxLength={ORG_DESCRIPTION_MAX}
+                value={chosen.description ?? ''}
+                onCommit={v => setField('description', v)}
+              />
+            </label>
+            <label className="check-inline">
+              <input
+                type="checkbox"
+                aria-label="Open position (hiring)"
+                checked={!!chosen.hiring}
+                onChange={e => setExtra({ hiring: e.target.checked })}
+              />
+              Hiring for this position
+            </label>
+            <label>
+              Branch colour
+              <select
+                aria-label="Branch colour"
+                value={chosen.color ?? ''}
+                onChange={e => setExtra({ color: e.target.value })}
+              >
+                <option value="">Inherit</option>
+                {mindPalette.map((c, k) => (
+                  <option key={c} value={c}>
+                    {mindColorNames[k]}
+                  </option>
+                ))}
+              </select>
             </label>
             <div className="format-actions wrap">
               <button onClick={() => run(() => addChild(nodes, active))}>
@@ -622,6 +692,56 @@ function StoryEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
           </label>
         )}
       </div>
+      {card && (
+        <div className="story-card-fields" role="group" aria-label="Story details">
+          <label>
+            Colour
+            <select
+              aria-label="Story colour"
+              value={card.color ?? ''}
+              onChange={e => run(m => updateCard(m, card.id, { color: e.target.value }))}
+            >
+              <option value="">Default</option>
+              {storyColors.map(([c, name]) => (
+                <option key={c} value={c}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Assignee
+            <CommitInput
+              key={`assignee-${card.id}`}
+              aria-label="Story assignee"
+              maxLength={120}
+              value={card.assignee ?? ''}
+              onCommit={v => run(m => updateCard(m, card.id, { assignee: v }))}
+            />
+          </label>
+          <label>
+            Tags
+            <CommitInput
+              key={`tags-${card.id}`}
+              aria-label="Story tags"
+              placeholder="comma, separated"
+              value={(card.tags ?? []).join(', ')}
+              onCommit={v => run(m => updateCard(m, card.id, { tags: v }))}
+            />
+          </label>
+          <label>
+            Link
+            <CommitInput
+              key={`link-${card.id}`}
+              aria-label="Story link"
+              maxLength={2048}
+              placeholder="https://"
+              value={card.link ?? ''}
+              onCommit={v => run(m => updateCard(m, card.id, { link: v }))}
+            />
+          </label>
+        </div>
+      )}
       <div
         ref={grid}
         className="story-grid"
@@ -694,6 +814,7 @@ function StoryEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
                       key={c.id}
                       data-story={c.id}
                       className={`story-card ${selected === c.id ? 'active' : ''} ${drag === c.id ? 'dragging' : ''}`}
+                      style={c.color ? { background: c.color } : undefined}
                       tabIndex={0}
                       draggable
                       role="button"

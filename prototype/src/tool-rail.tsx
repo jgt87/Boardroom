@@ -12,6 +12,8 @@ import {
   Layers3,
 } from 'lucide-react';
 import { allKinds, colors, colorName, undo, redo, bulkNotes } from './model';
+import { useBrandKit } from './brand-kit-panel';
+import { brandFirst } from './brand-kit';
 import type { Kind } from './model';
 import { ToolGallery, FormatEditor, BulkPanel, TOOL_MIME, kindIcons } from './formats';
 import { catalog } from './tool-catalog';
@@ -21,15 +23,18 @@ const PIN_MIME = 'application/x-boardroom-pinned';
 import { AnchoredPanel } from './anchored-panel';
 import { isShapeKind, shapeLabels } from './shapes';
 import { CompactShapesMenu } from './shape-tools';
+import { placeCustomShape } from './custom-shapes';
 import { penPresets } from './board-tools';
 import { PenOptions } from './board-panels';
 import { useApp } from './board-app';
 import { tools } from './board-app';
 import { useState } from 'react';
+import { useRovingToolbar } from './use-roving-toolbar';
 import { EmojiPicker } from './emoji-picker';
 import { StickerChoices } from './widgets-graphics';
 
 export function ToolRail() {
+  const brandKit = useBrandKit();
   const [emojiMenu, setEmojiMenu] = useState(false);
   const {
     addCentered,
@@ -78,6 +83,7 @@ export function ToolRail() {
     viewPrefs,
     setViewPrefs,
   } = useApp();
+  const rail = useRovingToolbar<HTMLDivElement>();
   // The sticky note tool shows the reference's compact palette and a Stack toggle (item 109).
   const noteTool = tool === 'note' || tool === 'stack';
   /** Start click-to-place for an emoji (`emoji:<emoji>`) or a built-in sticker kind. */
@@ -105,176 +111,186 @@ export function ToolRail() {
             setBulk(false);
           }}
         >
-          <button
-            data-tool-anchor="select"
-            aria-label={tool === 'hand' ? 'Pan' : 'Select'}
-            title={
-              tool === 'hand'
-                ? 'Pan (H) · click for Select'
-                : tool === 'select'
-                  ? 'Select (V) · click for Pan'
-                  : 'Select (V)'
-            }
-            aria-pressed={tool === 'select' || tool === 'hand'}
-            className={tool === 'select' || tool === 'hand' ? 'active' : ''}
-            onClick={() => {
-              // One button toggles between the selector and the hand (pan) tool; from any other tool it returns to Select.
-              setTool(tool === 'select' ? 'hand' : 'select');
-              setEditing(null);
-              setPendingPlacement(null);
-              setGallery(null);
-              setShapes(false);
-            }}
+          <div
+            ref={rail.ref}
+            role="toolbar"
+            aria-label="Tools"
+            aria-orientation="vertical"
+            className="tool-buttons"
+            onFocus={rail.onFocus}
+            onKeyDown={rail.onKeyDown}
           >
-            {tool === 'hand' ? <Hand size={21} /> : <MousePointer2 size={21} />}
-          </button>
-          <button
-            data-tool-anchor="formats"
-            aria-label="Formats and Flows"
-            aria-expanded={gallery === 'Formats'}
-            onClick={() => {
-              setGallery(gallery === 'Formats' ? null : 'Formats');
-              setShapes(false);
-              setBulk(false);
-            }}
-          >
-            <Shapes size={21} />
-            <span className="tool-tip">Formats and Flows</span>
-          </button>
-          <button
-            aria-label="Templates"
-            onClick={() => {
-              setFacil('templates');
-              setGallery(null);
-              setShapes(false);
-            }}
-          >
-            <LayoutTemplate size={21} />
-            <span className="tool-tip">Templates</span>
-          </button>
-          {tools
-            .filter(t => !['select', 'hand', 'ellipse', 'diamond', 'arrow'].includes(t.id))
-            .map(t => (
-              <button
-                key={t.id}
-                data-tool-anchor={t.id}
-                aria-label={t.id === 'rectangle' ? 'Shapes and lines' : t.label}
-                aria-pressed={tool === t.id}
-                className={tool === t.id ? 'active' : ''}
-                draggable={!['pen', 'rectangle'].includes(t.id)}
-                onDragStart={e => {
-                  e.dataTransfer.setData(TOOL_MIME, t.id);
-                  e.dataTransfer.effectAllowed = 'copy';
-                }}
-                onClick={() => {
-                  setPendingPlacement(null);
-                  if (t.id === 'rectangle') {
-                    setShapes(!shapes);
-                    setGallery(null);
-                  } else {
-                    setTool(t.id);
-                    setEditing(null);
-                    setGallery(null);
-                    setShapes(false);
-                  }
-                }}
-                onDoubleClick={() => {
-                  if (!['select', 'hand', 'pen'].includes(t.id)) addCentered(t.id as Kind);
-                }}
-              >
-                <t.icon size={21} strokeWidth={1.7} />
-                <span className="tool-tip">
-                  {t.id === 'rectangle' ? 'Shapes and lines' : t.label}
-                  <kbd>{t.key}</kbd>
-                </span>
-              </button>
-            ))}
-          {viewPrefs.pinned
-            .filter(k => (allKinds as string[]).includes(k))
-            .map(k => {
-              const Icon = kindIcons[k] ?? Layers3,
-                label =
-                  Object.values(catalog)
-                    .flat()
-                    .find(entry => entry.kind === k)?.label ?? k;
-              return (
+            <button
+              data-tool-anchor="select"
+              aria-label={tool === 'hand' ? 'Pan' : 'Select'}
+              title={
+                tool === 'hand'
+                  ? 'Pan (H) · click for Select'
+                  : tool === 'select'
+                    ? 'Select (V) · click for Pan'
+                    : 'Select (V)'
+              }
+              aria-pressed={tool === 'select' || tool === 'hand'}
+              className={tool === 'select' || tool === 'hand' ? 'active' : ''}
+              onClick={() => {
+                // One button toggles between the selector and the hand (pan) tool; from any other tool it returns to Select.
+                setTool(tool === 'select' ? 'hand' : 'select');
+                setEditing(null);
+                setPendingPlacement(null);
+                setGallery(null);
+                setShapes(false);
+              }}
+            >
+              {tool === 'hand' ? <Hand size={21} /> : <MousePointer2 size={21} />}
+            </button>
+            <button
+              data-tool-anchor="formats"
+              aria-label="Formats and Flows"
+              aria-expanded={gallery === 'Formats'}
+              onClick={() => {
+                setGallery(gallery === 'Formats' ? null : 'Formats');
+                setShapes(false);
+                setBulk(false);
+              }}
+            >
+              <Shapes size={21} />
+              <span className="tool-tip">Formats and Flows</span>
+            </button>
+            <button
+              aria-label="Templates"
+              onClick={() => {
+                setFacil('templates');
+                setGallery(null);
+                setShapes(false);
+              }}
+            >
+              <LayoutTemplate size={21} />
+              <span className="tool-tip">Templates</span>
+            </button>
+            {tools
+              .filter(t => !['select', 'hand', 'ellipse', 'diamond', 'arrow'].includes(t.id))
+              .map(t => (
                 <button
-                  key={`pin-${k}`}
-                  className="pinned-tool"
-                  aria-label={label}
-                  draggable
+                  key={t.id}
+                  data-tool-anchor={t.id}
+                  aria-label={t.id === 'rectangle' ? 'Shapes and lines' : t.label}
+                  aria-pressed={tool === t.id}
+                  className={tool === t.id ? 'active' : ''}
+                  draggable={!['pen', 'rectangle'].includes(t.id)}
                   onDragStart={e => {
-                    e.dataTransfer.setData(TOOL_MIME, k);
-                    e.dataTransfer.setData(PIN_MIME, k);
-                    e.dataTransfer.effectAllowed = 'copyMove';
+                    e.dataTransfer.setData(TOOL_MIME, t.id);
+                    e.dataTransfer.effectAllowed = 'copy';
                   }}
-                  onDragOver={e => {
-                    // Drop a pinned tool on another to reorder (gap F12).
-                    if (e.dataTransfer.types.includes(PIN_MIME)) e.preventDefault();
+                  onClick={() => {
+                    setPendingPlacement(null);
+                    if (t.id === 'rectangle') {
+                      setShapes(!shapes);
+                      setGallery(null);
+                    } else {
+                      setTool(t.id);
+                      setEditing(null);
+                      setGallery(null);
+                      setShapes(false);
+                    }
                   }}
-                  onDrop={e => {
-                    const from = e.dataTransfer.getData(PIN_MIME);
-                    if (!from || from === k) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const list = viewPrefs.pinned.filter(x => x !== from),
-                      at = list.indexOf(k);
-                    list.splice(at < 0 ? list.length : at, 0, from);
-                    setViewPrefs({ pinned: list });
+                  onDoubleClick={() => {
+                    if (!['select', 'hand', 'pen'].includes(t.id)) addCentered(t.id as Kind);
                   }}
-                  onClick={() => chooseFormat(k)}
                 >
-                  <Icon size={21} strokeWidth={1.7} />
-                  <span className="tool-tip">{label}</span>
+                  <t.icon size={21} strokeWidth={1.7} />
+                  <span className="tool-tip">
+                    {t.id === 'rectangle' ? 'Shapes and lines' : t.label}
+                    <kbd>{t.key}</kbd>
+                  </span>
                 </button>
-              );
-            })}
-          <button
-            data-tool-anchor="emoji"
-            aria-label="Emoji and stickers"
-            aria-expanded={emojiMenu}
-            aria-pressed={tool === 'stamp' && !!pendingPlacement?.startsWith('stamp:')}
-            className={tool === 'stamp' && pendingPlacement?.startsWith('stamp:') ? 'active' : ''}
-            onClick={() => {
-              setEmojiMenu(v => !v);
-              setGallery(null);
-              setShapes(false);
-              setBulk(false);
-            }}
-          >
-            <Smile size={21} strokeWidth={1.7} />
-            <span className="tool-tip">Emoji and stickers</span>
-          </button>
-          <button
-            data-tool-anchor="comment"
-            aria-label="Comment"
-            aria-pressed={tool === 'comment'}
-            className={tool === 'comment' ? 'active' : ''}
-            onClick={() => {
-              setPendingPlacement(null);
-              setGallery(null);
-              setShapes(false);
-              setTool(tool === 'comment' ? 'select' : 'comment');
-            }}
-          >
-            <MessageCircle size={21} strokeWidth={1.7} />
-            <span className="tool-tip">
-              Comment<kbd>C</kbd>
-            </span>
-          </button>
-          <button
-            data-tool-anchor="essentials"
-            aria-label="Tools, media and integrations"
-            aria-expanded={gallery === 'Essentials'}
-            onClick={() => {
-              setGallery(gallery === 'Essentials' ? null : 'Essentials');
-              setShapes(false);
-              setBulk(false);
-            }}
-          >
-            <Plus size={23} strokeWidth={1.7} />
-            <span className="tool-tip">Tools, media and integrations</span>
-          </button>
+              ))}
+            {viewPrefs.pinned
+              .filter(k => (allKinds as string[]).includes(k))
+              .map(k => {
+                const Icon = kindIcons[k] ?? Layers3,
+                  label =
+                    Object.values(catalog)
+                      .flat()
+                      .find(entry => entry.kind === k)?.label ?? k;
+                return (
+                  <button
+                    key={`pin-${k}`}
+                    className="pinned-tool"
+                    aria-label={label}
+                    draggable
+                    onDragStart={e => {
+                      e.dataTransfer.setData(TOOL_MIME, k);
+                      e.dataTransfer.setData(PIN_MIME, k);
+                      e.dataTransfer.effectAllowed = 'copyMove';
+                    }}
+                    onDragOver={e => {
+                      // Drop a pinned tool on another to reorder (gap F12).
+                      if (e.dataTransfer.types.includes(PIN_MIME)) e.preventDefault();
+                    }}
+                    onDrop={e => {
+                      const from = e.dataTransfer.getData(PIN_MIME);
+                      if (!from || from === k) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const list = viewPrefs.pinned.filter(x => x !== from),
+                        at = list.indexOf(k);
+                      list.splice(at < 0 ? list.length : at, 0, from);
+                      setViewPrefs({ pinned: list });
+                    }}
+                    onClick={() => chooseFormat(k)}
+                  >
+                    <Icon size={21} strokeWidth={1.7} />
+                    <span className="tool-tip">{label}</span>
+                  </button>
+                );
+              })}
+            <button
+              data-tool-anchor="emoji"
+              aria-label="Emoji and stickers"
+              aria-expanded={emojiMenu}
+              aria-pressed={tool === 'stamp' && !!pendingPlacement?.startsWith('stamp:')}
+              className={tool === 'stamp' && pendingPlacement?.startsWith('stamp:') ? 'active' : ''}
+              onClick={() => {
+                setEmojiMenu(v => !v);
+                setGallery(null);
+                setShapes(false);
+                setBulk(false);
+              }}
+            >
+              <Smile size={21} strokeWidth={1.7} />
+              <span className="tool-tip">Emoji and stickers</span>
+            </button>
+            <button
+              data-tool-anchor="comment"
+              aria-label="Comment"
+              aria-pressed={tool === 'comment'}
+              className={tool === 'comment' ? 'active' : ''}
+              onClick={() => {
+                setPendingPlacement(null);
+                setGallery(null);
+                setShapes(false);
+                setTool(tool === 'comment' ? 'select' : 'comment');
+              }}
+            >
+              <MessageCircle size={21} strokeWidth={1.7} />
+              <span className="tool-tip">
+                Comment<kbd>C</kbd>
+              </span>
+            </button>
+            <button
+              data-tool-anchor="essentials"
+              aria-label="Tools, media and integrations"
+              aria-expanded={gallery === 'Essentials'}
+              onClick={() => {
+                setGallery(gallery === 'Essentials' ? null : 'Essentials');
+                setShapes(false);
+                setBulk(false);
+              }}
+            >
+              <Plus size={23} strokeWidth={1.7} />
+              <span className="tool-tip">Tools, media and integrations</span>
+            </button>
+          </div>
         </nav>
         {viewPrefs.undoControls && (
           <div className="history floating">
@@ -338,6 +354,18 @@ export function ToolRail() {
                   setPendingPlacement(null);
                   setTool(kind);
                   setShapes(false);
+                }}
+                onCustom={shape => {
+                  const placed = placeCustomShape(
+                    boardRef.current,
+                    shape,
+                    toWorld(window.innerWidth / 2, window.innerHeight / 2),
+                  );
+                  setShapes(false);
+                  if (!placed) return display('This saved shape can no longer be read.');
+                  update(placed.board);
+                  setTool('select');
+                  setSelected(placed.ids);
                 }}
               />
             </div>
@@ -499,7 +527,7 @@ export function ToolRail() {
             )}
             {!['arrow', 'text', 'pen', 'frame', 'comment'].includes(tool) && (
               <div className={`swatches ${noteTool ? 'note-swatches' : ''}`} role="group" aria-label="Colors">
-                {colors.map(c => (
+                {brandFirst(brandKit, colors).map(c => (
                   <button
                     key={c}
                     aria-label={`Use colour ${colorName(c)}`}

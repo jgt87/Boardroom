@@ -304,6 +304,54 @@ ul.slide-body {
   outline-offset: 2px;
 }
 
+.canvas-deck-notes {
+  flex: none;
+  padding: 4px 10px;
+  border-top: 1px solid #efeff3;
+}
+.canvas-deck-notes textarea {
+  width: 100%;
+  box-sizing: border-box;
+  height: 34px;
+  resize: none;
+  font: inherit;
+  font-size: 11px;
+}
+.canvas-deck-notes p {
+  margin: 0;
+  max-height: 34px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 11px;
+  color: #5a5a66;
+}
+.deck-presenter-notes {
+  position: fixed;
+  right: 20px;
+  bottom: 80px;
+  width: min(360px, calc(100vw - 40px));
+  max-height: 40vh;
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #25252c;
+  font:
+    15px/1.5 Arial,
+    sans-serif;
+  white-space: pre-wrap;
+}
+.deck-presenter-notes h2 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #5a5a66;
+}
+.deck-presenter-bar button[aria-pressed='true'] {
+  background: #ffffff33;
+}
+
 /* Open-ended */
 .canvas-open-add {
   display: flex;

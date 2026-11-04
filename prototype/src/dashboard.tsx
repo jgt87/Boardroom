@@ -1,6 +1,9 @@
 // Boards dashboard (item 56): open, create (blank, from a template or a saved template), rename,
 // duplicate, star, file under spaces, filter by status, search titles, descriptions and board content,
 // select several boards, move boards to the trash and restore them, and back up or restore the library.
+// Track R3: template previews, "Last opened" sort, a list layout, Ctrl+E for search, content matches that
+// open the board at the object or comment, space emoji and descriptions, blueprints, bulk duplicate, and an
+// overview with a recent-activity digest and the comments across boards.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X,
@@ -10,29 +13,48 @@ import {
   Pencil,
   Search,
   LayoutGrid,
+  List,
   Star,
   RotateCcw,
   Download,
   Upload,
   FolderPlus,
-  BookmarkPlus,
+  Activity as ActivityIcon,
 } from 'lucide-react';
 import {
   cleanSpace,
   daysLeftInTrash,
   liveBoards,
-  searchBoardContent,
+  searchBoardMatches,
+  spaceInfoOf,
   spacesOf,
   trashedBoards,
   TRASH_DAYS,
+  SPACE_DESCRIPTION_MAX,
 } from './board-library';
-import type { BoardMeta, ContentCache, Library } from './board-library';
+import type { BoardMeta, ContentCache, Library, OpenTarget, SpaceInfo } from './board-library';
 import { templateNames } from './board-tools';
+import { singleFormats } from './deep-link';
+import type { SingleFormat } from './deep-link';
 import type { TemplateName } from './board-tools';
 import { boardStatuses } from './board-settings';
-import { loadTemplates } from './user-templates';
+import { loadTemplates, templatePreview } from './user-templates';
 import type { UserTemplate } from './user-templates';
 import { useLatest } from './use-latest';
+import { PreviewThumb, StarterThumb } from './board-thumb';
+import { byLastOpened, activityDigest, commentsAcrossBoards } from './library-insights';
+import { catchUpPeriods } from './activity';
+import {
+  addBlueprint,
+  blueprintFromSpace,
+  builtInBlueprints,
+  loadBlueprints,
+  removeBlueprint,
+  storeBlueprints,
+  type Blueprint,
+} from './blueprints';
+import { parseBoard } from './model';
+import './library-r3.css';
 
 const relative = (iso: string) => {
   const ms = Date.now() - Date.parse(iso);
@@ -45,36 +67,6 @@ const relative = (iso: string) => {
   return new Date(iso).toLocaleDateString();
 };
 
-function Thumbnail({ meta }: { meta: BoardMeta }) {
-  return (
-    <svg className="board-thumb" viewBox="-0.05 -0.05 1.1 1.1" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-      <rect x={-0.05} y={-0.05} width={1.1} height={1.1} fill="#fafafb" />
-      {meta.preview.map((s, k) =>
-        s.kind === 'line' ? (
-          <line key={k} x1={s.x} y1={s.y} x2={s.x + s.w} y2={s.y + s.h} stroke="#8a8a94" strokeWidth={0.006} />
-        ) : (
-          <rect
-            key={k}
-            x={s.x}
-            y={s.y}
-            width={s.w}
-            height={s.h}
-            rx={s.kind === 'note' ? 0 : 0.006}
-            fill={s.kind === 'frame' ? '#ffffff' : s.fill}
-            stroke={s.kind === 'frame' ? '#c5c5ce' : s.kind === 'shape' ? '#52525b' : 'none'}
-            strokeWidth={0.004}
-          />
-        ),
-      )}
-      {!meta.preview.length && (
-        <text x={0.5} y={0.52} textAnchor="middle" fontSize={0.07} fill="#8a8a94">
-          Empty board
-        </text>
-      )}
-    </svg>
-  );
-}
-
 function StatusChip({ status }: { status?: string }) {
   const s = boardStatuses.find(x => x.id === status);
   if (!s) return null;
@@ -85,35 +77,153 @@ function StatusChip({ status }: { status?: string }) {
   );
 }
 
+/** Whether a board belongs to the dashboard's space filter. */
+const inSpace = (b: BoardMeta, shown: string) =>
+  shown === 'all' || (shown === 'starred' ? !!b.starred : shown === 'none' ? !b.space : b.space === shown);
 type SpaceChange = { create: string } | { rename: string; to: string } | { remove: string };
+type Layout = 'grid' | 'list';
+const LAYOUT_KEY = 'boardroom.dashboard.layout';
+const readLayout = (): Layout => {
+  try {
+    return localStorage.getItem(LAYOUT_KEY) === 'list' ? 'list' : 'grid';
+  } catch {
+    return 'grid';
+  }
+};
+
+/** Recent changes and comments across the boards in view (track R3). */
+function Overview({ boards, onOpen }: { boards: BoardMeta[]; onOpen: (id: string, target?: OpenTarget) => void }) {
+  const [period, setPeriod] = useState<(typeof catchUpPeriods)[number]['id']>('week'),
+    [filter, setFilter] = useState<'open' | 'resolved' | 'all'>('open');
+  const ms = catchUpPeriods.find(p => p.id === period)!.ms;
+  const [now] = useState(() => Date.now());
+  const digest = useMemo(() => {
+    try {
+      return activityDigest(localStorage, boards, now - ms);
+    } catch {
+      return { boards: [], added: 0, edited: 0, deleted: 0, total: 0 };
+    }
+  }, [boards, ms, now]);
+  const comments = useMemo(() => {
+    try {
+      return commentsAcrossBoards(localStorage, boards, filter);
+    } catch {
+      return [];
+    }
+  }, [boards, filter]);
+  return (
+    <div className="dashboard-overview">
+      <section aria-label="Recent activity">
+        <div className="overview-heading">
+          <h3>Recent activity</h3>
+          <select
+            aria-label="Activity period"
+            value={period}
+            onChange={e => setPeriod(e.target.value as typeof period)}
+          >
+            {catchUpPeriods.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {digest.total ? (
+          <>
+            <p className="overview-summary">
+              {digest.total} {digest.total === 1 ? 'change' : 'changes'} on {digest.boards.length}{' '}
+              {digest.boards.length === 1 ? 'board' : 'boards'}: {digest.added} added, {digest.edited} edited,{' '}
+              {digest.deleted} deleted.
+            </p>
+            <ol className="overview-list" aria-label="Changes by board">
+              {digest.boards.map(d => (
+                <li key={d.id}>
+                  <button onClick={() => onOpen(d.id)}>
+                    <strong>{d.title}</strong>
+                    <small>
+                      {d.added} added · {d.edited} edited · {d.deleted} deleted · last {relative(d.last)}
+                    </small>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </>
+        ) : (
+          <p className="overview-summary">No changes in this period.</p>
+        )}
+      </section>
+      <section aria-label="Comments across boards">
+        <div className="overview-heading">
+          <h3>Comments</h3>
+          <select aria-label="Show comments" value={filter} onChange={e => setFilter(e.target.value as typeof filter)}>
+            <option value="open">Open</option>
+            <option value="resolved">Resolved</option>
+            <option value="all">All</option>
+          </select>
+        </div>
+        {comments.length ? (
+          <ol className="overview-list" aria-label="Comment threads">
+            {comments.map(c => (
+              <li key={`${c.boardId}:${c.threadId}`}>
+                <button onClick={() => onOpen(c.boardId, { threadId: c.threadId, itemId: c.itemId })}>
+                  <strong>{c.text || '(no text)'}</strong>
+                  <small>
+                    {c.boardTitle} · {c.messages} {c.messages === 1 ? 'message' : 'messages'}
+                    {c.at ? ` · ${relative(c.at)}` : ''}
+                    {c.resolved ? ' · resolved' : ''}
+                  </small>
+                </button>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="overview-summary">No {filter === 'all' ? '' : `${filter} `}comments on these boards.</p>
+        )}
+      </section>
+    </div>
+  );
+}
 
 export function BoardsDashboard({
   library,
   onOpen,
   onCreate,
   onCreateFromTemplate,
+  onCreateFormat,
   onRename,
   onDuplicate,
+  onDuplicateMany,
   onDelete,
   onRestore,
   onPurge,
   onSpace,
+  onSpaceInfo,
+  onBlueprint,
+  onFlush,
   onImport,
   onBackupAll,
   onClose,
   onMeta,
 }: {
   library: Library;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, target?: OpenTarget) => void;
   onCreate: (template: TemplateName | null, space?: string) => void;
   onCreateFromTemplate?: (template: UserTemplate, space?: string) => void;
+  /** Create a board holding one format (Kanban, Table, Timeline or Doc) and open it in focus. */
+  onCreateFormat?: (kind: SingleFormat, space?: string) => void;
   onRename: (id: string, title: string) => void;
   onDuplicate: (id: string) => void;
+  onDuplicateMany?: (ids: string[]) => void;
   /** Move boards to the trash. */
   onDelete: (ids: string[]) => void;
   onRestore?: (ids: string[]) => void;
   onPurge?: (ids: string[]) => void;
   onSpace?: (change: SpaceChange) => boolean;
+  onSpaceInfo?: (name: string, info: SpaceInfo) => boolean;
+  /** Create a space from a blueprint; returns the new space name. */
+  onBlueprint?: (bp: Blueprint) => string | null;
+  /** Save the open board and return the current library (before saving a space as a blueprint). */
+  onFlush?: () => Library;
   onImport?: (file: File) => void;
   onBackupAll?: () => void;
   onClose: () => void;
@@ -122,22 +232,44 @@ export function BoardsDashboard({
   const [query, setQuery] = useState(''),
     [renaming, setRenaming] = useState<string | null>(null),
     [confirming, setConfirming] = useState<string | null>(null),
-    [sort, setSort] = useState<'recent' | 'name' | 'created'>('recent'),
+    [sort, setSort] = useState<'recent' | 'opened' | 'name' | 'created'>('recent'),
     [space, setSpace] = useState<string>('all'),
     [status, setStatus] = useState<string>('any'),
-    [view, setView] = useState<'boards' | 'trash'>('boards'),
+    [view, setView] = useState<'boards' | 'trash' | 'overview'>('boards'),
+    [layout, setLayoutState] = useState<Layout>(readLayout),
     [picked, setPicked] = useState<string[]>([]),
-    [spaceEdit, setSpaceEdit] = useState<'new' | 'rename' | null>(null),
+    [spaceEdit, setSpaceEdit] = useState<'new' | 'rename' | 'about' | null>(null),
     [spaceName, setSpaceName] = useState(''),
+    [spaceEmoji, setSpaceEmoji] = useState(''),
+    [spaceAbout, setSpaceAbout] = useState(''),
+    [notice, setNotice] = useState(''),
     dialog = useRef<HTMLDivElement>(null),
     search = useRef<HTMLInputElement>(null),
     importInput = useRef<HTMLInputElement>(null),
     contentCache = useRef<ContentCache>(new Map());
   const [userTemplates] = useState<UserTemplate[]>(() => loadTemplates());
-  // Escape closes the dashboard even after focus was lost (for example when a deleted card's button disappears).
+  const [savedBlueprints, setSavedBlueprints] = useState<Blueprint[]>(() => loadBlueprints(parseBoard));
+  const templatePreviews = useMemo(() => new Map(userTemplates.map(t => [t.id, templatePreview(t)])), [userTemplates]);
+  const setLayout = (next: Layout) => {
+    setLayoutState(next);
+    try {
+      localStorage.setItem(LAYOUT_KEY, next);
+    } catch {
+      /* Per-browser convenience only. */
+    }
+  };
+  // Escape closes the dashboard even after focus was lost (for example when a deleted card's button disappears);
+  // Ctrl+E focuses the search from anywhere.
   const closeRef = useLatest(onClose);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        search.current?.focus();
+        search.current?.select();
+        return;
+      }
       if (e.key !== 'Escape' || dialog.current?.contains(document.activeElement)) return;
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -160,11 +292,12 @@ export function BoardsDashboard({
   const shownSpace = ['all', 'starred', 'none'].includes(space) || spaces.includes(space) ? space : 'all';
   const contentHits = useMemo(() => {
     try {
-      return searchBoardContent(localStorage, library, query, contentCache.current);
+      return searchBoardMatches(localStorage, library, query, contentCache.current);
     } catch {
-      return new Map<string, string>();
+      return new Map<string, { excerpt: string } & OpenTarget>();
     }
   }, [library, query]);
+  const scoped = useMemo(() => live.filter(b => inSpace(b, shownSpace)), [live, shownSpace]);
   const boards = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = (view === 'trash' ? trash : live).filter(
@@ -174,11 +307,16 @@ export function BoardsDashboard({
           !!b.description?.toLowerCase().includes(q) ||
           contentHits.has(b.id)) &&
         (view === 'trash' ||
-          ((shownSpace === 'all' ||
-            (shownSpace === 'starred' ? b.starred : shownSpace === 'none' ? !b.space : b.space === shownSpace)) &&
-            (status === 'any' || (status === 'none' ? !b.status : b.status === status)))),
+          (inSpace(b, shownSpace) && (status === 'any' || (status === 'none' ? !b.status : b.status === status)))),
     );
     if (view === 'trash') return list;
+    let opened: Map<string, number> | null = null;
+    if (sort === 'opened')
+      try {
+        opened = new Map(byLastOpened(localStorage, list).map((b, k) => [b.id, k]));
+      } catch {
+        opened = null;
+      }
     // Starred boards come first (item 107), then the chosen order.
     return [...list].sort(
       (a, b) =>
@@ -187,27 +325,51 @@ export function BoardsDashboard({
           ? a.title.localeCompare(b.title)
           : sort === 'created'
             ? Date.parse(b.createdAt) - Date.parse(a.createdAt)
-            : Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
+            : sort === 'opened' && opened
+              ? opened.get(a.id)! - opened.get(b.id)!
+              : Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
     );
   }, [live, trash, view, query, sort, shownSpace, status, contentHits]);
   const visiblePicked = picked.filter(id => boards.some(b => b.id === id));
   const togglePick = (id: string) => setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id]));
-  const switchView = (next: 'boards' | 'trash') => {
+  const switchView = (next: 'boards' | 'trash' | 'overview') => {
     setView(next);
     setPicked([]);
     setConfirming(null);
   };
   const newIn = ['all', 'starred', 'none'].includes(shownSpace) ? undefined : shownSpace;
+  const info = newIn ? spaceInfoOf(library, newIn) : {};
+  const blueprints = [...savedBlueprints, ...builtInBlueprints];
   const submitSpace = (e: React.FormEvent) => {
     e.preventDefault();
+    if (spaceEdit === 'about' && newIn) {
+      if (onSpaceInfo?.(newIn, { emoji: spaceEmoji, description: spaceAbout })) setSpaceEdit(null);
+      return;
+    }
     const name = spaceName.trim();
     if (!name || !onSpace) return;
     const ok = spaceEdit === 'rename' && newIn ? onSpace({ rename: newIn, to: name }) : onSpace({ create: name });
     if (ok) {
+      if (spaceEdit === 'new' && (spaceEmoji.trim() || spaceAbout.trim()))
+        onSpaceInfo?.(cleanSpace(name), { emoji: spaceEmoji, description: spaceAbout });
       setSpace(cleanSpace(name));
       setSpaceEdit(null);
       setSpaceName('');
     }
+  };
+  const saveBlueprint = () => {
+    if (!newIn) return;
+    const lib = onFlush?.() ?? library;
+    const made = blueprintFromSpace(localStorage, lib, newIn, parseBoard, crypto.randomUUID(), new Date(), info);
+    if ('error' in made) return setNotice(made.error);
+    const next = addBlueprint(savedBlueprints, made);
+    if (!storeBlueprints(next)) return setNotice('The blueprint could not be stored (browser storage is full).');
+    setSavedBlueprints(next);
+    setNotice(`Saved “${made.name}” as a blueprint with ${made.boards.length} boards.`);
+  };
+  const spaceLabel = (s: string) => {
+    const e = spaceInfoOf(library, s).emoji;
+    return e ? `${e} ${s}` : s;
   };
   return (
     <div
@@ -226,15 +388,25 @@ export function BoardsDashboard({
         <header>
           <div>
             <h2>
-              <LayoutGrid size={20} /> {view === 'trash' ? 'Trash' : 'Boards'}
+              <LayoutGrid size={20} /> {view === 'trash' ? 'Trash' : view === 'overview' ? 'Overview' : 'Boards'}
             </h2>
             <p>
               {view === 'trash'
                 ? `Boards in the trash are deleted permanently after ${TRASH_DAYS} days.`
-                : `${live.length} ${live.length === 1 ? 'board' : 'boards'} stored in this browser`}
+                : view === 'overview'
+                  ? `Recent changes and comments on ${scoped.length} ${scoped.length === 1 ? 'board' : 'boards'}${newIn ? ` in ${newIn}` : ''}.`
+                  : `${live.length} ${live.length === 1 ? 'board' : 'boards'} stored in this browser`}
             </p>
           </div>
           <div className="dashboard-header-actions">
+            <button
+              className={`text-button ${view === 'overview' ? 'active' : ''}`}
+              aria-pressed={view === 'overview'}
+              onClick={() => switchView(view === 'overview' ? 'boards' : 'overview')}
+              title="Recent activity and comments across boards"
+            >
+              <ActivityIcon size={15} /> Overview
+            </button>
             {onImport && (
               <button
                 className="text-button"
@@ -284,19 +456,34 @@ export function BoardsDashboard({
               <span>{newIn ? `Blank board in ${newIn}` : 'Blank board'}</span>
             </button>
             {templateNames.map(t => (
-              <button key={t} className="new-board template" onClick={() => onCreate(t, newIn)}>
-                <LayoutGrid size={20} />
+              <button key={t} className="new-board template with-preview" onClick={() => onCreate(t, newIn)}>
+                <span className="new-board-thumb">
+                  <StarterThumb name={t} />
+                </span>
                 <span>{t}</span>
+              </button>
+            ))}
+            {(onCreateFormat ? singleFormats : []).map(f => (
+              <button
+                key={f.kind}
+                className="new-board template format-board"
+                title="A board with one large format object, opened in focus"
+                onClick={() => onCreateFormat?.(f.kind, newIn)}
+              >
+                <LayoutGrid size={20} />
+                <span>{f.label}</span>
               </button>
             ))}
             {(onCreateFromTemplate ? userTemplates : []).map(t => (
               <button
                 key={t.id}
-                className="new-board template user-template"
-                title={`My template · ${t.count} ${t.count === 1 ? 'object' : 'objects'}`}
+                className="new-board template user-template with-preview"
+                title={`My template · ${t.count} ${t.count === 1 ? 'object' : 'objects'}${t.description ? ` · ${t.description}` : ''}`}
                 onClick={() => onCreateFromTemplate?.(t, newIn)}
               >
-                <BookmarkPlus size={20} />
+                <span className="new-board-thumb">
+                  <PreviewThumb preview={templatePreviews.get(t.id) ?? []} empty="" />
+                </span>
                 <span>{t.name}</span>
               </button>
             ))}
@@ -308,12 +495,13 @@ export function BoardsDashboard({
             <input
               ref={search}
               aria-label="Find a board"
-              placeholder={view === 'trash' ? 'Find in trash' : 'Find a board or its content'}
+              aria-keyshortcuts="Control+E"
+              placeholder={view === 'trash' ? 'Find in trash' : 'Find a board or its content (Ctrl E)'}
               value={query}
               onChange={e => setQuery(e.target.value)}
             />
           </label>
-          {view === 'boards' && (
+          {view !== 'trash' && (
             <>
               <select aria-label="Show boards" value={shownSpace} onChange={e => setSpace(e.target.value)}>
                 <option value="all">All boards</option>
@@ -321,24 +509,37 @@ export function BoardsDashboard({
                 <option value="none">No space</option>
                 {spaces.map(s => (
                   <option key={s} value={s}>
-                    {s}
+                    {spaceLabel(s)}
                   </option>
                 ))}
               </select>
-              <select aria-label="Filter by status" value={status} onChange={e => setStatus(e.target.value)}>
-                <option value="any">Any status</option>
-                <option value="none">No status</option>
-                {boardStatuses.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-              <select aria-label="Sort boards" value={sort} onChange={e => setSort(e.target.value as typeof sort)}>
-                <option value="recent">Last edited</option>
-                <option value="created">Newest</option>
-                <option value="name">Name</option>
-              </select>
+              {view === 'boards' && (
+                <>
+                  <select aria-label="Filter by status" value={status} onChange={e => setStatus(e.target.value)}>
+                    <option value="any">Any status</option>
+                    <option value="none">No status</option>
+                    {boardStatuses.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select aria-label="Sort boards" value={sort} onChange={e => setSort(e.target.value as typeof sort)}>
+                    <option value="recent">Last edited</option>
+                    <option value="opened">Last opened</option>
+                    <option value="created">Newest</option>
+                    <option value="name">Name</option>
+                  </select>
+                  <button
+                    className="icon-button"
+                    aria-label={layout === 'grid' ? 'Show as list' : 'Show as grid'}
+                    title={layout === 'grid' ? 'Show as list' : 'Show as grid'}
+                    onClick={() => setLayout(layout === 'grid' ? 'list' : 'grid')}
+                  >
+                    {layout === 'grid' ? <List size={17} /> : <LayoutGrid size={17} />}
+                  </button>
+                </>
+              )}
               {onSpace && (
                 <button
                   className="icon-button"
@@ -347,6 +548,8 @@ export function BoardsDashboard({
                   onClick={() => {
                     setSpaceEdit('new');
                     setSpaceName('');
+                    setSpaceEmoji('');
+                    setSpaceAbout('');
                   }}
                 >
                   <FolderPlus size={17} />
@@ -355,24 +558,82 @@ export function BoardsDashboard({
             </>
           )}
         </div>
-        {view === 'boards' && onSpace && (spaceEdit || newIn) && (
+        {view !== 'trash' && onSpace && (spaceEdit || newIn) && (
           <div className="dashboard-space" aria-label="Space">
             {spaceEdit ? (
-              <form onSubmit={submitSpace}>
-                <input
-                  autoFocus
-                  aria-label={spaceEdit === 'new' ? 'New space name' : 'Space name'}
-                  placeholder="Space name"
-                  maxLength={60}
-                  value={spaceName}
-                  onChange={e => setSpaceName(e.target.value)}
-                />
-                <button type="submit" className="primary-button" disabled={!spaceName.trim()}>
-                  {spaceEdit === 'new' ? 'Create space' : 'Rename space'}
+              <form onSubmit={submitSpace} className="space-form">
+                {spaceEdit !== 'about' && (
+                  <input
+                    autoFocus
+                    aria-label={spaceEdit === 'new' ? 'New space name' : 'Space name'}
+                    placeholder="Space name"
+                    maxLength={60}
+                    value={spaceName}
+                    onChange={e => setSpaceName(e.target.value)}
+                  />
+                )}
+                {spaceEdit !== 'rename' && (
+                  <>
+                    <input
+                      className="space-emoji-input"
+                      aria-label="Space emoji"
+                      placeholder="Emoji"
+                      maxLength={16}
+                      value={spaceEmoji}
+                      onChange={e => setSpaceEmoji(e.target.value)}
+                    />
+                    <textarea
+                      aria-label="Space description"
+                      placeholder="What is this space for?"
+                      rows={2}
+                      maxLength={SPACE_DESCRIPTION_MAX}
+                      value={spaceAbout}
+                      onChange={e => setSpaceAbout(e.target.value)}
+                    />
+                  </>
+                )}
+                <button type="submit" className="primary-button" disabled={spaceEdit !== 'about' && !spaceName.trim()}>
+                  {spaceEdit === 'new' ? 'Create space' : spaceEdit === 'rename' ? 'Rename space' : 'Save details'}
                 </button>
                 <button type="button" onClick={() => setSpaceEdit(null)}>
                   Cancel
                 </button>
+                {spaceEdit === 'new' && onBlueprint && (
+                  <div className="blueprint-list" role="group" aria-label="Start from a blueprint">
+                    <span>Or start from a blueprint:</span>
+                    {blueprints.map(bp => (
+                      <span key={bp.id} className="blueprint-entry">
+                        <button
+                          type="button"
+                          title={`${bp.description ?? ''}${bp.description ? ' · ' : ''}${bp.boards.map(b => b.title).join(', ')}`}
+                          onClick={() => {
+                            const made = onBlueprint(bp);
+                            if (made) {
+                              setSpace(made);
+                              setSpaceEdit(null);
+                            }
+                          }}
+                        >
+                          {bp.emoji ? `${bp.emoji} ` : ''}
+                          {bp.name} ({bp.boards.length} boards)
+                        </button>
+                        {!bp.builtIn && (
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={`Delete blueprint ${bp.name}`}
+                            onClick={() => {
+                              const next = removeBlueprint(savedBlueprints, bp.id);
+                              if (storeBlueprints(next)) setSavedBlueprints(next);
+                            }}
+                          >
+                            <X size={13} />
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </form>
             ) : confirming === `space:${newIn}` ? (
               <div className="board-confirm" role="alert">
@@ -390,7 +651,13 @@ export function BoardsDashboard({
               </div>
             ) : (
               <>
-                <strong>{newIn}</strong>
+                <span className="space-title">
+                  <strong>
+                    {info.emoji ? <span aria-hidden="true">{info.emoji} </span> : null}
+                    {newIn}
+                  </strong>
+                  {info.description && <small className="space-description">{info.description}</small>}
+                </span>
                 <button
                   onClick={() => {
                     setSpaceEdit('rename');
@@ -399,12 +666,33 @@ export function BoardsDashboard({
                 >
                   Rename space
                 </button>
+                {onSpaceInfo && (
+                  <button
+                    onClick={() => {
+                      setSpaceEdit('about');
+                      setSpaceEmoji(info.emoji ?? '');
+                      setSpaceAbout(info.description ?? '');
+                    }}
+                  >
+                    Edit details
+                  </button>
+                )}
+                <button onClick={saveBlueprint}>Save as blueprint</button>
                 <button onClick={() => setConfirming(`space:${newIn}`)}>Delete space</button>
               </>
             )}
           </div>
         )}
-        {visiblePicked.length > 0 && (
+        {notice && (
+          <p className="dashboard-notice" role="alert">
+            {notice}{' '}
+            <button className="icon-button" aria-label="Dismiss" onClick={() => setNotice('')}>
+              <X size={13} />
+            </button>
+          </p>
+        )}
+        {view === 'overview' && <Overview boards={scoped} onOpen={onOpen} />}
+        {view !== 'overview' && visiblePicked.length > 0 && (
           <div className="dashboard-bulk" role="toolbar" aria-label="Selected boards">
             <span>{visiblePicked.length} selected</span>
             {view === 'boards' ? (
@@ -424,10 +712,20 @@ export function BoardsDashboard({
                     <option value={'\u0000none'}>No space</option>
                     {spaces.map(s => (
                       <option key={s} value={s}>
-                        {s}
+                        {spaceLabel(s)}
                       </option>
                     ))}
                   </select>
+                )}
+                {onDuplicateMany && (
+                  <button
+                    onClick={() => {
+                      onDuplicateMany(visiblePicked);
+                      setPicked([]);
+                    }}
+                  >
+                    <Copy size={15} /> Duplicate
+                  </button>
                 )}
                 <button
                   className="danger"
@@ -497,156 +795,172 @@ export function BoardsDashboard({
             )}
           </div>
         )}
-        <ul className="board-grid" aria-label={view === 'trash' ? 'Boards in the trash' : 'Your boards'}>
-          {boards.map(b => {
-            const hit = query.trim() && contentHits.get(b.id);
-            const isPicked = picked.includes(b.id);
-            return (
-              <li
-                key={b.id}
-                className={`board-card ${b.id === library.activeId ? 'current' : ''} ${isPicked ? 'picked' : ''}`}
-                title={b.description || undefined}
-              >
-                <input
-                  type="checkbox"
-                  className="board-pick"
-                  aria-label={`Select ${b.title}`}
-                  checked={isPicked}
-                  onChange={() => togglePick(b.id)}
-                />
-                {view === 'trash' ? (
-                  <div className="board-open trashed" aria-hidden="true">
-                    <Thumbnail meta={b} />
-                  </div>
-                ) : (
-                  <button
-                    className="board-open"
-                    aria-label={`Open ${b.title}${b.id === library.activeId ? ' (open now)' : ''}`}
-                    onClick={() => onOpen(b.id)}
-                  >
-                    <Thumbnail meta={b} />
-                  </button>
-                )}
-                <div className="board-card-body">
-                  {renaming === b.id ? (
-                    <input
-                      className="board-rename"
-                      autoFocus
-                      aria-label="Board name"
-                      defaultValue={b.title}
-                      maxLength={200}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') e.currentTarget.blur();
-                      }}
-                      onBlur={e => {
-                        const v = e.target.value.trim();
-                        if (v && v !== b.title) onRename(b.id, v);
-                        setRenaming(null);
-                      }}
-                    />
+        {view !== 'overview' && (
+          <ul
+            className={`board-grid ${layout === 'list' && view === 'boards' ? 'board-list' : ''}`}
+            aria-label={view === 'trash' ? 'Boards in the trash' : 'Your boards'}
+          >
+            {boards.map(b => {
+              const hit = query.trim() ? contentHits.get(b.id) : undefined;
+              const target: OpenTarget | undefined =
+                hit && (hit.itemId || hit.threadId) ? { itemId: hit.itemId, threadId: hit.threadId } : undefined;
+              const isPicked = picked.includes(b.id);
+              return (
+                <li
+                  key={b.id}
+                  className={`board-card ${b.id === library.activeId ? 'current' : ''} ${isPicked ? 'picked' : ''}`}
+                  title={b.description || undefined}
+                >
+                  <input
+                    type="checkbox"
+                    className="board-pick"
+                    aria-label={`Select ${b.title}`}
+                    checked={isPicked}
+                    onChange={() => togglePick(b.id)}
+                  />
+                  {view === 'trash' ? (
+                    <div className="board-open trashed" aria-hidden="true">
+                      <PreviewThumb preview={b.preview} />
+                    </div>
                   ) : (
-                    <span className="board-card-title">
-                      <strong title={b.title}>{b.title}</strong>
-                      <StatusChip status={b.status} />
-                    </span>
+                    <button
+                      className="board-open"
+                      aria-label={`Open ${b.title}${b.id === library.activeId ? ' (open now)' : ''}`}
+                      onClick={() => onOpen(b.id, target)}
+                    >
+                      <PreviewThumb preview={b.preview} />
+                    </button>
                   )}
-                  {b.description && <p className="board-description">{b.description}</p>}
-                  {hit && (
-                    <p className="board-match" aria-label={`Content match in ${b.title}`}>
-                      Matches “{hit}”
-                    </p>
-                  )}
-                  <small>
-                    {view === 'trash' && b.deletedAt
-                      ? `Deleted ${relative(b.deletedAt)} · ${daysLeftInTrash(b.deletedAt)} days left`
-                      : `${b.items} ${b.items === 1 ? 'object' : 'objects'} · ${relative(b.updatedAt)}`}
-                    {b.id === library.activeId ? ' · open now' : ''}
-                    {b.space ? ` · ${b.space}` : ''}
-                  </small>
-                  {confirming === b.id ? (
-                    <div className="board-confirm" role="alert">
-                      <span>Delete permanently?</span>
-                      <button
-                        className="danger-button"
-                        onClick={() => {
-                          setConfirming(null);
-                          onPurge?.([b.id]);
+                  <div className="board-card-body">
+                    {renaming === b.id ? (
+                      <input
+                        className="board-rename"
+                        autoFocus
+                        aria-label="Board name"
+                        defaultValue={b.title}
+                        maxLength={200}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') e.currentTarget.blur();
                         }}
-                      >
-                        Delete forever
-                      </button>
-                      <button onClick={() => setConfirming(null)}>Keep</button>
-                    </div>
-                  ) : view === 'trash' ? (
-                    <div className="board-actions">
+                        onBlur={e => {
+                          const v = e.target.value.trim();
+                          if (v && v !== b.title) onRename(b.id, v);
+                          setRenaming(null);
+                        }}
+                      />
+                    ) : (
+                      <span className="board-card-title">
+                        <strong title={b.title}>{b.title}</strong>
+                        <StatusChip status={b.status} />
+                      </span>
+                    )}
+                    {b.description && <p className="board-description">{b.description}</p>}
+                    {hit && (
+                      <p className="board-match" aria-label={`Content match in ${b.title}`}>
+                        {hit.threadId ? 'Comment matches' : 'Matches'} “{hit.excerpt}”
+                      </p>
+                    )}
+                    {hit && target && view === 'boards' && (
                       <button
-                        className="text-button"
-                        aria-label={`Restore ${b.title}`}
-                        onClick={() => onRestore?.([b.id])}
+                        className="text-button board-match-open"
+                        aria-label={`Show the match in ${b.title}`}
+                        onClick={() => onOpen(b.id, target)}
                       >
-                        <RotateCcw size={14} /> Restore
+                        <Search size={13} /> Show match
                       </button>
-                      <button
-                        className="text-button danger"
-                        aria-label={`Delete ${b.title} forever`}
-                        onClick={() => setConfirming(b.id)}
-                      >
-                        Delete forever
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="board-actions">
-                      {onMeta && (
+                    )}
+                    <small>
+                      {view === 'trash' && b.deletedAt
+                        ? `Deleted ${relative(b.deletedAt)} · ${daysLeftInTrash(b.deletedAt)} days left`
+                        : `${b.items} ${b.items === 1 ? 'object' : 'objects'} · ${relative(b.updatedAt)}`}
+                      {b.id === library.activeId ? ' · open now' : ''}
+                      {b.space ? ` · ${spaceLabel(b.space)}` : ''}
+                    </small>
+                    {confirming === b.id ? (
+                      <div className="board-confirm" role="alert">
+                        <span>Delete permanently?</span>
                         <button
-                          className={`icon-button ${b.starred ? 'active' : ''}`}
-                          aria-label={`${b.starred ? 'Unstar' : 'Star'} ${b.title}`}
-                          aria-pressed={!!b.starred}
-                          title={b.starred ? 'Unstar' : 'Star'}
-                          onClick={() => onMeta(b.id, { starred: !b.starred })}
+                          className="danger-button"
+                          onClick={() => {
+                            setConfirming(null);
+                            onPurge?.([b.id]);
+                          }}
                         >
-                          <Star size={15} fill={b.starred ? 'currentColor' : 'none'} />
+                          Delete forever
                         </button>
-                      )}
-                      <button
-                        className="icon-button"
-                        aria-label={`Rename ${b.title}`}
-                        title="Rename"
-                        onClick={() => setRenaming(b.id)}
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        className="icon-button"
-                        aria-label={`Duplicate ${b.title}`}
-                        title="Duplicate"
-                        onClick={() => onDuplicate(b.id)}
-                      >
-                        <Copy size={15} />
-                      </button>
-                      <button
-                        className="icon-button danger"
-                        aria-label={`Delete ${b.title}`}
-                        title="Move to trash"
-                        onClick={() => onDelete([b.id])}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  )}
-                </div>
+                        <button onClick={() => setConfirming(null)}>Keep</button>
+                      </div>
+                    ) : view === 'trash' ? (
+                      <div className="board-actions">
+                        <button
+                          className="text-button"
+                          aria-label={`Restore ${b.title}`}
+                          onClick={() => onRestore?.([b.id])}
+                        >
+                          <RotateCcw size={14} /> Restore
+                        </button>
+                        <button
+                          className="text-button danger"
+                          aria-label={`Delete ${b.title} forever`}
+                          onClick={() => setConfirming(b.id)}
+                        >
+                          Delete forever
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="board-actions">
+                        {onMeta && (
+                          <button
+                            className={`icon-button ${b.starred ? 'active' : ''}`}
+                            aria-label={`${b.starred ? 'Unstar' : 'Star'} ${b.title}`}
+                            aria-pressed={!!b.starred}
+                            title={b.starred ? 'Unstar' : 'Star'}
+                            onClick={() => onMeta(b.id, { starred: !b.starred })}
+                          >
+                            <Star size={15} fill={b.starred ? 'currentColor' : 'none'} />
+                          </button>
+                        )}
+                        <button
+                          className="icon-button"
+                          aria-label={`Rename ${b.title}`}
+                          title="Rename"
+                          onClick={() => setRenaming(b.id)}
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          className="icon-button"
+                          aria-label={`Duplicate ${b.title}`}
+                          title="Duplicate"
+                          onClick={() => onDuplicate(b.id)}
+                        >
+                          <Copy size={15} />
+                        </button>
+                        <button
+                          className="icon-button danger"
+                          aria-label={`Delete ${b.title}`}
+                          title="Move to trash"
+                          onClick={() => onDelete([b.id])}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+            {!boards.length && (
+              <li className="board-empty">
+                {view === 'trash' && !trash.length
+                  ? 'The trash is empty.'
+                  : query.trim()
+                    ? `No boards match “${query}”.`
+                    : 'No boards match these filters.'}
               </li>
-            );
-          })}
-          {!boards.length && (
-            <li className="board-empty">
-              {view === 'trash' && !trash.length
-                ? 'The trash is empty.'
-                : query.trim()
-                  ? `No boards match “${query}”.`
-                  : 'No boards match these filters.'}
-            </li>
-          )}
-        </ul>
+            )}
+          </ul>
+        )}
         <footer>
           <span>Boards and their images stay in this browser. Back up all boards to keep a copy or move them.</span>
         </footer>

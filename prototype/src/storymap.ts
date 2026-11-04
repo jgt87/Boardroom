@@ -4,7 +4,80 @@
 // remaining activity or release is refused, so cards are never silently deleted.
 export type StoryActivity = { id: string; title: string };
 export type StoryRelease = { id: string; title: string };
-export type StoryCard = { id: string; title: string; activity: string; release: string };
+/** `color`, `tags`, `assignee` and `link` are optional card details (track R5). */
+export type StoryCard = {
+  id: string;
+  title: string;
+  activity: string;
+  release: string;
+  color?: string;
+  tags?: string[];
+  assignee?: string;
+  link?: string;
+};
+export type StoryCardDetails = Pick<StoryCard, 'color' | 'tags' | 'assignee' | 'link'>;
+const validCardLink = (v: unknown) => {
+  if (typeof v !== 'string' || !v || v.length > 2048) return false;
+  try {
+    const url = new URL(v);
+    return ['http:', 'https:'].includes(url.protocol) && url.href === v && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+};
+const cardDetailsInvalid = (c: StoryCard) =>
+  (c.color !== undefined && (typeof c.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(c.color))) ||
+  (c.assignee !== undefined && (typeof c.assignee !== 'string' || !c.assignee || c.assignee.length > 120)) ||
+  (c.link !== undefined && !validCardLink(c.link)) ||
+  (c.tags !== undefined &&
+    (!Array.isArray(c.tags) ||
+      !c.tags.length ||
+      c.tags.length > 10 ||
+      new Set(c.tags).size !== c.tags.length ||
+      c.tags.some(t => typeof t !== 'string' || !t.trim() || t !== t.trim() || t.length > 32)));
+/**
+ * Set or clear card details; empty values are removed so older maps keep their shape. Tags come from a
+ * comma-separated list (up to 10 of 32 characters); links must be http(s).
+ */
+export function updateCard(
+  m: StoryMap,
+  cardId: string,
+  patch: { color?: string; tags?: string | string[]; assignee?: string; link?: string },
+): StoryMap {
+  const card = m.cards.find(c => c.id === cardId);
+  if (!card) throw new Error('That story no longer exists.');
+  const next: StoryCard = { ...card };
+  if ('color' in patch) next.color = patch.color || undefined;
+  if ('assignee' in patch) next.assignee = patch.assignee?.trim().slice(0, 120) || undefined;
+  if ('tags' in patch) {
+    const raw = Array.isArray(patch.tags) ? patch.tags : (patch.tags ?? '').split(',');
+    const tags = [...new Set(raw.map(t => t.trim().slice(0, 32)).filter(Boolean))].slice(0, 10);
+    next.tags = tags.length ? tags : undefined;
+  }
+  if ('link' in patch) {
+    const text = patch.link?.trim() ?? '';
+    if (!text) next.link = undefined;
+    else {
+      let url: URL;
+      try {
+        url = new URL(/^[a-z][a-z0-9+.-]*:/i.test(text) ? text : 'https://' + text);
+      } catch {
+        throw new Error('Enter a valid website link.');
+      }
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
+        throw new Error('Use an http or https website link.');
+      next.link = url.href.slice(0, 2048);
+    }
+  }
+  for (const k of ['color', 'tags', 'assignee', 'link'] as const) if (next[k] === undefined) delete next[k];
+  if (cardDetailsInvalid(next)) throw new Error('Invalid story details.');
+  return { ...m, cards: m.cards.map(c => (c.id === cardId ? next : c)) };
+}
+/** Short chips shown under a card title: assignee first, then tags. */
+export const storyCardMeta = (c: StoryCard): string[] => [
+  ...(c.assignee ? ['@' + c.assignee] : []),
+  ...(c.tags ?? []).map(t => '#' + t),
+];
 export type StoryMap = { activities: StoryActivity[]; releases: StoryRelease[]; cards: StoryCard[] };
 export const STORY_LIMITS = { activities: 30, releases: 20, cards: 500 };
 
@@ -31,7 +104,8 @@ export function validateStoryMap(map: unknown): asserts map is StoryMap {
         typeof c.title !== 'string' ||
         c.title.length > 1000 ||
         !acts.has(c.activity) ||
-        !rels.has(c.release),
+        !rels.has(c.release) ||
+        cardDetailsInvalid(c),
     ) ||
     new Set(m.cards.map(c => c.id)).size !== m.cards.length
   )

@@ -169,7 +169,8 @@ export function removeFrameStyle(board: Board, frameIds: string[]): Board {
 }
 
 const hex = (v: unknown) => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
-const frameKeys = ['contentHidden', 'notes', 'skipInPresentation', 'style'];
+// `hideTitle` hides the title above the frame on the canvas (track R5).
+const frameKeys = ['contentHidden', 'notes', 'skipInPresentation', 'style', 'hideTitle'];
 export const FRAME_NOTES_MAX = 10000;
 /** Validate `frame.data`: hidden contents, presenter notes, hidden-from-presentation flag and style. */
 export function validateFrameData(d: unknown): void {
@@ -181,6 +182,7 @@ export function validateFrameData(d: unknown): void {
   if (Object.keys(x).some(k => !frameKeys.includes(k))) fail();
   if (x.contentHidden !== undefined && typeof x.contentHidden !== 'boolean') fail();
   if (x.skipInPresentation !== undefined && typeof x.skipInPresentation !== 'boolean') fail();
+  if (x.hideTitle !== undefined && typeof x.hideTitle !== 'boolean') fail();
   if (x.notes !== undefined && (typeof x.notes !== 'string' || x.notes.length > FRAME_NOTES_MAX)) fail();
   if (x.style !== undefined) {
     const s = x.style as FrameStyle;

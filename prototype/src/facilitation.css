@@ -34,10 +34,27 @@
 }
 .fx-choices button,
 .fx-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 8px 6px 0 0;
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 12px;
+}
+.fx-copies {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+.fx-copies label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+.fx-copies input {
+  width: 72px;
 }
 .fx-choices button:hover,
 .fx-remove:hover:not(:disabled) {
@@ -203,6 +220,71 @@
 .fx-wrap .icon-button.active {
   color: var(--blue);
 }
+.present-overlay.zoomed {
+  cursor: zoom-out;
+}
+.present-zoom-hint {
+  position: absolute;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(20, 21, 26, 0.85);
+  color: #ffffff;
+  font-size: 12px;
+  pointer-events: none;
+}
+.present-vote {
+  position: absolute;
+  transform: translate(-50%, -120%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border: 1px solid var(--blue);
+  border-radius: 14px;
+  background: #ffffff;
+  font-size: 13px;
+}
+.present-vote button {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: #edf0ff;
+  color: #2a3fb3;
+  font-weight: 700;
+  line-height: 1;
+}
+.present-vote button:last-child {
+  background: var(--blue);
+  color: #ffffff;
+}
+.present-react-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.present-reactions {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+}
+.present-reactions button {
+  border: 0;
+  background: transparent;
+  font-size: 20px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.present-reactions button:hover {
+  background: #f2f3f7;
+}
 
 /* Timer */
 .board-timer .clock-edit {
@@ -273,8 +355,46 @@
 /* Comments */
 .comment-thread-tools {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 2px;
   margin-bottom: 4px;
+}
+.comment-colors {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  justify-content: flex-end;
+}
+.comment-colors button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #c9c9d1;
+}
+.comment-colors button[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px var(--blue);
+}
+.unread-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--blue);
+  vertical-align: 1px;
+}
+.unread-summary,
+.comment-draft-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+.comment-draft-note {
+  display: block;
+  margin: 0 0 4px;
 }
 .comment-thread .edited {
   font-style: italic;

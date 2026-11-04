@@ -24,7 +24,7 @@ test.describe('cards (item 115)', () => {
     await page.getByRole('dialog', { name: 'Assign card' }).getByRole('button', { name: 'Grace Hopper' }).click();
     await bar.getByRole('button', { name: 'Tags' }).click();
     const tags = page.getByRole('dialog', { name: 'Card tags' });
-    await tags.getByRole('radio', { name: 'Tag colour #ffe3e6' }).click();
+    await tags.getByRole('radio', { name: 'Tag colour Light red' }).click();
     await tags.getByLabel('New tag').fill('Urgent');
     await tags.getByRole('button', { name: 'Create' }).click();
     await expect(c1.locator('.w-tag', { hasText: 'Urgent' })).toHaveCSS('background-color', 'rgb(255, 227, 230)');

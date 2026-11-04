@@ -33,15 +33,25 @@ export const domainOf = (url: string) => {
   }
 };
 
-export type EmbedProvider = 'youtube' | 'vimeo' | 'maps' | 'figma' | 'codepen';
+export type EmbedProvider =
+  'youtube' | 'vimeo' | 'maps' | 'figma' | 'codepen' | 'gdocs' | 'gsheets' | 'gslides' | 'loom';
 export const providerLabels: Record<EmbedProvider, string> = {
   youtube: 'YouTube video',
   vimeo: 'Vimeo video',
   maps: 'Map',
   figma: 'Figma file',
   codepen: 'CodePen',
+  gdocs: 'Google Docs document',
+  gsheets: 'Google Sheets spreadsheet',
+  gslides: 'Google Slides presentation',
+  loom: 'Loom video',
 };
-export const isVideoProvider = (p: string) => p === 'youtube' || p === 'vimeo';
+const googleKinds: Record<string, { provider: EmbedProvider; published: string; shared: string }> = {
+  document: { provider: 'gdocs', published: 'pub?embedded=true', shared: 'preview' },
+  spreadsheets: { provider: 'gsheets', published: 'pubhtml?widget=true&headers=false', shared: 'preview' },
+  presentation: { provider: 'gslides', published: 'embed?start=false&loop=false', shared: 'preview' },
+};
+export const isVideoProvider = (p: string) => p === 'youtube' || p === 'vimeo' || p === 'loom';
 /**
  * Resolve an allow-listed link to its embeddable address. Anything else is rejected, so arbitrary
  * pages can never be framed. Nothing is fetched here.
@@ -86,8 +96,26 @@ export function embedSource(value: string): { provider: EmbedProvider; url: stri
       url: url.href,
       src: `https://codepen.io/${parts[0]}/embed/${parts[2]}?default-tab=result`,
     };
+  // Google documents, spreadsheets and presentations (gap b6-7 #3): published links (/d/e/<id>/pub...) and
+  // shared links (/d/<id>/edit) that anyone with the link can view.
+  if (host === 'docs.google.com' && googleKinds[parts[0]] && parts[1] === 'd') {
+    const kind = googleKinds[parts[0]],
+      published = parts[2] === 'e',
+      id = published ? parts[3] : parts[2];
+    if (!id || !/^[\w-]{20,200}$/.test(id)) throw new Error('That Google link does not contain a document id.');
+    return {
+      provider: kind.provider,
+      url: url.href,
+      src: `https://docs.google.com/${parts[0]}/d/${published ? `e/${id}/${kind.published}` : `${id}/${kind.shared}`}`,
+    };
+  }
+  if (host === 'loom.com' && ['share', 'embed'].includes(parts[0])) {
+    if (!parts[1] || !/^[0-9a-f]{20,64}$/i.test(parts[1]))
+      throw new Error('That Loom link does not contain a video id.');
+    return { provider: 'loom', url: url.href, src: `https://www.loom.com/embed/${parts[1]}` };
+  }
   throw new Error(
-    'This site cannot be embedded. Supported: YouTube, Vimeo, map embed links, Figma and CodePen. Use a bookmark for other links.',
+    'This site cannot be embedded. Supported: YouTube, Vimeo, Loom, map embed links, Figma, CodePen and Google documents, spreadsheets and presentations. Use a bookmark for other links.',
   );
 }
 

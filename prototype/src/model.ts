@@ -37,7 +37,8 @@ export type WidgetKind =
   | 'usercard'
   | 'shortcut'
   | 'stickypad'
-  | 'chart';
+  | 'chart'
+  | 'entity';
 export const widgetKinds: WidgetKind[] = [
   'drawio',
   'card',
@@ -73,6 +74,7 @@ export const widgetKinds: WidgetKind[] = [
   'shortcut',
   'stickypad',
   'chart',
+  'entity',
 ];
 export type Kind =
   | 'note'
@@ -121,8 +123,13 @@ export type RecordRow = {
   values?: import('./record-schema.ts').RecordValues;
   /** Parent record id in the same dataset (validated in records.ts recordsError). */
   parent?: string;
+  /** Record colour (#rrggbb from `recordColors`), shown on Kanban cards and Timeline bars. */
+  color?: string;
 };
-/** `collapsed` hides the topic's descendants; `color` overrides the branch colour (gap E7). */
+/** Topic outline styles (track R5); a missing shape is the default rounded box. */
+export const mindNodeShapes = ['rounded', 'rect', 'pill', 'underline'] as const;
+export type MindNodeShape = (typeof mindNodeShapes)[number];
+/** `collapsed` hides descendants; `color` overrides the branch colour; `shape` and `link` (track R5). */
 export type MindNode = {
   id: string;
   parent: string | null;
@@ -130,6 +137,8 @@ export type MindNode = {
   position?: Point;
   collapsed?: boolean;
   color?: string;
+  shape?: MindNodeShape;
+  link?: string;
 };
 /** Fonts offered for text (gap D14). Values are font ids; `fontStack` maps them to CSS font stacks. */
 export const fontFamilies = [
@@ -227,6 +236,8 @@ export type Crop = { x: number; y: number; w: number; h: number };
 export type FrameFormat = { preset: string; orientation: 'portrait' | 'landscape' };
 export type GroupDef = { id: string; parent: string | null };
 export type ImageAsset = { mime: string; data: string; width: number; height: number; name: string };
+/** Non-destructive image adjustments (gap b6-6); brightness and contrast are percentages, 100 = unchanged. */
+export type ImageAdjust = { flipX?: boolean; flipY?: boolean; brightness?: number; contrast?: number };
 export type Item = {
   id: string;
   type: Kind;
@@ -253,6 +264,8 @@ export type Item = {
   locked?: boolean;
   assetId?: string;
   crop?: Crop;
+  /** Image flip, brightness and contrast, applied when drawn; the stored picture is unchanged. */
+  adjust?: ImageAdjust;
   emoji?: string;
   /** Display name of whoever created a sticky note on this device (item 85). */
   author?: string;
@@ -276,6 +289,9 @@ export type Item = {
   reactions?: Record<string, number>;
   /** Clockwise rotation in degrees around the box centre, in [0, 360) (gap D1). */
   rotation?: number;
+  /** When the object was created and last modified on this device (ISO; object info in the inspector). */
+  createdAt?: string;
+  modifiedAt?: string;
 };
 export type CommentThread = {
   id: string;
@@ -285,6 +301,8 @@ export type CommentThread = {
   resolved?: boolean;
   /** Pinned threads are listed first (gap G9). */
   pinned?: boolean;
+  /** Pin colour on the canvas (one of `commentColors`). */
+  color?: string;
   messages: CommentMessage[];
 };
 /** `editedAt` marks an edited message; `reactions` holds distinct emoji reactions (gap G9). */
@@ -746,7 +764,9 @@ export function validateMindNodes(nodes: unknown): asserts nodes is MindNode[] {
             ))) ||
         (n.parent !== null && typeof n.parent !== 'string') ||
         (n.collapsed !== undefined && typeof n.collapsed !== 'boolean') ||
-        (n.color !== undefined && (typeof n.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(n.color))),
+        (n.color !== undefined && (typeof n.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(n.color))) ||
+        (n.shape !== undefined && !(mindNodeShapes as readonly string[]).includes(n.shape)) ||
+        (n.link !== undefined && !validLink(n.link)),
     ) ||
     new Set(nodes.map(n => n.id)).size !== nodes.length ||
     nodes.filter(n => n.parent === null).length !== 1
@@ -787,6 +807,15 @@ export function bulkNotes(text: string, x: number, y: number, fill = colors[0]):
       ...createItem('note', x + (index % 4) * 230, y + Math.floor(index / 4) * 230, fill),
       text: text.slice(0, 6000),
     }));
+}
+/** A stored web link: a string that is already in normalized http(s) form. */
+export function validLink(value: unknown): boolean {
+  if (typeof value !== 'string' || !value || value.length > 2048) return false;
+  try {
+    return normalizeNoteLink(value) === value;
+  } catch {
+    return false;
+  }
 }
 export function normalizeNoteLink(value: string): string | undefined {
   const text = value.trim();

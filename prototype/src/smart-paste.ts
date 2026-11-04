@@ -3,8 +3,7 @@
 // other text becomes sticky notes (several lines) or a text object (one line). Pure: no React, no DOM.
 import type { Item, Point } from './model.ts';
 import { createItem } from './model.ts';
-import { GRID_MAX, newGrid } from './grid.ts';
-import type { GridData } from './grid.ts';
+import { GRID_MAX, gridFromTable, gridSize } from './grid.ts';
 import { embedSource, normalizeHttpsUrl } from './specs-media.ts';
 
 export const PASTE_NOTES_MAX = 100;
@@ -78,20 +77,15 @@ export function classifyPaste(text: string): PasteKind | null {
 
 /** A Grid holding the cells (capped at the grid limit); returns how many rows or columns were cut. */
 export function gridFromCells(rows: string[][], at: Point): { item: Item; truncated: boolean } {
-  const r = Math.min(Math.max(rows.length, 1), GRID_MAX),
-    c = Math.min(Math.max(...rows.map(row => row.length), 1), GRID_MAX);
-  const g: GridData = newGrid(r, c);
-  for (let y = 0; y < r; y++) for (let x = 0; x < c; x++) g.cells[y][x] = (rows[y]?.[x] ?? '').slice(0, 2000);
-  const item = createItem('grid', at.x, at.y);
-  item.w = Math.max(240, c * 140);
-  item.h = Math.max(80, r * 40);
+  const { data, truncated } = gridFromTable(rows),
+    item = createItem('grid', at.x, at.y),
+    size = gridSize(data.rows, data.cols);
+  item.w = size.w;
+  item.h = size.h;
   item.x = at.x - item.w / 2;
   item.y = at.y - item.h / 2;
-  item.data = g;
-  return {
-    item,
-    truncated: rows.length > GRID_MAX || rows.some(row => row.length > GRID_MAX || row.some(v => v.length > 2000)),
-  };
+  item.data = data;
+  return { item, truncated };
 }
 
 /** An embed for allow-listed providers, otherwise a bookmark. Throws for addresses that are not http(s). */

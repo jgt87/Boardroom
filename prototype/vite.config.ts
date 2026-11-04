@@ -10,6 +10,8 @@ const embedOrigins = [
   'https://www.google.com',
   'https://www.figma.com',
   'https://codepen.io',
+  'https://docs.google.com',
+  'https://www.loom.com',
 ];
 function contentSecurityPolicy(dev: boolean, editorOrigin: string): string {
   return [

@@ -25,7 +25,8 @@ const polygonArea = (pts: Point[]) => {
  * line. Returns null for scribbles, tiny strokes and anything ambiguous, so the ink is kept.
  */
 export function recognizeStroke(points: Point[]): Recognized | null {
-  if (points.length < 4) return null;
+  // A very straight stroke simplifies to two points: it can still be a line, but not a closed shape.
+  if (points.length < 2) return null;
   const xs = points.map(p => p.x),
     ys = points.map(p => p.y),
     x = Math.min(...xs),
@@ -46,7 +47,7 @@ export function recognizeStroke(points: Point[]): Recognized | null {
       ? { kind: 'line', x: first.x, y: first.y, w: last.x - first.x, h: last.y - first.y }
       : null;
   }
-  if (Math.min(w, h) < diag * 0.12) return null;
+  if (points.length < 4 || Math.min(w, h) < diag * 0.12) return null;
   const fillRatio = polygonArea(points) / (w * h);
   const kind =
     fillRatio > 0.86
@@ -57,6 +58,79 @@ export function recognizeStroke(points: Point[]): Recognized | null {
           ? 'triangle'
           : null;
   return kind ? { kind, x, y, w, h } : null;
+}
+
+type Box = { id: string; type: string; x: number; y: number; w: number; h: number; hidden?: boolean };
+/**
+ * Smart pen connectors (track R5): the objects under each end of a recognised line, so the line becomes a
+ * connector bound to them. Lines, ink, frames and hidden objects are skipped; the topmost object wins.
+ */
+export function lineEnds(items: Box[], line: Recognized, tolerance = 12): { from?: string; to?: string } {
+  const at = (p: Point) =>
+    [...items]
+      .reverse()
+      .find(
+        i =>
+          !['arrow', 'pen', 'frame', 'stickypad'].includes(i.type) &&
+          !i.hidden &&
+          p.x >= i.x - tolerance &&
+          p.x <= i.x + i.w + tolerance &&
+          p.y >= i.y - tolerance &&
+          p.y <= i.y + i.h + tolerance,
+      )?.id;
+  const from = at({ x: line.x, y: line.y }),
+    to = at({ x: line.x + line.w, y: line.y + line.h });
+  return { ...(from ? { from } : {}), ...(to && to !== from ? { to } : {}) };
+}
+
+/**
+ * Scribble (track R5): a zig-zag stroke at least 30 px across whose path is at least three times its box
+ * diagonal and that turns back horizontally or vertically at least four times.
+ */
+export function isScribble(points: Point[]): boolean {
+  if (points.length < 8) return false;
+  const xs = points.map(p => p.x),
+    ys = points.map(p => p.y),
+    w = Math.max(...xs) - Math.min(...xs),
+    h = Math.max(...ys) - Math.min(...ys),
+    diag = Math.hypot(w, h);
+  if (diag < 30) return false;
+  let length = 0;
+  for (let i = 1; i < points.length; i++)
+    length += Math.hypot(points[i]!.x - points[i - 1]!.x, points[i]!.y - points[i - 1]!.y);
+  if (length < diag * 3) return false;
+  const turns = (axis: 'x' | 'y', span: number) => {
+    let dir = 0,
+      count = 0,
+      anchor = points[0]![axis];
+    for (const p of points) {
+      const d = p[axis] - anchor;
+      if (Math.abs(d) < span * 0.15) continue;
+      const s = Math.sign(d);
+      if (dir && s !== dir) count++;
+      dir = s;
+      anchor = p[axis];
+    }
+    return count;
+  };
+  return Math.max(turns('x', w), turns('y', h)) >= 4;
+}
+/** Ink strokes a scribble erases: pen strokes whose centre lies inside the scribble's bounding box. */
+export function scribbleTargets(items: Box[], points: Point[]): string[] {
+  const xs = points.map(p => p.x),
+    ys = points.map(p => p.y),
+    x0 = Math.min(...xs),
+    x1 = Math.max(...xs),
+    y0 = Math.min(...ys),
+    y1 = Math.max(...ys);
+  return items
+    .filter(i => i.type === 'pen' && !i.hidden)
+    .filter(i => {
+      const cx = i.x + i.w / 2,
+        cy = i.y + i.h / 2;
+      return cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1;
+    })
+    .map(i => i.id);
 }
 
 /** Ray-casting point-in-polygon test. */

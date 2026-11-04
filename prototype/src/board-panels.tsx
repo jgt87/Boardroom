@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MentionSuggestions, MentionText } from './mention-field';
 import { issueLabels, type DiagramIssue } from './diagram-validation';
-import type { UserTemplate } from './user-templates';
+import { TEMPLATE_DESCRIPTION_MAX, templatePreview, type UserTemplate } from './user-templates';
+import { PreviewThumb, StarterThumb } from './board-thumb';
 import { doNotDisturb } from './view-prefs';
 import {
   X,
@@ -24,13 +25,31 @@ import {
   Pin,
   PinOff,
   SmilePlus,
+  Download,
+  ClipboardList,
+  Palette,
 } from 'lucide-react';
 import type { Board, Item, CommentThread } from './model';
 import { layerGroups, layerLabel, formatClock, timerRemaining, votesUsed } from './board-tools';
 import { filterTemplates, templateCategories } from './starter-templates';
+import { a11yKindLabels, groupA11yIssues } from './access-tools';
 import type { TemplateCategory } from './starter-templates';
 import type { TimerState, A11yIssue, TemplateName, PenStyle, VotingOptions } from './board-tools';
-import { addTime, parseClock, votingTimeLeft, commentReactions, orderThreads } from './facilitation-rules';
+import {
+  addTime,
+  parseClock,
+  votingTimeLeft,
+  commentReactions,
+  orderThreads,
+  commentColors,
+  DEFAULT_COMMENT_COLOR,
+  COMMENT_DRAFT_KEY,
+  COMMENT_SEEN_KEY,
+  isUnread,
+  readStoredMap,
+  threadUpdatedAt,
+  withDraft,
+} from './facilitation-rules';
 
 const stopKeys = (onClose: () => void) => (e: React.KeyboardEvent) => {
   e.stopPropagation();
@@ -115,6 +134,12 @@ export function PenOptions({
           ))}
         </div>
       )}
+      {!eraser && mode === 'smart' && (
+        <p className="pen-smart-hint">
+          Recognised: rectangle, ellipse, triangle and line. A line between two objects becomes a connector; scribbling
+          over ink erases it.
+        </p>
+      )}
       {!eraser && onPreset && presets.length > 0 && (
         <div className="pen-presets" role="group" aria-label="Pen presets">
           {presets.map((p, i) => (
@@ -162,6 +187,7 @@ export function VotingPanel({
   onClose,
   onRenameResult,
   onDeleteResult,
+  onPlaceResult,
 }: {
   board: Board;
   selectedCount: number;
@@ -170,6 +196,8 @@ export function VotingPanel({
   onClose: () => void;
   onRenameResult?: (index: number, name: string) => void;
   onDeleteResult?: (index: number) => void;
+  /** Put a result on the board as a text object. */
+  onPlaceResult?: (index: number) => void;
 }) {
   const [budget, setBudget] = useState(3),
     [minutes, setMinutes] = useState(0),
@@ -291,6 +319,16 @@ export function VotingPanel({
                         onClick={() => setRenaming(index)}
                       >
                         <Pencil size={13} />
+                      </button>
+                    )}
+                    {onPlaceResult && (
+                      <button
+                        className="icon-button"
+                        aria-label={`Place result ${title} on the board`}
+                        title="Place on the board"
+                        onClick={() => onPlaceResult(index)}
+                      >
+                        <ClipboardList size={13} />
                       </button>
                     )}
                     {onDeleteResult && (
@@ -518,6 +556,52 @@ function beep() {
 }
 
 // ---- 46 Comments ---------------------------------------------------------------------------------
+// ---- Comment unread state and drafts (kept on this device, never in the board) ---------------------------
+const SEEN_EVENT = 'boardroom:comments-seen';
+function readLocal(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeLocal(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* storage is full or blocked: unread state and drafts are conveniences */
+  }
+}
+/** Mark a thread as read now. */
+function markSeen(id: string) {
+  const seen = readStoredMap<number>(readLocal(COMMENT_SEEN_KEY), 'number');
+  seen[id] = Date.now();
+  const keys = Object.keys(seen);
+  writeLocal(COMMENT_SEEN_KEY, JSON.stringify(Object.fromEntries(keys.slice(-500).map(k => [k, seen[k]]))));
+  window.dispatchEvent(new Event(SEEN_EVENT));
+}
+/** Threads last opened on this device, kept current across panels. */
+function useSeen(): Record<string, number> {
+  const [seen, setSeen] = useState(() => readStoredMap<number>(readLocal(COMMENT_SEEN_KEY), 'number'));
+  useEffect(() => {
+    const refresh = () => setSeen(readStoredMap<number>(readLocal(COMMENT_SEEN_KEY), 'number'));
+    addEventListener(SEEN_EVENT, refresh);
+    addEventListener('storage', refresh);
+    return () => {
+      removeEventListener(SEEN_EVENT, refresh);
+      removeEventListener('storage', refresh);
+    };
+  }, []);
+  return seen;
+}
+const NEW_DRAFT = 'new';
+const readDraft = (key: string) => readStoredMap<string>(readLocal(COMMENT_DRAFT_KEY), 'string')[key] ?? '';
+const saveDraft = (key: string, text: string) =>
+  writeLocal(
+    COMMENT_DRAFT_KEY,
+    JSON.stringify(withDraft(readStoredMap<string>(readLocal(COMMENT_DRAFT_KEY), 'string'), key, text)),
+  );
+
 export function CommentThreadView({
   thread,
   onReply,
@@ -527,6 +611,7 @@ export function CommentThreadView({
   onEdit,
   onPin,
   onReact,
+  onColor,
   names,
 }: {
   thread: CommentThread;
@@ -537,16 +622,28 @@ export function CommentThreadView({
   onEdit?: (messageId: string, text: string) => void;
   onPin?: (pinned: boolean) => void;
   onReact?: (messageId: string, emoji: string) => void;
+  /** Set the pin colour (null restores the default). */
+  onColor?: (color: string | null) => void;
   /** Names offered for @mentions (gap G10). */
   names?: string[];
 }) {
-  const [text, setText] = useState(''),
+  const [text, setTextState] = useState(() => readDraft(thread.id)),
     [editing, setEditing] = useState<{ id: string; text: string } | null>(null),
     [picking, setPicking] = useState<string | null>(null),
+    [coloring, setColoring] = useState(false),
     field = useRef<HTMLTextAreaElement>(null);
+  /** Reply drafts are kept per thread on this device until sent. */
+  const setText = (value: string) => {
+    setTextState(value);
+    saveDraft(thread.id, value);
+  };
   useEffect(() => {
     field.current?.focus();
   }, [thread.id]);
+  const updated = threadUpdatedAt(thread);
+  useEffect(() => {
+    markSeen(thread.id);
+  }, [thread.id, updated]);
   const saveEdit = () => {
     if (editing && editing.text.trim()) onEdit?.(editing.id, editing.text);
     setEditing(null);
@@ -565,6 +662,35 @@ export function CommentThreadView({
           >
             {thread.pinned ? <PinOff size={14} /> : <Pin size={14} />}
           </button>
+          {onColor && (
+            <button
+              type="button"
+              className={`icon-button ${thread.color ? 'active' : ''}`}
+              aria-label="Comment colour"
+              aria-expanded={coloring}
+              title="Pin colour"
+              onClick={() => setColoring(!coloring)}
+            >
+              <Palette size={14} />
+            </button>
+          )}
+          {onColor && coloring && (
+            <span className="comment-colors" role="group" aria-label="Choose a pin colour">
+              {[{ name: 'Default', value: DEFAULT_COMMENT_COLOR }, ...commentColors].map(c => (
+                <button
+                  type="button"
+                  key={c.value}
+                  aria-label={`${c.name} pin`}
+                  aria-pressed={(thread.color ?? DEFAULT_COMMENT_COLOR) === c.value}
+                  style={{ background: c.value }}
+                  onClick={() => {
+                    onColor(c.value === DEFAULT_COMMENT_COLOR ? null : c.value);
+                    setColoring(false);
+                  }}
+                />
+              ))}
+            </span>
+          )}
         </div>
       )}
       <ol>
@@ -724,17 +850,27 @@ export function NewComment({
   onClose: () => void;
   names?: string[];
 }) {
-  const [text, setText] = useState(''),
+  const [text, setTextState] = useState(() => readDraft(NEW_DRAFT)),
+    [restored] = useState(() => !!readDraft(NEW_DRAFT)),
     newField = useRef<HTMLTextAreaElement>(null);
+  const setText = (value: string) => {
+    setTextState(value);
+    saveDraft(NEW_DRAFT, value);
+  };
+  const add = (value: string) => {
+    saveDraft(NEW_DRAFT, '');
+    onAdd(value);
+  };
   return (
     <form
       className="comment-thread"
       onKeyDown={stopKeys(onClose)}
       onSubmit={e => {
         e.preventDefault();
-        if (text.trim()) onAdd(text);
+        if (text.trim()) add(text);
       }}
     >
+      {restored && <small className="comment-draft-note">Draft restored from last time.</small>}
       <textarea
         ref={newField}
         autoFocus
@@ -746,7 +882,7 @@ export function NewComment({
         onKeyDown={e => {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
-            if (text.trim()) onAdd(text);
+            if (text.trim()) add(text);
           }
         }}
       />
@@ -773,6 +909,8 @@ export function CommentsPanel({
   onOpen: (t: CommentThread) => void;
   onClose: () => void;
 }) {
+  const seen = useSeen(),
+    unread = (board.comments ?? []).filter(t => isUnread(t, seen)).length;
   const [show, setShow] = useState<'open' | 'resolved' | 'all'>('open'),
     threads = orderThreads(
       (board.comments ?? []).filter(t => show === 'all' || (show === 'resolved') === !!t.resolved),
@@ -797,6 +935,11 @@ export function CommentsPanel({
             <li key={t.id}>
               <button className={active === t.id ? 'selected' : ''} onClick={() => onOpen(t)}>
                 <span>
+                  {isUnread(t, seen) && (
+                    <i className="unread-dot" data-unread="true">
+                      <span className="sr-only">Unread: </span>
+                    </i>
+                  )}
                   {t.pinned && <Pin size={12} aria-label="Pinned" className="pin-mark" />}
                   {t.messages[0].text}
                 </span>
@@ -813,6 +956,12 @@ export function CommentsPanel({
           {show === 'open'
             ? 'No open comments. Choose the comment tool (C) and click the canvas or an object.'
             : 'Nothing to show.'}
+        </p>
+      )}
+      {unread > 0 && (
+        <p className="unread-summary">
+          {unread} unread {unread === 1 ? 'thread' : 'threads'} since you last opened {unread === 1 ? 'it' : 'them'}{' '}
+          here.
         </p>
       )}
       <p className="local-note">Comments are saved with this board on this device.</p>
@@ -1069,20 +1218,39 @@ export function A11yPanel({
     <aside className="facilitate-panel floating" aria-label="Accessibility check" onKeyDown={stopKeys(onClose)}>
       <Heading title="Accessibility check" count={issues.length} onClose={onClose} />
       {issues.length ? (
-        <ol className="thread-list">
-          {issues.map((i, k) => (
-            <li key={`${i.id}${k}`}>
-              <button onClick={() => onSelect(i.id)}>
-                <span>{i.message}</span>
-                <small>
-                  {i.kind === 'alt' ? 'Missing description' : i.kind === 'contrast' ? 'Contrast' : 'Small text'}
-                </small>
-              </button>
-            </li>
+        <>
+          <p className="a11y-summary">
+            {issues.filter(i => i.severity === 'error').length} errors,{' '}
+            {issues.filter(i => i.severity === 'warning').length} warnings.
+          </p>
+          {groupA11yIssues(issues).map(g => (
+            <section key={g.section} className="a11y-section" aria-label={g.section}>
+              <h3>
+                {g.section} <small>{g.issues.length}</small>
+              </h3>
+              <ol className="thread-list">
+                {g.issues.map((i, k) => (
+                  <li key={`${i.id}${k}`}>
+                    <button onClick={() => onSelect(i.id)}>
+                      <span>{i.message}</span>
+                      <small>
+                        <span className={`a11y-severity ${i.severity}`}>
+                          {i.severity === 'error' ? 'Error' : 'Warning'}
+                        </span>{' '}
+                        · {a11yKindLabels[i.kind]}
+                      </small>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </section>
           ))}
-        </ol>
+        </>
       ) : (
-        <p>No issues found. The check covers text contrast, media descriptions and small text.</p>
+        <p>
+          No issues found. The check covers media descriptions, container titles, text and line contrast, and small
+          text.
+        </p>
       )}
     </aside>
   );
@@ -1122,17 +1290,29 @@ export function TemplatesPanel({
   userTemplates = [],
   onInsertUser,
   onDeleteUser,
+  onEditUser,
+  onExport,
+  onImport,
 }: {
   onChoose: (name: TemplateName) => void;
   onClose: () => void;
   userTemplates?: UserTemplate[];
   onInsertUser?: (t: UserTemplate) => void;
   onDeleteUser?: (id: string) => void;
+  /** Rename a saved template or change its description (track R3). */
+  onEditUser?: (id: string, patch: { name: string; description: string }) => void;
+  /** Save templates (one or all) to a file, and add templates from a file (track R3). */
+  onExport?: (list: UserTemplate[]) => void;
+  onImport?: (file: File) => void;
 }) {
   const [query, setQuery] = useState(''),
     [category, setCategory] = useState<TemplateCategory | null>(null),
+    [editing, setEditing] = useState<string | null>(null),
+    importInput = useRef<HTMLInputElement>(null),
     shown = filterTemplates(query, category),
-    mine = userTemplates.filter(t => !query.trim() || t.name.toLowerCase().includes(query.trim().toLowerCase()));
+    q = query.trim().toLowerCase(),
+    mine = userTemplates.filter(t => !q || `${t.name} ${t.description ?? ''}`.toLowerCase().includes(q));
+  const previews = useMemo(() => new Map(userTemplates.map(t => [t.id, templatePreview(t)])), [userTemplates]);
   return (
     <aside className="facilitate-panel floating" aria-label="Templates" onKeyDown={stopKeys(onClose)}>
       <Heading title="Templates" onClose={onClose} />
@@ -1155,14 +1335,19 @@ export function TemplatesPanel({
       </div>
       <div className="template-list-scroll">
         {shown.length ? (
-          <ol className="thread-list" aria-label="Starter templates">
+          <ol className="thread-list template-previews" aria-label="Starter templates">
             {shown.map(t => (
               <li key={t.name}>
                 <button onClick={() => onChoose(t.name as TemplateName)}>
-                  <span>{t.name}</span>
-                  <small>
-                    {t.category} · {t.about}
-                  </small>
+                  <span className="template-mini-thumb">
+                    <StarterThumb name={t.name as TemplateName} />
+                  </span>
+                  <span className="template-mini-text">
+                    <span>{t.name}</span>
+                    <small>
+                      {t.category} · {t.about}
+                    </small>
+                  </span>
                 </button>
               </li>
             ))}
@@ -1171,26 +1356,114 @@ export function TemplatesPanel({
           <p>No starter templates match.</p>
         )}
       </div>
-      <h3 className="templates-subhead">My templates</h3>
+      <div className="templates-subhead-row">
+        <h3 className="templates-subhead">My templates</h3>
+        {onImport && (
+          <button className="text-button" onClick={() => importInput.current?.click()}>
+            Import
+          </button>
+        )}
+        {onExport && userTemplates.length > 0 && (
+          <button className="text-button" onClick={() => onExport(userTemplates)}>
+            Export all
+          </button>
+        )}
+        {onImport && (
+          <input
+            ref={importInput}
+            type="file"
+            hidden
+            aria-label="Choose a templates file"
+            accept=".json,application/json"
+            onChange={e => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) onImport(f);
+            }}
+          />
+        )}
+      </div>
       {mine.length ? (
-        <ol className="thread-list user-templates" aria-label="My templates">
-          {mine.map(t => (
-            <li key={t.id}>
-              <button onClick={() => onInsertUser?.(t)}>
-                <span>{t.name}</span>
-                <small>
-                  {t.count} object{t.count === 1 ? '' : 's'} · saved {t.created.slice(0, 10)}
-                </small>
-              </button>
-              <button
-                className="icon-button"
-                aria-label={`Delete template ${t.name}`}
-                onClick={() => onDeleteUser?.(t.id)}
-              >
-                <X size={14} />
-              </button>
-            </li>
-          ))}
+        <ol className="thread-list user-templates template-previews" aria-label="My templates">
+          {mine.map(t =>
+            editing === t.id ? (
+              <li key={t.id}>
+                <form
+                  className="template-edit"
+                  aria-label={`Edit template ${t.name}`}
+                  onSubmit={e => {
+                    e.preventDefault();
+                    const data = new FormData(e.currentTarget);
+                    onEditUser?.(t.id, {
+                      name: String(data.get('name') ?? ''),
+                      description: String(data.get('description') ?? ''),
+                    });
+                    setEditing(null);
+                  }}
+                >
+                  <input name="name" aria-label="Template name" defaultValue={t.name} maxLength={80} autoFocus />
+                  <textarea
+                    name="description"
+                    aria-label="Template description"
+                    placeholder="What is this template for?"
+                    rows={2}
+                    defaultValue={t.description ?? ''}
+                    maxLength={TEMPLATE_DESCRIPTION_MAX}
+                  />
+                  <span>
+                    <button type="submit" className="primary-button">
+                      Save
+                    </button>
+                    <button type="button" onClick={() => setEditing(null)}>
+                      Cancel
+                    </button>
+                  </span>
+                </form>
+              </li>
+            ) : (
+              <li key={t.id}>
+                <button onClick={() => onInsertUser?.(t)}>
+                  <span className="template-mini-thumb">
+                    <PreviewThumb preview={previews.get(t.id) ?? []} empty="" />
+                  </span>
+                  <span className="template-mini-text">
+                    <span>{t.name}</span>
+                    <small>
+                      {t.description ? `${t.description} · ` : ''}
+                      {t.count} object{t.count === 1 ? '' : 's'} · saved {t.created.slice(0, 10)}
+                    </small>
+                  </span>
+                </button>
+                {onEditUser && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Edit template ${t.name}`}
+                    title="Rename or describe"
+                    onClick={() => setEditing(t.id)}
+                  >
+                    <Pencil size={14} />
+                  </button>
+                )}
+                {onExport && (
+                  <button
+                    className="icon-button"
+                    aria-label={`Export template ${t.name}`}
+                    title="Export to a file"
+                    onClick={() => onExport([t])}
+                  >
+                    <Download size={14} />
+                  </button>
+                )}
+                <button
+                  className="icon-button"
+                  aria-label={`Delete template ${t.name}`}
+                  onClick={() => onDeleteUser?.(t.id)}
+                >
+                  <X size={14} />
+                </button>
+              </li>
+            ),
+          )}
         </ol>
       ) : (
         <p>

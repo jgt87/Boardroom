@@ -17,6 +17,7 @@ import {
   type Activity,
 } from './activity';
 import { BOARD_DESCRIPTION_MAX, boardStatuses, cleanDescription, withSetting } from './board-settings';
+import { spacesOf } from './board-library';
 
 const readLog = (boardId: string): Activity[] => {
   try {
@@ -212,8 +213,9 @@ export function CatchUpPanel({ onClose }: { onClose: () => void }) {
 }
 
 export function DetailsPanel({ onClose }: { onClose: () => void }) {
-  const { board, boardRef, library, update } = useApp();
+  const { board, boardRef, library, update, boardActions, display } = useApp();
   const meta = library.boards.find(b => b.id === library.activeId);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const saveDescription = (text: string) => {
     const clean = cleanDescription(text);
     if (clean !== (boardRef.current.description ?? ''))
@@ -266,6 +268,46 @@ export function DetailsPanel({ onClose }: { onClose: () => void }) {
           ))}
         </ul>
       )}
+      <div className="details-actions" role="group" aria-label="Board actions">
+        <label className="field">
+          Move to space
+          <select
+            aria-label="Move board to space"
+            value={meta?.space ?? ''}
+            onChange={e => boardActions.setMeta(library.activeId, { space: e.target.value || null })}
+          >
+            <option value="">No space</option>
+            {spacesOf(library).map(s => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          onClick={() => {
+            boardActions.duplicate(library.activeId);
+            display(
+              `Board duplicated as "${(board.title || 'Untitled board').slice(0, 190)} copy". Find it under All boards.`,
+            );
+          }}
+        >
+          Duplicate board
+        </button>
+        {confirmDelete ? (
+          <span className="board-confirm" role="alert">
+            <span>Move this board to the trash?</span>
+            <button className="danger-button" onClick={() => boardActions.remove(library.activeId)}>
+              Move to trash
+            </button>
+            <button onClick={() => setConfirmDelete(false)}>Keep</button>
+          </span>
+        ) : (
+          <button className="danger" onClick={() => setConfirmDelete(true)}>
+            Delete board
+          </button>
+        )}
+      </div>
     </Shell>
   );
 }

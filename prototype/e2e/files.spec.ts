@@ -88,7 +88,7 @@ test.describe('files and media', () => {
       const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
       const dt = new DataTransfer();
       dt.items.add(new File([bytes], 'dropped.png', { type: 'image/png' }));
-      dt.items.add(new File(['<svg xmlns="http://www.w3.org/2000/svg"/>'], 'vector.svg', { type: 'image/svg+xml' }));
+      dt.items.add(new File(['II*'], 'scan.tiff', { type: 'image/tiff' }));
       document
         .querySelector('svg.canvas')!
         .dispatchEvent(
@@ -100,7 +100,7 @@ test.describe('files and media', () => {
       b => b.items.some((i: any) => i.type === 'image' && i.text === 'dropped.png'),
       'dropped image saved',
     );
-    await expect(page.getByRole('status')).toContainText('"vector.svg" is not a supported image');
+    await expect(page.getByRole('status')).toContainText('"scan.tiff" is not a supported image');
   });
 
   test('pastes an image from the real clipboard with Ctrl+V', async ({ page, context, browserName }) => {

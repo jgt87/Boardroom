@@ -1,6 +1,15 @@
 // Local image storage in IndexedDB, so large images do not exhaust the localStorage budget.
 import type { ImageAsset } from './model';
-import { DOWNSCALE_MAX_SIDE, dataUrlBytes, downscaleSize, imageFileError } from './images';
+import {
+  convertibleImageMimes,
+  DOWNSCALE_MAX_SIDE,
+  dataUrlBytes,
+  downscaleSize,
+  imageFileError,
+  imageTypeOf,
+  rasterSize,
+  svgDeclaredSize,
+} from './images';
 import { MAX_IMAGE_BYTES } from './model-ext';
 
 const DB = 'boardroom-assets',
@@ -75,6 +84,8 @@ export async function pruneAssets(keep: Set<string>): Promise<void> {
 export async function readImageFile(file: File): Promise<ImageAsset> {
   const error = imageFileError(file);
   if (error) throw new Error(error);
+  const type = imageTypeOf(file);
+  if (convertibleImageMimes.includes(type)) return convertImage(file, type);
   const data = await new Promise<string>((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result));
@@ -121,4 +132,39 @@ async function downscaleImage(
     side = Math.round(side * 0.75);
   }
   throw new Error('The image could not be made small enough to store. Choose a smaller image.');
+}
+
+/**
+ * SVG and BMP files become PNG images (gap b5-8). The SVG is decoded by the browser as an image, which
+ * runs no scripts and fetches nothing, and is drawn to a canvas; its markup never enters the page.
+ */
+async function convertImage(file: File, type: string): Promise<ImageAsset> {
+  const vector = type === 'image/svg+xml',
+    text = vector ? await file.text() : '',
+    source = vector
+      ? 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(text)
+      : await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result).replace(/^data:[^;,]*/, 'data:image/bmp'));
+          r.onerror = () => reject(new Error('The image could not be read.'));
+          r.readAsDataURL(file);
+        });
+  if (vector && !/<svg[\s>]/i.test(text)) throw new Error(`"${file.name}" is not an SVG image.`);
+  const img = new Image();
+  img.src = source;
+  try {
+    await img.decode();
+  } catch {
+    throw new Error(`"${file.name || 'The image'}" could not be decoded.`);
+  }
+  const declared = vector ? svgDeclaredSize(text) : null,
+    size = rasterSize(declared?.width ?? img.naturalWidth, declared?.height ?? img.naturalHeight, vector),
+    canvas = document.createElement('canvas');
+  canvas.width = size.width;
+  canvas.height = size.height;
+  canvas.getContext('2d')!.drawImage(img, 0, 0, size.width, size.height);
+  const data = canvas.toDataURL('image/png'),
+    name = (file.name || 'Image').replace(/\.(svg|bmp)$/i, '.png').slice(0, 200);
+  if (dataUrlBytes(data) <= MAX_IMAGE_BYTES) return { mime: 'image/png', data, ...size, name };
+  return downscaleImage(data, size, name);
 }

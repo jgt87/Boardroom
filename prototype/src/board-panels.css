@@ -125,6 +125,67 @@
 .thread-list button.selected {
   background: #edf0ff;
 }
+.board-outline h3 {
+  margin: 10px 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.board-outline ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.board-outline button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+.board-outline h3 button {
+  font-size: 13px;
+  font-weight: 600;
+}
+.board-outline button.selected {
+  background: #edf0ff;
+}
+.board-outline .list-empty {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 8px;
+  margin: 0;
+}
+.a11y-summary {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+.a11y-section h3 {
+  margin: 12px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.a11y-section h3 small {
+  color: var(--muted);
+  font-weight: 400;
+}
+.a11y-section .thread-list {
+  margin-top: 4px;
+}
+.thread-list button small .a11y-severity {
+  flex: none;
+  font-weight: 600;
+}
+.a11y-severity.error {
+  color: #b42318;
+}
+.a11y-severity.warning {
+  color: #8a5a00;
+}
 .thread-list .empty {
   font-size: 12px;
   color: var(--muted);

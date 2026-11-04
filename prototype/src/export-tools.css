@@ -1,0 +1,83 @@
+/* Export area picker and print output (gap b3-4). */
+.export-area-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  cursor: crosshair;
+  background: rgb(36 36 66 / 0.06);
+  outline: none;
+}
+.export-area-layer.done {
+  cursor: default;
+}
+.export-area-hint {
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid var(--border);
+  font-size: 13px;
+  pointer-events: none;
+}
+.export-area-box {
+  position: fixed;
+  border: 2px dashed var(--blue);
+  background: rgb(66 98 255 / 0.08);
+  pointer-events: none;
+}
+.export-area-bar {
+  position: fixed;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid var(--border);
+}
+.export-area-bar button {
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.export-area-bar button:hover {
+  background: #f1f1f5;
+}
+/* Image adjustments (flip, brightness, contrast) panel in the selection bar. */
+.image-adjust {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  min-width: 220px;
+}
+.image-adjust label {
+  display: grid;
+  grid-template-columns: 76px 1fr 38px;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.image-adjust .row {
+  display: flex;
+  gap: 6px;
+}
+#print-root {
+  display: none;
+}
+@media print {
+  body.printing > *:not(#print-root) {
+    display: none !important;
+  }
+  body.printing #print-root {
+    display: block;
+  }
+  #print-root img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+}

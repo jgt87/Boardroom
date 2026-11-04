@@ -535,7 +535,13 @@ export const readableTextOn = (fill: string | undefined, dark = '#22232b') =>
   contrastRatio(fill, '#ffffff') > contrastRatio(fill, dark)
     ? '#ffffff'
     : dark;
-export type A11yIssue = { id: string; kind: 'contrast' | 'alt' | 'small-text' | 'empty'; message: string };
+export type A11yIssue = {
+  id: string;
+  kind: 'contrast' | 'alt' | 'small-text' | 'empty';
+  message: string;
+  /** Errors block reading the content (no description, text contrast below 3:1); warnings make it harder. */
+  severity: 'error' | 'warning';
+};
 /** Local accessibility review: text contrast, missing descriptions on media, tiny text. */
 export function checkAccessibility(board: Board): A11yIssue[] {
   const issues: A11yIssue[] = [];
@@ -543,7 +549,7 @@ export function checkAccessibility(board: Board): A11yIssue[] {
     if (i.hidden) continue;
     const label = i.name || i.text.trim().slice(0, 40) || `Untitled ${i.type}`;
     if (['image', 'video', 'pdf', 'icon', 'qr'].includes(i.type) && !(i.alt ?? '').trim())
-      issues.push({ id: i.id, kind: 'alt', message: `${label}: add a text description.` });
+      issues.push({ id: i.id, kind: 'alt', severity: 'error', message: `${label}: add a text description.` });
     const textOn = i.type === 'note' || isShapeKind(i.type);
     if (textOn && i.text.trim() && /^#[0-9a-f]{6}$/i.test(i.fill)) {
       // Compare with the text colour the renderer actually uses (white on dark fills).
@@ -552,6 +558,7 @@ export function checkAccessibility(board: Board): A11yIssue[] {
         issues.push({
           id: i.id,
           kind: 'contrast',
+          severity: r < 3 ? 'error' : 'warning',
           message: `${label}: text contrast ${r.toFixed(1)}:1 is below 4.5:1.`,
         });
     }
@@ -561,6 +568,7 @@ export function checkAccessibility(board: Board): A11yIssue[] {
         issues.push({
           id: i.id,
           kind: 'contrast',
+          severity: r < 3 ? 'error' : 'warning',
           message: `${label}: text contrast ${r.toFixed(1)}:1 is below 4.5:1.`,
         });
     }
@@ -568,6 +576,7 @@ export function checkAccessibility(board: Board): A11yIssue[] {
       issues.push({
         id: i.id,
         kind: 'small-text',
+        severity: 'warning',
         message: `${label}: ${i.format.fontSize} px text may be hard to read.`,
       });
     // Non-text contrast (gap F7): lines, pen strokes and shape borders need 3:1 against the board background.
@@ -582,11 +591,12 @@ export function checkAccessibility(board: Board): A11yIssue[] {
       issues.push({
         id: i.id,
         kind: 'contrast',
+        severity: 'warning',
         message: `${label}: ${i.type === 'arrow' ? 'line' : i.type === 'pen' ? 'drawing' : 'outline'} contrast ${contrastRatio(stroke, bg).toFixed(1)}:1 against the board is below 3:1.`,
       });
     // Containers need a title so they can be found and announced (gap F7).
     if (['frame', 'table', 'kanban', 'timeline'].includes(i.type) && !i.text.trim() && !(i.name ?? '').trim())
-      issues.push({ id: i.id, kind: 'empty', message: `Untitled ${i.type}: add a title.` });
+      issues.push({ id: i.id, kind: 'empty', severity: 'warning', message: `Untitled ${i.type}: add a title.` });
   }
   return issues;
 }

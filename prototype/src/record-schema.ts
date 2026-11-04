@@ -17,7 +17,91 @@ export type RecordField = {
   display?: 'progress';
   min?: number;
   max?: number;
+  /** Number and formula fields: show values as a percentage or an amount of money. */
+  format?: 'percent' | 'currency';
+  /** ISO 4217 code for the currency format (default USD). */
+  currency?: string;
+  /** Progress bar colour (#rrggbb). */
+  color?: string;
+  /** Hide the number next to a progress bar. */
+  hideLabel?: boolean;
+  /** Conditional colours: the first matching rule colours the value. */
+  rules?: NumberColorRule[];
 };
+export const ruleOps = ['gt', 'gte', 'lt', 'lte', 'eq'] as const;
+export type NumberColorRule = { op: (typeof ruleOps)[number]; value: number; color: string };
+export const ruleOpLabels: Record<NumberColorRule['op'], string> = {
+  gt: 'Above',
+  gte: 'At least',
+  lt: 'Below',
+  lte: 'At most',
+  eq: 'Equal to',
+};
+/** Light record colours: dark text stays readable on every one of them. */
+export const recordColors = [
+  { name: 'Red', value: '#ffc9c9' },
+  { name: 'Orange', value: '#ffd8a8' },
+  { name: 'Yellow', value: '#fff3bf' },
+  { name: 'Green', value: '#c3fae8' },
+  { name: 'Blue', value: '#d0ebff' },
+  { name: 'Purple', value: '#e5dbff' },
+  { name: 'Grey', value: '#e9ecef' },
+];
+/** The colour of the first rule a value matches, or undefined. */
+export function ruleColor(field: RecordField, value: number | null): string | undefined {
+  if (value === null || !Number.isFinite(value)) return undefined;
+  return field.rules?.find(r =>
+    r.op === 'gt'
+      ? value > r.value
+      : r.op === 'gte'
+        ? value >= r.value
+        : r.op === 'lt'
+          ? value < r.value
+          : r.op === 'lte'
+            ? value <= r.value
+            : value === r.value,
+  )?.color;
+}
+const plainNumber = (value: number) =>
+  Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, '');
+/** A number in the field's format: "45%", "$1,200.00" or plain. Empty values show a dash. */
+export function formatFieldNumber(field: Pick<RecordField, 'format' | 'currency'>, value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '—';
+  if (field.format === 'percent') return `${plainNumber(value)}%`;
+  if (field.format === 'currency')
+    try {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: field.currency ?? 'USD' }).format(value);
+    } catch {
+      return `${field.currency ?? 'USD'} ${plainNumber(value)}`;
+    }
+  return plainNumber(value);
+}
+function validateNumberDisplay(f: RecordField): void {
+  const numeric = ['number', 'formula'].includes(f.type);
+  if (
+    (f.format !== undefined && (!numeric || !['percent', 'currency'].includes(f.format))) ||
+    (f.currency !== undefined &&
+      (f.format !== 'currency' || typeof f.currency !== 'string' || !/^[A-Z]{3}$/.test(f.currency))) ||
+    (f.color !== undefined && (!numeric || typeof f.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(f.color))) ||
+    (f.hideLabel !== undefined && (typeof f.hideLabel !== 'boolean' || f.display !== 'progress'))
+  )
+    throw new Error('Invalid number format.');
+  if (f.rules !== undefined) {
+    if (!numeric || !Array.isArray(f.rules) || f.rules.length > 10) throw new Error('Use up to 10 colour rules.');
+    for (const r of f.rules)
+      if (
+        !r ||
+        typeof r !== 'object' ||
+        Object.keys(r).some(k => !['op', 'value', 'color'].includes(k)) ||
+        !ruleOps.includes(r.op) ||
+        typeof r.value !== 'number' ||
+        !Number.isFinite(r.value) ||
+        typeof r.color !== 'string' ||
+        !/^#[0-9a-f]{6}$/i.test(r.color)
+      )
+        throw new Error('Colour rules need a comparison, a number and a #rrggbb colour.');
+  }
+}
 /** Kanban status column settings: a header colour and an optional capacity. */
 export type RecordColumnSettings = { color?: string; limit?: number };
 /** A named filter/sort/group configuration shared by every view of the dataset. */
@@ -70,6 +154,7 @@ export function validateRecordSchema(schema: RecordSchema): void {
       (f.min ?? 0) >= (f.max ?? 100)
     )
       throw new Error('A progress bar needs a minimum below its maximum.');
+    validateNumberDisplay(f);
     ids.add(f.id);
     names.add(f.name);
     if (

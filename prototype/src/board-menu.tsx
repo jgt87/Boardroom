@@ -8,7 +8,10 @@ import { screenToWorld } from './camera';
 import { boardBackgrounds, boardStatuses, DEFAULT_BACKGROUND, withSetting } from './board-settings';
 import { CatchUpPanel, DetailsPanel, HistoryPanel } from './board-history';
 import { spacesOf } from './board-library';
-import { undo, redo } from './model';
+import { undo, redo, newBoard } from './model';
+import { TemplatePicker } from './template-picker';
+import { BrandKitPanel } from './brand-kit-panel';
+import { boardFromTemplate } from './user-templates';
 
 export function BoardStatusChip() {
   const { board } = useApp();
@@ -182,7 +185,7 @@ export function BoardMenu() {
     setDashboard,
   } = useApp();
   const [open, setOpen] = useState(false),
-    [panel, setPanel] = useState<'history' | 'catchup' | 'details' | null>(null),
+    [panel, setPanel] = useState<'history' | 'catchup' | 'details' | 'new' | 'brand' | null>(null),
     [confirmDelete, setConfirmDelete] = useState(false),
     [newSpace, setNewSpace] = useState(''),
     [copyName, setCopyName] = useState<string | null>(null);
@@ -204,7 +207,7 @@ export function BoardMenu() {
       label: 'Board',
       entries: [
         item('Catch up', () => setPanel('catchup')),
-        item('New board', () => boardActions.create(null)),
+        item('New board…', () => setPanel('new')),
         item(board.thumbnailFrame ? 'Reset thumbnail' : 'Use selected frame as thumbnail', () => {
           const next = { ...boardRef.current };
           if (board.thumbnailFrame) delete next.thumbnailFrame;
@@ -327,7 +330,7 @@ export function BoardMenu() {
         },
         item('History', () => setPanel('history')),
         item('Details', () => setPanel('details')),
-        item('All boards', () => setDashboard(true)),
+        item('All boards', () => setDashboard(true), 'Ctrl E'),
         { kind: 'sep' },
         {
           kind: 'item',
@@ -398,6 +401,7 @@ export function BoardMenu() {
         toggle('Do Not Disturb', viewPrefs.dnd, () => setViewPrefs({ dnd: !viewPrefs.dnd })),
         toggle('Spell check', viewPrefs.spellcheck, () => setViewPrefs({ spellcheck: !viewPrefs.spellcheck })),
         item('Profile settings', () => setFacil('authors')),
+        item('Brand kit', () => setPanel('brand')),
       ],
     },
     {
@@ -443,6 +447,26 @@ export function BoardMenu() {
       {panel === 'history' && <HistoryPanel onClose={() => setPanel(null)} />}
       {panel === 'catchup' && <CatchUpPanel onClose={() => setPanel(null)} />}
       {panel === 'details' && <DetailsPanel onClose={() => setPanel(null)} />}
+      {panel === 'brand' && <BrandKitPanel onClose={() => setPanel(null)} />}
+      {panel === 'new' && (
+        <TemplatePicker
+          onBlank={() => {
+            setPanel(null);
+            boardActions.create(null);
+          }}
+          onStarter={name => {
+            setPanel(null);
+            boardActions.create(name);
+          }}
+          onUser={t => {
+            setPanel(null);
+            const made = boardFromTemplate(t, newBoard());
+            if (made) boardActions.createFrom(made);
+            else display('This template can no longer be read.');
+          }}
+          onClose={() => setPanel(null)}
+        />
+      )}
     </div>
   );
 }

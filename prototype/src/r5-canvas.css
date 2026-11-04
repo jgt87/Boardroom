@@ -1,0 +1,182 @@
+/* Track R5: My shapes, colour menu, diagram data extras. */
+.shape-menu-mine {
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.shape-menu-mine > small {
+  padding: 2px 10px 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.shape-menu-mine > p {
+  margin: 0;
+  padding: 2px 10px 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.shape-menu-mine-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+.shape-menu-mine-row .shape-menu-row span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Colour menu: recent, saved and board colours plus the eyedropper. */
+.color-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.color-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: 232px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 8px 28px #0000001f;
+}
+.color-menu h3 {
+  margin: 6px 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.color-menu h3:first-child {
+  margin-top: 0;
+}
+.color-menu-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.color-menu-row > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.color-menu-swatch {
+  position: relative;
+  display: inline-flex;
+}
+.color-menu-swatch > button:first-child {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #0000002e;
+  border-radius: 6px;
+}
+.color-menu-swatch > .color-menu-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: none;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #25252c;
+  color: #ffffff;
+  font-size: 10px;
+  line-height: 14px;
+}
+.color-menu-swatch:hover > .color-menu-remove,
+.color-menu-swatch:focus-within > .color-menu-remove {
+  display: block;
+}
+.color-menu-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.color-menu-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #ffffff;
+  font-size: 12px;
+}
+
+.pen-smart-hint {
+  max-width: 240px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* Org chart and story map extras. */
+.canvas-person.hiring {
+  outline: 1.5px dashed #f59f00;
+}
+.canvas-person-flag {
+  color: #b45309;
+  font-size: 10px;
+  font-weight: 700;
+}
+.canvas-story-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 3px;
+  font-size: 10px;
+  color: #52525b;
+}
+.canvas-story-meta span {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #ffffffb3;
+}
+.story-card-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+}
+.story-card-fields label {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+}
+.story-card-fields input {
+  width: 140px;
+}
+.mind-shape-row {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 3px;
+  border-radius: 8px;
+  background: #ffffffee;
+  box-shadow: 0 2px 8px #0000001f;
+}
+.mind-shape-row button {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+  font-size: 11px;
+}
+.mind-shape-row button.active {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.mind-shape-row input {
+  width: 150px;
+  font-size: 11px;
+}

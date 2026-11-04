@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Help-center gaps, round 2
+- **Keyboard and access:**
+  - Place tools with Enter, extend the selection and resize from the keyboard, enter and leave groups.
+  - Alt+I describes the selection.
+  - Toolbars with arrow-key focus, spoken colour names, and a board outline by frame.
+  - Links to objects and focus views.
+- **Export and files:**
+  - Frame titles in PDFs, export of a chosen area, SVG of the selection, and Print.
+  - SVG and BMP images, spreadsheets into Grids, "Download original", pictures dropped from web pages, and Google Docs, Sheets, Slides and Loom embeds.
+  - Image flip and brightness.
+- **Library:** template previews, export and a picker; six templates; last-opened sort and list view; comment search; space emoji, descriptions and blueprints; a cross-board overview; object created and modified times; a brand kit.
+- **Presenting and records:**
+  - Timer, reactions and voting while presenting, and slide presenter notes.
+  - Hidden Kanban columns, record colours, number formats and colour rules.
+  - Doc list shortcuts and :emoji.
+  - Frame copies, comment pin colours, unread markers and drafts.
+- **Diagrams and canvas:**
+  - Mermaid sequence, class, state and ER diagrams, and shapes back to Mermaid; entity tables; saved custom shapes.
+  - Mind-map topic shapes and links; clusters in frames.
+  - A colour menu with recent colours and an eyedropper; typed lists; hidden frame titles.
+  - A smarter pen, and pen versus touch with palm rejection.
+
 ### Help-center gaps closed
 - **Paste and drop:** spreadsheet cells become a grid, a link becomes an embed or bookmark, Mermaid code becomes a diagram, and several lines become sticky notes. PDF, video and MOV files can be dropped on the board, and images over 4 MB are scaled down instead of refused.
 - **Exports:** copy as image (Ctrl+Shift+C), image size choice, PDF of selected frames, text and grid CSV, a read-only web page with pan and zoom, mind map outlines in Markdown, and passphrase-protected backups.

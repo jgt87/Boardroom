@@ -1,6 +1,18 @@
 // Canvas views for Slides decks (item 78), PowerPoint import (item 84) and open-ended activities (item 82).
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Copy, FileDown, Trash2, Play, X, StickyNote, Plus, RotateCcw } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  FileDown,
+  Trash2,
+  Play,
+  X,
+  StickyNote,
+  Plus,
+  RotateCcw,
+  NotebookPen,
+} from 'lucide-react';
 import type { Board, Item } from './model';
 import { createItem } from './model';
 import type { WidgetView, WidgetCtx } from './widget-types';
@@ -25,6 +37,7 @@ import {
   SLIDE_TITLE_MAX,
   SLIDE_BODY_MAX,
   SLIDE_OPTIONS_MAX,
+  SLIDE_NOTES_MAX,
   OPEN_LEN,
   OPEN_MAX,
 } from './specs-activities';
@@ -322,6 +335,27 @@ function CanvasDeck({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
           onVote={locked ? undefined : (id, delta) => set(x => voteOption(x, slide.id, id, delta))}
         />
       </div>
+      <div className="canvas-deck-notes" {...canvasControl} onKeyDown={e => e.stopPropagation()}>
+        {locked ? (
+          slide.notes && <p>{slide.notes}</p>
+        ) : (
+          <CanvasField
+            key={slide.id}
+            label="Presenter notes for this slide"
+            placeholder="Presenter notes (shown only to you while presenting)"
+            value={slide.notes ?? ''}
+            multiline
+            maxLength={SLIDE_NOTES_MAX}
+            onCommit={notes =>
+              set(x => {
+                const next = updateSlide(x, slide.id, { notes });
+                if (!notes.trim()) delete next.slides.find(s => s.id === slide.id)!.notes;
+                return next;
+              })
+            }
+          />
+        )}
+      </div>
       <ol className="canvas-deck-strip" aria-label="Slides" {...canvasControl}>
         {d.slides.map((s, k) => (
           <li key={s.id}>
@@ -370,6 +404,7 @@ export function DeckPresenter({
   boardRef: { current: Board };
 }) {
   const [target, setTarget] = useState<{ id: string; index: number } | null>(null),
+    [showNotes, setShowNotes] = useState(false),
     close = useRef<HTMLButtonElement>(null),
     opener = useRef<Element | null>(null);
   useEffect(() => {
@@ -424,6 +459,9 @@ export function DeckPresenter({
         } else if (e.key === 'End') {
           e.preventDefault();
           go(deck.slides.length - 1);
+        } else if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          setShowNotes(s => !s);
         }
         if (e.key !== 'Tab') e.stopPropagation();
       }}
@@ -457,10 +495,24 @@ export function DeckPresenter({
         <button aria-label="Next slide" disabled={index >= deck.slides.length - 1} onClick={() => go(index + 1)}>
           <ChevronRight size={18} />
         </button>
+        <button
+          aria-label="Presenter notes"
+          aria-pressed={showNotes}
+          title="Presenter notes (N)"
+          onClick={() => setShowNotes(!showNotes)}
+        >
+          <NotebookPen size={18} />
+        </button>
         <button ref={close} aria-label="Exit presentation" onClick={exit}>
           <X size={18} /> Exit
         </button>
       </div>
+      {showNotes && (
+        <aside className="deck-presenter-notes" aria-label="Presenter notes">
+          <h2>Notes</h2>
+          {slide.notes || 'No notes for this slide.'}
+        </aside>
+      )}
     </div>
   );
 }

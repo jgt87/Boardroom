@@ -5,7 +5,7 @@ import type { KanbanLane } from './record-views';
 import { CanvasField, canvasControl } from './canvas-fields';
 import { addChildRecord, deleteRecord, indentRecord, outdentRecord, recordTree, recordsError } from './records';
 import { RecordSavedViews } from './record-saved-views';
-import { schemaOf, validateRecordValues } from './record-schema';
+import { recordColors, schemaOf, validateRecordValues } from './record-schema';
 import { RecordFields, RecordFieldInput } from './record-fields';
 import { createItem } from './model';
 import { syncedCard } from './record-canvas';
@@ -27,6 +27,7 @@ import {
   numericRecordFields,
   recordCalcs,
   recordCalcNames,
+  toggleHiddenColumn,
 } from './record-query';
 import type { RecordCalc } from './record-query';
 
@@ -38,6 +39,7 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const fields = schema.fields.filter(f => !f.hidden);
   const relations = rows.some(r => r.dependsOn?.length);
   const group = schema.fields.find(f => f.id === item.recordGroup && f.type === 'select');
+  const kanbanColumns = group ? ['', ...group.options!] : statuses;
   const config = item.recordView ?? {},
     [search, setSearch] = useState(''),
     [selection, setSelection] = useState<string[]>([]);
@@ -118,6 +120,32 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
             }
           />
           <RecordCardHandle row={row} sourceId={item.id} onCreate={createCard} />
+          <select
+            {...canvasControl}
+            className="record-color"
+            aria-label={`Record colour: ${row.title || 'Untitled record'}`}
+            title="Record colour"
+            value={rows.find(r => r.id === row.id)?.color ?? ''}
+            style={{ background: rows.find(r => r.id === row.id)?.color ?? '#ffffff' }}
+            onChange={e => {
+              const color = e.target.value;
+              change(
+                rows.map(r => {
+                  if (r.id !== row.id) return r;
+                  const next: RecordRow = { ...r, color };
+                  if (!color) delete next.color;
+                  return next;
+                }),
+              );
+            }}
+          >
+            <option value="">No colour</option>
+            {recordColors.map(c => (
+              <option key={c.value} value={c.value}>
+                {c.name}
+              </option>
+            ))}
+          </select>
         </>
       );
   const change = (next: RecordRow[]) => {
@@ -262,6 +290,7 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
               key={r.id}
               data-record={r.id}
               data-depth={depth || undefined}
+              style={r.color ? { background: r.color } : undefined}
               onDragOver={dragOver}
               onDrop={event => dropRecord(event, r.id, groupField ? groupOf(r) : undefined)}
             >
@@ -533,11 +562,33 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
               </select>
             </label>
           )}
+          {view === 'kanban' && (
+            <details className="record-column-menu">
+              <summary>
+                Shown columns
+                {config.hiddenColumns?.length ? ` (${config.hiddenColumns.length} hidden)` : ''}
+              </summary>
+              <div role="group" aria-label="Shown columns">
+                {kanbanColumns.map(c => (
+                  <label key={c}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Show column: ${c || 'Unassigned'}`}
+                      checked={!config.hiddenColumns?.includes(c)}
+                      onChange={() => onView(toggleHiddenColumn(config, c))}
+                    />
+                    {c || 'Unassigned'}
+                  </label>
+                ))}
+              </div>
+            </details>
+          )}
           {view === 'kanban' ? (
             <KanbanView
               rows={group ? visible.map(r => ({ ...r, status: String(r.values?.[group.id] ?? '') })) : visible}
               allRows={group ? rows.map(r => ({ ...r, status: String(r.values?.[group.id] ?? '') })) : rows}
-              columns={group ? ['', ...group.options!] : statuses}
+              columns={kanbanColumns.filter(c => !config.hiddenColumns?.includes(c))}
+              onHideColumn={item.locked ? undefined : c => onView(toggleHiddenColumn(config, c))}
               onRows={
                 item.locked
                   ? undefined

@@ -5,8 +5,9 @@
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import type { Zippable } from 'fflate';
 import type { Board, ImageAsset } from './model.ts';
-import { assetRefsAcrossBoards, boardKey, cleanSpace } from './board-library.ts';
-import type { BoardMeta, KeyValueStore, Library } from './board-library.ts';
+import { assetRefsAcrossBoards, boardKey, cleanSpace, spaceInfoOf } from './board-library.ts';
+import type { BoardMeta, KeyValueStore, Library, SpaceInfo } from './board-library.ts';
+import { validTemplates, type UserTemplate } from './user-templates.ts';
 import {
   assetsFromManifest,
   dataUrlBytes,
@@ -34,19 +35,31 @@ type LibraryManifest = {
   spaces: string[];
   boards: SavedMeta[];
   assets: Record<string, ManifestAsset>;
+  /** Optional (track R3): space emoji and descriptions, and the saved templates of this browser. */
+  spaceInfo?: Record<string, SpaceInfo>;
+  templates?: UserTemplate[];
 };
 export type LibraryEntry = { id: string; board: Board; meta: Partial<BoardMeta> };
 export type BackupContents =
-  | { kind: 'library'; entries: LibraryEntry[]; spaces: string[]; assets: Record<string, ImageAsset>; skipped: number }
+  | {
+      kind: 'library';
+      entries: LibraryEntry[];
+      spaces: string[];
+      assets: Record<string, ImageAsset>;
+      skipped: number;
+      spaceInfo: Record<string, SpaceInfo>;
+      templates: UserTemplate[];
+    }
   | { kind: 'board'; board: Board; assets: Record<string, ImageAsset> };
 
-/** Bundle every stored board (trash included), the index details and all referenced media. */
+/** Bundle every stored board (trash included), the index details, saved templates and all referenced media. */
 export function encodeLibrary(
   kv: KeyValueStore,
   lib: Library,
   assets: Record<string, ImageAsset>,
   now = new Date().toISOString(),
-): { bytes: Uint8Array; boards: number; media: number } {
+  templates: UserTemplate[] = [],
+): { bytes: Uint8Array; boards: number; media: number; templates: number } {
   const files: Zippable = {};
   const manifest: LibraryManifest = {
     format: LIBRARY_FORMAT,
@@ -56,6 +69,13 @@ export function encodeLibrary(
     boards: [],
     assets: {},
   };
+  const info: Record<string, SpaceInfo> = {};
+  for (const name of Object.keys(lib.spaceInfo ?? {})) {
+    const i = spaceInfoOf(lib, name);
+    if (i.emoji || i.description) info[name] = i;
+  }
+  if (Object.keys(info).length) manifest.spaceInfo = info;
+  if (templates.length) manifest.templates = templates;
   for (const b of lib.boards) {
     const raw = kv.getItem(boardKey(b.id));
     if (!raw || !ID.test(b.id)) continue;
@@ -75,7 +95,12 @@ export function encodeLibrary(
     manifest.assets[id] = { mime: a.mime, width: a.width, height: a.height, name: a.name, file };
   }
   files[LIBRARY_MANIFEST] = [strToU8(JSON.stringify(manifest)), { level: 6 }];
-  return { bytes: zipSync(files), boards: manifest.boards.length, media: Object.keys(manifest.assets).length };
+  return {
+    bytes: zipSync(files),
+    boards: manifest.boards.length,
+    media: Object.keys(manifest.assets).length,
+    templates: templates.length,
+  };
 }
 
 /** True for a ZIP whose entries include the library manifest (names are read without inflating). */
@@ -173,7 +198,16 @@ export function decodeLibrary(
         .map(cleanSpace)
         .filter(Boolean)
     : [];
-  return { kind: 'library', entries: out, spaces, assets, skipped };
+  // Optional extras: cleaned through the same helpers as the live index and template store.
+  const spaceInfo: Record<string, SpaceInfo> = {};
+  if (manifest.spaceInfo && typeof manifest.spaceInfo === 'object' && !Array.isArray(manifest.spaceInfo))
+    for (const name of Object.keys(manifest.spaceInfo).slice(0, 500)) {
+      const clean = cleanSpace(name),
+        i = spaceInfoOf({ version: 1, activeId: '', boards: [], spaceInfo: manifest.spaceInfo }, name);
+      if (clean && (i.emoji || i.description)) spaceInfo[clean] = i;
+    }
+  const templates = validTemplates(manifest.templates);
+  return { kind: 'library', entries: out, spaces, assets, skipped, spaceInfo, templates };
 }
 
 /** Read any backup file: a library backup, a single-board .boardroom bundle or a JSON board (with embedded media). */

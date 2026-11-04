@@ -3,7 +3,7 @@ import { GripVertical, Link2, Trash2 } from 'lucide-react';
 import type { RecordRow } from './model';
 import { CanvasField, canvasControl } from './canvas-fields';
 import { timelineGeometry, shiftTimelineRecord, addDependency, removeDependency } from './records';
-import { timelineAxis, validateTimelineSettings, reorderTimelineRow } from './timeline-axis';
+import { timelineAxis, validateTimelineSettings, reorderTimelineRow, barSide, jumpToRecord } from './timeline-axis';
 import type { TimelineSettings } from './timeline-axis';
 
 export type TimelineCanvasProps = {
@@ -448,9 +448,11 @@ export function TimelineCanvas({
                               : `timeline-bar ${!row.start ? 'missing-start' : !row.end ? 'missing-end' : ''}`
                           }
                           title={bar.milestone ? `Milestone · ${row.start}` : undefined}
+                          data-record-color={row.color}
                           style={{
                             left: `${bar.left * 100}%`,
                             ...(bar.milestone ? {} : { width: `${Math.max(0.5, bar.width * 100)}%` }),
+                            ...(row.color ? { background: row.color, color: '#25252c' } : {}),
                           }}
                         >
                           {!bar.milestone && (
@@ -461,6 +463,17 @@ export function TimelineCanvas({
                             </>
                           )}
                         </span>
+                        {onRows && ['before', 'after'].includes(barSide(row, axis) ?? '') && (
+                          <button
+                            {...canvasControl}
+                            className={`timeline-jump timeline-jump-${barSide(row, axis)}`}
+                            aria-label={`Jump to ${row.title || 'Untitled record'} (${barSide(row, axis) === 'before' ? 'earlier' : 'later'} than this range)`}
+                            title="Move the range to show this bar"
+                            onClick={() => changeSettings(jumpToRecord(settings, axis, row))}
+                          >
+                            {barSide(row, axis) === 'before' ? '◂ Jump' : 'Jump ▸'}
+                          </button>
+                        )}
                         {onRows && !row.milestone && (!row.start || !row.end) && (
                           <button
                             {...canvasControl}

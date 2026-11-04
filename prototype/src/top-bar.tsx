@@ -16,6 +16,7 @@ import {
   storeTemplates,
 } from './user-templates';
 import { useExporters } from './use-exporters';
+import { ExportAreaOverlay } from './export-area-overlay';
 import { canEncrypt, encryptBackup } from './encrypted-backup';
 import { askPassphrase } from './passphrase-dialog';
 import { useLibraryFiles } from './use-library-files';
@@ -38,6 +39,7 @@ export function TopBar() {
     insertMedia,
     mediaFile,
     docImportFile,
+    docImportKind,
     importDocument,
     menu,
     outline,
@@ -66,9 +68,19 @@ export function TopBar() {
     newBoardFile = useRef<HTMLInputElement>(null);
   const libraryFiles = useLibraryFiles();
   useDismiss(menu, exportRef, () => setMenu(false));
-  const { exportCsv, exportTextCsv, exportPdf, exportRaster, exportSvg, exportBundle, copyImage, exportHtml } =
-    useExporters();
-  const [scale, setScale] = useState(2);
+  const {
+    exportCsv,
+    exportTextCsv,
+    exportPdf,
+    exportRaster,
+    exportSvg,
+    exportBundle,
+    copyImage,
+    exportHtml,
+    printBoard,
+  } = useExporters();
+  const [scale, setScale] = useState(2),
+    [areaPick, setAreaPick] = useState(false);
   // Ctrl+Shift+C copies the selection (or board) as an image (gap B11).
   const copyRef = useLatest(copyImage);
   useEffect(() => {
@@ -148,8 +160,8 @@ export function TopBar() {
               <button onClick={exportBundle}>
                 Save board with media<span>Compact .boardroom file for large boards</span>
               </button>
-              <button onClick={exportSvg}>
-                Export as SVG<span>Vector image</span>
+              <button onClick={() => exportSvg()}>
+                Export as SVG<span>{selected.length ? 'Selected objects only' : 'Whole board'}, vector image</span>
               </button>
               <button onClick={exportHtml}>
                 Export as web page<span>Read-only HTML copy with pan and zoom</span>
@@ -179,13 +191,24 @@ export function TopBar() {
               <button onClick={() => exportRaster('image/jpeg', scale)}>
                 Export as JPG<span>{selected.length ? 'Selection' : 'Whole board'}, white background</span>
               </button>
-              <button onClick={exportPdf}>
+              <button onClick={() => exportPdf()}>
                 Export as PDF
                 <span>
                   {selected.some(id => board.items.find(i => i.id === id)?.type === 'frame')
                     ? 'Selected frames'
                     : 'One page per slide'}
                 </span>
+              </button>
+              <button
+                onClick={() => {
+                  setMenu(false);
+                  setAreaPick(true);
+                }}
+              >
+                Export an area<span>Drag over the part of the board to export</span>
+              </button>
+              <button onClick={() => void printBoard()}>
+                Print<span>{selected.length ? 'Selected objects only' : 'Whole board'}</span>
               </button>
               <button onClick={exportCsv}>
                 Export to spreadsheet (CSV)<span>Selected cards, or records</span>
@@ -400,6 +423,19 @@ export function TopBar() {
           <Play size={15} fill="currentColor" />
         </button>
       </div>
+      {areaPick && (
+        <ExportAreaOverlay
+          onClose={() => setAreaPick(false)}
+          onExport={(format, area) => {
+            setAreaPick(false);
+            if (format === 'png' || format === 'jpg')
+              void exportRaster(format === 'png' ? 'image/png' : 'image/jpeg', scale, area);
+            else if (format === 'svg') exportSvg(area);
+            else if (format === 'pdf') void exportPdf(area);
+            else void printBoard(area);
+          }}
+        />
+      )}
       <input
         type="file"
         ref={file}
@@ -440,7 +476,7 @@ export function TopBar() {
         onChange={e => {
           const f = e.target.files?.[0];
           e.target.value = '';
-          if (f) void importDocument(f);
+          if (f) void importDocument(f, undefined, docImportKind.current === 'grid' ? 'grid' : undefined);
         }}
       />
       <input

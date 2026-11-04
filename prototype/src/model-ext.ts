@@ -1,6 +1,7 @@
 // Validation for optional document fields added by the next-20 integration.
 // Every field is optional; boards written before these features load unchanged.
 import { isValidAuthor } from './authors.ts';
+import { validItemTimes } from './item-times.ts';
 import { validateBoardSettings } from './board-settings.ts';
 import type { Board, Item, RecordRow } from './model.ts';
 import { normalizeNoteLink } from './model.ts';
@@ -240,6 +241,18 @@ function validateItem(i: Item, groups: Set<string>): void {
       i.crop.y + i.crop.h > 1.0001)
   )
     throw new Error('Invalid image crop.');
+  const adj = i.adjust;
+  if (
+    adj !== undefined &&
+    (i.type !== 'image' ||
+      !adj ||
+      typeof adj !== 'object' ||
+      Array.isArray(adj) ||
+      Object.keys(adj).some(k => !['flipX', 'flipY', 'brightness', 'contrast'].includes(k)) ||
+      [adj.flipX, adj.flipY].some(v => v !== undefined && typeof v !== 'boolean') ||
+      [adj.brightness, adj.contrast].some(v => v !== undefined && !finite(v, 0, 200)))
+  )
+    throw new Error('Invalid image adjustment.');
   if (
     i.emoji !== undefined &&
     (typeof i.emoji !== 'string' ||
@@ -251,6 +264,7 @@ function validateItem(i: Item, groups: Set<string>): void {
     throw new Error('Invalid sticky note marker.');
   if (i.author !== undefined && !isValidAuthor(i.author)) throw new Error('Invalid author name.');
   if (i.showAuthor !== undefined && typeof i.showAuthor !== 'boolean') throw new Error('Invalid author setting.');
+  if (!validItemTimes(i)) throw new Error('Invalid object times.');
   if (
     i.frame !== undefined &&
     (!i.frame ||
@@ -312,6 +326,8 @@ function validateRows(rows: RecordRow[]): void {
     if (r.link !== undefined && (typeof r.link !== 'string' || normalizeNoteLink(r.link) !== r.link))
       throw new Error('Invalid record link.');
     if (r.points !== undefined && !finite(r.points, 0, 1000)) throw new Error('Invalid estimate.');
+    if (r.color !== undefined && (typeof r.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(r.color)))
+      throw new Error('Invalid record colour.');
   }
   const error = recordsError(rows);
   if (error) throw new Error(`Invalid records: ${error}`);

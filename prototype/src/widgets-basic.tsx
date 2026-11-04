@@ -1,13 +1,14 @@
 // Registry entries for essential and facilitation widgets (items 21-23, 27-29, 43-44).
 import './widgets-basic.css';
-import { RotateCcw, Repeat2, Sheet } from 'lucide-react';
+import { RotateCcw, Repeat2, Sheet, FileUp } from 'lucide-react';
 import type { WidgetView } from './widget-types';
 import { stampKinds } from './specs-basic';
 import type { StampKind } from './specs-basic';
 import { pollTotal, resetPoll } from './facilitation-widgets';
 import type { PollData } from './facilitation-widgets';
 import { CardEditor, CardRender, FlipEditor, FlipRender } from './widgets-cards';
-import { data, patchItem, saveText, setData } from './widget-kit';
+import { data, patchItem, pickFile, saveText, setData } from './widget-kit';
+import { gridImportNote, importIntoGrid, isTableFile, readTableFile } from './table-file';
 import { toCsv } from './csv';
 import { gridRows } from './grid';
 import type { GridData } from './grid';
@@ -68,12 +69,38 @@ export const basicViews: WidgetView[] = [
     interactive: true,
     Render: GridRender,
     Editor: GridEditor,
-    actions: item => [
+    actions: (item, ctx) => [
       {
         label: 'Export CSV',
         icon: <Sheet size={16} />,
         run: () =>
           saveText('\uFEFF' + toCsv(gridRows(item.data as GridData)), `${(item.name || 'grid').slice(0, 60)}.csv`),
+      },
+      {
+        // Fill this grid from a spreadsheet file (gap b3-5); one undo step.
+        label: 'Import CSV or Excel',
+        icon: <FileUp size={16} />,
+        disabled: !!item.locked,
+        run: () =>
+          void pickFile(
+            '.csv,.tsv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          ).then(async file => {
+            if (!file) return;
+            try {
+              if (!isTableFile(file.name)) throw new Error('Choose a .csv, .tsv or .xlsx file.');
+              const rows = await readTableFile(file);
+              let note = '';
+              ctx.update(b => {
+                const made = importIntoGrid(b, item.id, rows);
+                if (!made) return b;
+                note = gridImportNote(made.data, made.truncated);
+                return made.board;
+              });
+              if (note) ctx.display(note);
+            } catch (err) {
+              ctx.display((err as Error).message || 'The file could not be imported.');
+            }
+          }),
       },
     ],
   },

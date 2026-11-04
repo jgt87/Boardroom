@@ -11,7 +11,10 @@ import {
   radiusKinds,
 } from './shapes';
 import type { ShapeKind } from './shapes';
-import { Minus, MoveUpRight, CornerUpRight, Network, Circle } from 'lucide-react';
+import { Minus, MoveUpRight, CornerUpRight, Network, Circle, Table2, Shapes, X } from 'lucide-react';
+import { loadCustomShapes, removeCustomShape, storeCustomShapes } from './custom-shapes';
+import type { CustomShape } from './custom-shapes';
+import './r5-canvas.css';
 
 export const DEFAULT_BORDER = {
   borderColor: '#2d2d34',
@@ -233,12 +236,16 @@ export function CompactShapesMenu({
   onLine,
   onShape,
   onKind,
+  onCustom,
 }: {
   onLine: (preset: LinePreset) => void;
   onShape: (kind: ShapeKind) => void;
-  onKind: (kind: 'divider' | 'mermaid') => void;
+  onKind: (kind: 'divider' | 'mermaid' | 'entity') => void;
+  /** Place a saved custom shape (track R5). */
+  onCustom?: (shape: CustomShape) => void;
 }) {
-  const [more, setMore] = useState(false);
+  const [more, setMore] = useState(false),
+    [mine, setMine] = useState<CustomShape[]>(() => (onCustom ? loadCustomShapes() : []));
   if (more)
     return (
       <>
@@ -277,6 +284,41 @@ export function CompactShapesMenu({
       </button>
       <hr />
       {row('Diagram', <Network size={16} />, () => onKind('mermaid'))}
+      {row('Entity table', <Table2 size={16} />, () => onKind('entity'))}
+      {onCustom && (
+        <>
+          <hr />
+          <div className="shape-menu-mine" role="group" aria-label="My shapes">
+            <small>My shapes</small>
+            {mine.length ? (
+              mine.map(s => (
+                <span key={s.id} className="shape-menu-mine-row">
+                  <button className="shape-menu-row" onClick={() => onCustom(s)}>
+                    <span className="shape-menu-icon" aria-hidden="true">
+                      <Shapes size={16} />
+                    </span>
+                    <span>{s.name}</span>
+                  </button>
+                  <button
+                    className="icon-button"
+                    aria-label={`Remove shape ${s.name}`}
+                    title="Remove from My shapes"
+                    onClick={() => {
+                      const next = removeCustomShape(mine, s.id);
+                      storeCustomShapes(next);
+                      setMine(next);
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                </span>
+              ))
+            ) : (
+              <p>Right-click a selection and choose Save as shape.</p>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

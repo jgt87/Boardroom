@@ -25,7 +25,9 @@ import { PresentationPanel, PresentOverlay } from './presentation';
 import { TalktrackPanel, PhotoboothPanel, StickiesPanel } from './capture-panels';
 import { placeNotes } from './sticky-detect';
 import { validateDiagram } from './diagram-validation';
-import { loadTemplates, removeTemplate, storeTemplates, templatePayload } from './user-templates';
+import { sortFramesByPosition } from './frame-workflow';
+import { editTemplate, loadTemplates, removeTemplate, storeTemplates, templatePayload } from './user-templates';
+import { useLibraryFiles } from './use-library-files';
 import { pastePayload } from './clipboard';
 import { moveInPresentation, setFrameNotes, setHiddenSlide, replaceText } from './navigation';
 import {
@@ -35,6 +37,8 @@ import {
   renameVotingResult,
   deleteVotingResult,
   voteLabel,
+  votingResultText,
+  setCommentColor,
 } from './facilitation-rules';
 import { VotingClock } from './facilitation-actions';
 import { PreviewContext, PrototypePreview } from './prototype-preview';
@@ -45,6 +49,7 @@ import { ReactionsPanel, AuthorsPanel } from './collab-extras';
 import {
   startVoting,
   endVoting,
+  castVote,
   addThread,
   replyThread,
   setResolved,
@@ -111,6 +116,8 @@ export function FloatingPanels() {
     setMdPaste,
     setPanel,
     setPresentPanel,
+    setPresenting,
+    svg,
     setSearchOpen,
     setSelected,
     setThread,
@@ -138,6 +145,7 @@ export function FloatingPanels() {
     setTemplatesFor(facil);
     if (facil === 'templates') setUserTemplates(loadTemplates());
   }
+  const libraryFiles = useLibraryFiles();
   return (
     <>
       {detailsId === selectedItem?.id && selectedItem?.type === 'note' && (
@@ -237,6 +245,15 @@ export function FloatingPanels() {
             }
             onRenameResult={(index, name) => run(b => renameVotingResult(b, index, name))}
             onDeleteResult={index => run(b => deleteVotingResult(b, index))}
+            onPlaceResult={index => {
+              const result = boardRef.current.votingResults?.[index];
+              if (!result) return;
+              const c = toWorld(size.w / 2, size.h / 2),
+                text = { ...createItem('text', c.x - 160, c.y - 100), w: 320, text: votingResultText(result) };
+              update({ ...boardRef.current, items: [...boardRef.current.items, text] });
+              setSelected([text.id]);
+              display('Voting results placed on the board.');
+            }}
             onEnd={() => {
               try {
                 const r = endVoting(boardRef.current, voteLabel);
@@ -272,6 +289,17 @@ export function FloatingPanels() {
               const next = removeTemplate(userTemplates, id);
               if (storeTemplates(next)) setUserTemplates(next);
             }}
+            onEditUser={(id, patch) => {
+              const next = editTemplate(userTemplates, id, patch);
+              if (storeTemplates(next)) setUserTemplates(next);
+              else display('The template could not be saved (browser storage is full).');
+            }}
+            onExport={libraryFiles.exportTemplateFile}
+            onImport={file =>
+              void libraryFiles.importTemplateFile(file).then(next => {
+                if (next) setUserTemplates(next);
+              })
+            }
             onInsertUser={t => {
               const payload = templatePayload(t);
               if (!payload) return display('This template can no longer be read.');
@@ -405,11 +433,13 @@ export function FloatingPanels() {
             <aside className="comment-popover floating" style={{ left, top }} aria-label="Comment thread">
               {existing ? (
                 <CommentThreadView
+                  key={existing.id}
                   thread={existing}
                   names={mentionNames}
                   onReply={text => run(b => replyThread(b, existing.id, text))}
                   onEdit={(messageId, text) => run(b => editMessage(b, existing.id, messageId, text))}
                   onPin={pinned => run(b => setPinned(b, existing.id, pinned))}
+                  onColor={color => run(b => setCommentColor(b, existing.id, color))}
                   onReact={(messageId, emoji) => run(b => toggleReaction(b, existing.id, messageId, emoji))}
                   onResolve={r => {
                     run(b => setResolved(b, existing.id, r));
@@ -501,6 +531,10 @@ export function FloatingPanels() {
           <PresentationPanel
             board={board}
             onMove={(id, delta) => update(moveInPresentation(boardRef.current, id, delta))}
+            onSort={() => {
+              update(sortFramesByPosition(boardRef.current));
+              display('Frames are now ordered by position.');
+            }}
             onStart={startPresenting}
             onHide={(id, hidden) => run(b => setHiddenSlide(b, id, hidden))}
             onNotes={(id, notes) => run(b => setFrameNotes(b, id, notes))}
@@ -527,6 +561,39 @@ export function FloatingPanels() {
           size={size}
           onCamera={setCamera}
           onExit={stopPresenting}
+          getOrigin={() => {
+            const r = svg.current?.getBoundingClientRect();
+            return r ? { x: r.left, y: r.top } : { x: 0, y: 0 };
+          }}
+          onCanvas={frame => {
+            setPresenting(null);
+            setSelected([frame.id]);
+          }}
+          timerOn={timerOn}
+          onTimer={() => setTimerOn(!timerOn)}
+          onStartVote={ids => {
+            try {
+              update(startVoting(boardRef.current, ids, 3));
+              display('Voting started on this slide: 3 votes. Use + and − on each object.');
+            } catch (err) {
+              display((err as Error).message);
+            }
+          }}
+          onEndVote={() => {
+            try {
+              update(endVoting(boardRef.current, voteLabel).board);
+              display('Voting ended. Results are saved with the board.');
+            } catch (err) {
+              display((err as Error).message);
+            }
+          }}
+          onVote={(id, delta) => {
+            try {
+              update(castVote(boardRef.current, id, delta));
+            } catch (err) {
+              display((err as Error).message);
+            }
+          }}
         />
       )}
       {cropId &&

@@ -25,8 +25,10 @@ import { adoptIntoContainers, insertionPreview } from './autolayout';
 import { canCopyToRecords, copyToRecords, recordDropAt } from './record-canvas';
 import { adoptGridObjects, detachGridObjects, gridDropAt } from './grid-canvas';
 import { stackNext, simplify, strokeFromPoints, eraseAt, eraseAlong, nearestAlong } from './board-tools';
-import { recognizeStroke, lassoSelect } from './pen-smart';
+import { recognizeStroke, lassoSelect, lineEnds, isScribble, scribbleTargets } from './pen-smart';
 import { peelNote } from './specs-stickypad';
+import { newPenState, pointerPolicy, ignoreTouch, penDown, penUp } from './pointer-input';
+import type { PenState } from './pointer-input';
 
 /** Topmost object a connector being drawn would attach to at `p` (item 113). */
 const connectTargetAt = (board: { items: Item[] }, p: Point, fromId?: string) =>
@@ -43,7 +45,10 @@ import { isShapeKind } from './shapes';
 /** Pointer gestures on the canvas: select, move, resize, pan, draw, erase, connect, bend and label drags. */
 export function useCanvasGestures(core: BoardCore) {
   const touches = useRef(new Map<number, { x: number; y: number }>()),
-    pinch = useRef<{ camera: Camera; a: { x: number; y: number }; b: { x: number; y: number } } | null>(null);
+    pinch = useRef<{ camera: Camera; a: { x: number; y: number }; b: { x: number; y: number } } | null>(null),
+    // Pen and palm handling (track R5) and the pointer that owns the current gesture.
+    pen = useRef<PenState>(newPenState()),
+    owner = useRef<{ id: number; touch: boolean } | null>(null);
   const {
     setDropLine,
     display,
@@ -94,6 +99,7 @@ export function useCanvasGestures(core: BoardCore) {
   function cancelGesture() {
     const g = gesture.current;
     gesture.current = null;
+    owner.current = null;
     if (g?.mode === 'pan') setCamera(g.camera);
     if (g && 'originalIds' in g && g.originalIds) setSelected(g.originalIds);
     setDraft(null);
@@ -182,7 +188,30 @@ export function useCanvasGestures(core: BoardCore) {
     if (touches.current.size < 2) pinch.current = null;
     return true;
   }
+  /** Owning pointer of the active gesture: other pens or fingers do not steer it (track R5). */
+  const foreign = (e: React.PointerEvent) =>
+    e.pointerType !== 'mouse' && !!owner.current && owner.current.id !== e.pointerId;
   function pointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    const policy = pointerPolicy(pen.current, e, tool, performance.now());
+    if (policy === 'ignore') return;
+    if (e.pointerType === 'pen') {
+      pen.current = penDown(pen.current, e);
+      // The pen wins over a resting palm: drop its gesture and any pinch, keeping the camera where it is.
+      if (owner.current?.touch) {
+        gesture.current = null;
+        owner.current = null;
+        setDraft(null);
+        setMarquee(null);
+      }
+      touches.current.clear();
+      pinch.current = null;
+    }
+    const before = gesture.current;
+    startGesture(e, policy === 'pan');
+    if (gesture.current && gesture.current !== before)
+      owner.current = { id: e.pointerId, touch: e.pointerType === 'touch' };
+  }
+  function startGesture(e: React.PointerEvent<SVGSVGElement>, fingerPans: boolean) {
     if (touchDown(e)) return;
     if (
       (e.target as Element).closest('textarea,input,select,video,iframe,.mindmap-canvas-editor') ||
@@ -222,6 +251,10 @@ export function useCanvasGestures(core: BoardCore) {
       return;
     }
     e.currentTarget.setPointerCapture(e.pointerId);
+    if (fingerPans) {
+      gesture.current = { ...base, mode: 'pan' };
+      return;
+    }
     if (tool === 'stack' && e.button === 0 && !space.current) {
       const r = stackNext(current, stackLast.current, start, fill, (x, y, f) => createItem('note', x, y, f));
       stackLast.current = r.note.id;
@@ -366,7 +399,8 @@ export function useCanvasGestures(core: BoardCore) {
     }
   }
   function pointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (touchMove(e)) return;
+    if (ignoreTouch(pen.current, e, performance.now())) return;
+    if (touchMove(e) || foreign(e)) return;
     const g = gesture.current;
     if (!g) return;
     const p = toWorld(e.clientX, e.clientY),
@@ -452,7 +486,14 @@ export function useCanvasGestures(core: BoardCore) {
     }
   }
   function pointerUp(e: React.PointerEvent<SVGSVGElement>) {
-    if (touchUp(e)) return;
+    const now = performance.now();
+    if (e.pointerType === 'pen') pen.current = penUp(pen.current, e, now);
+    else if (ignoreTouch(pen.current, e, now)) {
+      touches.current.delete(e.pointerId);
+      return;
+    }
+    if (touchUp(e) || foreign(e)) return;
+    owner.current = null;
     const g = gesture.current;
     if (!g) return;
     gesture.current = null;
@@ -506,16 +547,29 @@ export function useCanvasGestures(core: BoardCore) {
           ),
         );
       }
-      // Smart pen: a recognisable stroke becomes a real shape or line (one undo step).
+      // Smart pen: scribbling over ink erases it (track R5); unlocked strokes only, one undo step.
+      if (g.item.type === 'pen' && penMode === 'smart' && isScribble(absolutePoints(g.item))) {
+        const erase = new Set(editableIds(g.board, scribbleTargets(g.board.items, absolutePoints(g.item))));
+        if (erase.size) {
+          update({ ...g.board, items: g.board.items.filter(i => !erase.has(i.id)) });
+          setSelected([]);
+          display(`Erased ${erase.size} stroke${erase.size === 1 ? '' : 's'}.`);
+          return;
+        }
+      }
+      // Smart pen: a recognisable stroke becomes a real shape or line (one undo step). A line drawn between
+      // two objects becomes a connector bound to them (track R5).
       const recognized = g.item.type === 'pen' && penMode === 'smart' ? recognizeStroke(absolutePoints(g.item)) : null;
       if (recognized) {
+        const ends = recognized.kind === 'line' ? lineEnds(g.board.items, recognized, 12 / g.camera.z) : {};
         const shape =
           recognized.kind === 'line'
             ? {
                 ...createItem('arrow', recognized.x, recognized.y),
                 w: recognized.w,
                 h: recognized.h,
-                connector: { endHead: 'none' as const },
+                ...ends,
+                connector: ends.from && ends.to ? {} : { endHead: 'none' as const },
               }
             : {
                 ...createItem(recognized.kind, recognized.x, recognized.y, '#ffffff'),
@@ -565,6 +619,9 @@ export function useCanvasGestures(core: BoardCore) {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   }
   function pointerCancel(e: React.PointerEvent<SVGSVGElement>) {
+    if (e.pointerType === 'pen') pen.current = penUp(pen.current, e, performance.now());
+    if (foreign(e)) return;
+    owner.current = null;
     touches.current.delete(e.pointerId);
     if (touches.current.size < 2) pinch.current = null;
     cancelGesture();

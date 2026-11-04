@@ -103,3 +103,36 @@ export function reorderTimelineRow(rows: RecordRow[], id: string, before: string
     at = index < 0 ? rest.length : index;
   return [...rest.slice(0, at), row, ...rest.slice(at)];
 }
+const barDates = (row: RecordRow) => {
+  const a = Date.parse(row.start || row.end),
+    b = Date.parse(row.milestone ? row.start || row.end : row.end || row.start);
+  return Number.isFinite(a) && Number.isFinite(b) ? { a, b } : null;
+};
+/**
+ * Where a record's bar lies relative to the visible range: 'before', 'after', 'inside', or null when it has no
+ * dates. `min` and `max` are the range's first and last day (epoch milliseconds), as returned by `timelineAxis`.
+ */
+export function barSide(row: RecordRow, range: { min: number; max: number }): 'before' | 'after' | 'inside' | null {
+  const d = barDates(row);
+  if (!d) return null;
+  if (d.b < range.min) return 'before';
+  if (d.a > range.max) return 'after';
+  return 'inside';
+}
+/**
+ * Shift the Timeline range so a record's bar is in view, keeping the range length. The bar starts a tenth of
+ * the way into the new range; a bar longer than the range widens it.
+ */
+export function jumpToRecord(
+  settings: TimelineSettings,
+  range: { min: number; max: number },
+  row: RecordRow,
+): TimelineSettings {
+  const d = barDates(row);
+  if (!d) return settings;
+  const length = Math.max(range.max - range.min, d.b - d.a),
+    start = Math.max(Date.parse('0001-01-01'), d.a - Math.round((length * 0.1) / DAY) * DAY),
+    end = Math.min(Date.parse('9999-12-31'), Math.max(d.b, start + length));
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+  return { ...settings, start: iso(start), end: iso(end), fit: false };
+}

@@ -378,3 +378,28 @@ export function reorderGrid(g: GridData, axis: 'row' | 'column', from: number, t
 
 /** Grid cells as CSV rows (merged areas keep their text in the top-left cell). Gap B4. */
 export const gridRows = (g: GridData): string[][] => g.cells.map(row => [...row]);
+
+/**
+ * Grid holding spreadsheet rows (CSV, TSV or XLSX, gap b3-5), capped at the grid limit. With `base`, the
+ * grid's alignment and in-range cell anchors are kept; merges, colours and sizes are reset to fit the data.
+ */
+export function gridFromTable(rows: string[][], base?: GridData): { data: GridData; truncated: boolean } {
+  const r = Math.min(Math.max(rows.length, 1), GRID_MAX),
+    c = Math.min(
+      rows.reduce((m, row) => Math.max(m, row.length), 1),
+      GRID_MAX,
+    );
+  const data = newGrid(r, c);
+  for (let y = 0; y < r; y++) for (let x = 0; x < c; x++) data.cells[y][x] = (rows[y]?.[x] ?? '').slice(0, 2000);
+  if (base) {
+    data.align = base.align;
+    const objects = base.objects?.filter(o => o.r < r && o.c < c);
+    if (objects?.length) data.objects = objects;
+  }
+  return {
+    data,
+    truncated: rows.length > GRID_MAX || rows.some(row => row.length > GRID_MAX || row.some(v => v.length > 2000)),
+  };
+}
+/** Display size for a grid of `rows` × `cols` cells. */
+export const gridSize = (rows: number, cols: number) => ({ w: Math.max(240, cols * 140), h: Math.max(80, rows * 40) });

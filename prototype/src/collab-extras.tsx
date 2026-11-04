@@ -14,6 +14,8 @@ export const reactionChoices = [
   { emoji: '👏', label: 'Applause' },
 ];
 const REACTION_EVENT = 'boardroom:reaction';
+/** Float a reaction across this screen (presentation bar and Reactions panel). */
+export const sendReaction = (emoji: string) => window.dispatchEvent(new CustomEvent(REACTION_EVENT, { detail: emoji }));
 const stopKeys = (onClose: () => void) => (e: React.KeyboardEvent) => {
   e.stopPropagation();
   if (e.key === 'Escape') onClose();
@@ -30,12 +32,7 @@ export function ReactionsPanel({ onClose }: { onClose: () => void }) {
       </div>
       <div className="reaction-choices" role="group" aria-label="Send a reaction">
         {reactionChoices.map(r => (
-          <button
-            key={r.emoji}
-            aria-label={r.label}
-            title={r.label}
-            onClick={() => window.dispatchEvent(new CustomEvent(REACTION_EVENT, { detail: r.emoji }))}
-          >
+          <button key={r.emoji} aria-label={r.label} title={r.label} onClick={() => sendReaction(r.emoji)}>
             {r.emoji}
           </button>
         ))}

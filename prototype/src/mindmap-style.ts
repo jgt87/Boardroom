@@ -1,5 +1,6 @@
 // Mind-map layout and branch style (item 40). Pure: shared by previews, the dialog editor and the canvas editor.
-import type { Item, MindNode } from './model.ts';
+import type { Item, MindNode, MindNodeShape } from './model.ts';
+import { normalizeNoteLink } from './model.ts';
 
 /** `layout`: topics grow to the right (default), to both sides of the central topic, or downwards (gap E7). */
 export type MindLayoutKind = 'right' | 'both' | 'down';
@@ -159,6 +160,39 @@ export function setMindColor(nodes: MindNode[], id: string, color: string): Mind
     const next = { ...n };
     if (color) next.color = color.toLowerCase();
     else delete next.color;
+    return next;
+  });
+}
+/** Corner radius of a topic box for its shape (track R5); `underline` draws no box. */
+export const mindShapeRx = (shape: MindNodeShape | undefined): number =>
+  shape === 'rect' ? 0 : shape === 'pill' ? MIND_NODE_H / 2 : 9;
+export const mindShapeLabels: Record<MindNodeShape, string> = {
+  rounded: 'Rounded',
+  rect: 'Square',
+  pill: 'Pill',
+  underline: 'Line',
+};
+/**
+ * Set a topic's shape (the default 'rounded' is stored as no shape) or web link (an empty link clears it).
+ * Links are normalised to http(s); anything else throws a readable error.
+ */
+export function setMindTopic(
+  nodes: MindNode[],
+  id: string,
+  patch: { shape?: MindNodeShape; link?: string },
+): MindNode[] {
+  const link = 'link' in patch ? normalizeNoteLink(patch.link ?? '') : undefined;
+  return nodes.map(n => {
+    if (n.id !== id) return n;
+    const next = { ...n };
+    if ('shape' in patch) {
+      if (patch.shape && patch.shape !== 'rounded') next.shape = patch.shape;
+      else delete next.shape;
+    }
+    if ('link' in patch) {
+      if (link) next.link = link;
+      else delete next.link;
+    }
     return next;
   });
 }

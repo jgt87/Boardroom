@@ -1,7 +1,8 @@
 // Shared helpers for widget views: data access, one-step updates and the editor dialog shell.
 import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
-import type { Item } from './model';
+import type { ImageAsset, Item } from './model';
+import { decodeDataUrl, originalFileName } from './images';
 import type { WidgetCtx } from './widget-types';
 
 export const data = <T,>(i: Item) => (i.data ?? {}) as T;
@@ -18,6 +19,30 @@ export function saveBlobFile(blob: Blob, name: string) {
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+/** Download the stored file of an image, video or PDF object under its original name (gap b3-4). */
+export function saveAssetFile(asset: ImageAsset, fallback: string) {
+  const { mime, bytes } = decodeDataUrl(asset.data);
+  saveBlobFile(new Blob([bytes as BlobPart], { type: mime || asset.mime }), originalFileName(asset, fallback));
+}
+/** Ask for one local file; resolves null when the chooser is dismissed without a choice. */
+export function pickFile(accept: string): Promise<File | null> {
+  return new Promise(resolve => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    input.hidden = true;
+    input.onchange = () => {
+      resolve(input.files?.[0] ?? null);
+      input.remove();
+    };
+    input.oncancel = () => {
+      resolve(null);
+      input.remove();
+    };
+    document.body.append(input);
+    input.click();
+  });
 }
 /** Download text as a file (spreadsheet and other exports from widget actions). */
 export function saveText(text: string, name: string, type = 'text/csv') {

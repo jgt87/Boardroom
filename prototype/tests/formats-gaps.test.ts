@@ -358,7 +358,7 @@ test('doc shortcuts: strikethrough, inline code, headings and paragraph', () => 
   assert.deepEqual(key('0', { ctrlKey: true, altKey: true }, 'Digit0'), { kind: 'block', block: 'p' });
   assert.equal(key('e', {}), null);
   assert.equal(key('x', { ctrlKey: true }), null, 'Ctrl+X stays cut');
-  assert.equal(key('4', { ctrlKey: true, altKey: true }, 'Digit4'), null);
+  assert.equal(key('7', { ctrlKey: true, altKey: true }, 'Digit7'), null);
 });
 
 // ---- I3 Status chips ----------------------------------------------------------------------------------

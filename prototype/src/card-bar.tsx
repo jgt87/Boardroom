@@ -18,6 +18,7 @@ import type { CardData } from './facilitation-widgets';
 import { cardStatuses, tshirtSizes } from './facilitation-widgets';
 import { schemaOf } from './record-schema';
 import { useApp } from './board-app';
+import { spokenColor } from './access-tools';
 import { useLatest } from './use-latest';
 import { QUICK_REACTIONS, reactToNotes } from './notes';
 import { canSwitch, switchLabel, switchType } from './switch-type';
@@ -262,7 +263,8 @@ export function CardBar() {
                   type="button"
                   role="radio"
                   aria-checked={tagColor === c}
-                  aria-label={`Tag colour ${c}`}
+                  aria-label={`Tag colour ${spokenColor(c)}`}
+                  title={spokenColor(c)}
                   className={tagColor === c ? 'active' : ''}
                   style={{ background: c }}
                   onClick={() => setTagColor(c)}
