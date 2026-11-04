@@ -86,7 +86,9 @@ test('code block: line numbers stay level with wrapped lines, are not copied, an
   await page.keyboard.press('Control+Z');
   await expect(code.locator('.code-line[data-line]')).toHaveCount(3);
 
-  // The editor dialog offers both options too.
+  // The editor dialog offers both options too. Enter on a focused toolbar button presses that button, so move
+  // focus to the board first; Enter there opens the selected object's editor.
+  await page.locator('svg.canvas').focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Edit code block' });
   await dialog.getByLabel('Code text size').selectOption('20');
