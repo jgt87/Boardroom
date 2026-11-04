@@ -34,7 +34,8 @@ export type WidgetKind =
   | 'openended'
   | 'people'
   | 'usercard'
-  | 'shortcut';
+  | 'shortcut'
+  | 'stickypad';
 export const widgetKinds: WidgetKind[] = [
   'drawio',
   'card',
@@ -68,6 +69,7 @@ export const widgetKinds: WidgetKind[] = [
   'people',
   'usercard',
   'shortcut',
+  'stickypad',
 ];
 export type Kind =
   | 'note'
@@ -146,6 +148,8 @@ export type ConnectorFormat = {
   endHead?: ConnectorHead;
   avoid?: boolean;
   clearance?: number;
+  /** World-unit gap between an attached end and its object (item 113). */
+  gap?: number;
   bends?: Bend[];
   startSide?: Side;
   endSide?: Side;
@@ -191,6 +195,8 @@ export type Item = {
   emoji?: string;
   /** Display name of whoever created a sticky note on this device (item 85). */
   author?: string;
+  /** Show this note's author in its bottom-left corner (item 111). */
+  showAuthor?: boolean;
   frame?: FrameFormat;
   language?: string;
   /** Per-widget payload; shape is defined and validated by the widget registry (widget-types.ts). */
@@ -404,7 +410,26 @@ export function connectorSides(i: Item): [Side | undefined, Side | undefined] {
   const loop = !!i.from && i.from === i.to;
   return [i.connector?.startSide ?? (loop ? 'right' : undefined), i.connector?.endSide ?? (loop ? 'top' : undefined)];
 }
+/** Push attached ends `gap` units away from their objects, along the direction out of the object. */
+function withGap(i: Item, from: Item | undefined, to: Item | undefined, ends: [Point, Point]): [Point, Point] {
+  const gap = i.connector?.gap ?? 0;
+  if (!gap) return ends;
+  const push = (p: Point, owner: Item | undefined) => {
+    if (!owner) return p;
+    const c = { x: owner.x + owner.w / 2, y: owner.y + owner.h / 2 },
+      dx = p.x - c.x,
+      dy = p.y - c.y,
+      // Side midpoints and edge points: step along the outward side normal (dominant axis relative to size).
+      horizontal = Math.abs(dx) / Math.max(1, owner.w) >= Math.abs(dy) / Math.max(1, owner.h);
+    return horizontal ? { x: p.x + Math.sign(dx || 1) * gap, y: p.y } : { x: p.x, y: p.y + Math.sign(dy || 1) * gap };
+  };
+  return [push(ends[0], from), push(ends[1], to)];
+}
 export function endpoints(i: Item, items: Item[]): [Point, Point] {
+  const [from, to] = [items.find(n => n.id === i.from), items.find(n => n.id === i.to)];
+  return withGap(i, from, to, rawEndpoints(i, items));
+}
+function rawEndpoints(i: Item, items: Item[]): [Point, Point] {
   const from = items.find(n => n.id === i.from),
     to = items.find(n => n.id === i.to);
   const [startSide, endSide] = connectorSides(i);

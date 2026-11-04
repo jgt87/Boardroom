@@ -273,6 +273,8 @@ function useBoardCore() {
   }, [viewPrefs.dnd]);
   const navigationRef = useLatest(viewPrefs.navigation);
   const [commandsOpen, setCommandsOpen] = useState(false);
+  const [connectTarget, setConnectTarget] = useState<string | null>(null),
+    [peeling, setPeeling] = useState<string | null>(null);
   const setViewPrefs = (patch: Partial<ViewPrefs>) =>
     setViewPrefsState(prev => {
       const next = { ...prev, ...patch };
@@ -703,6 +705,10 @@ function useBoardCore() {
       kind === 'stamp' && pendingPlacement?.startsWith('stamp:') ? stampChoice(pendingPlacement.slice(6)) : null;
     if (stamp) Object.assign(item, { data: stamp.data, fill: stamp.fill });
     if (kind === 'mermaid') item.text = starters.Flowchart;
+    // Compact shapes menu line presets (item 109).
+    if (kind === 'arrow' && pendingPlacement === 'line:line') item.connector = { endHead: 'none' };
+    if (kind === 'arrow' && pendingPlacement === 'line:elbow') item.connector = { path: 'elbow' };
+    if (kind === 'arrow' && pendingPlacement?.startsWith('line:')) setPendingPlacement(null);
     if (kind === 'mindmap') item.nodes = [{ id: crypto.randomUUID(), parent: null, text: 'Central topic' }];
     if (kind === 'code') {
       item.text = '// Start writing code';
@@ -792,8 +798,15 @@ function useBoardCore() {
       return;
     }
     if (choice === 'stack') {
-      stackLast.current = null;
-      setTool('stack');
+      // Sticky stack (item 110): place a pad of notes in the current colour at the centre of the view.
+      setTool('select');
+      const c = toWorld(size.w / 2, size.h / 2),
+        pad = createItem('stickypad', 0, 0, fill);
+      pad.x = c.x - pad.w / 2;
+      pad.y = c.y - pad.h / 2;
+      update({ ...boardRef.current, items: [...boardRef.current.items, pad] });
+      setSelected([pad.id]);
+      display('Drag from the stack to take a sticky note.');
       return;
     }
     const view = viewFor(choice);
@@ -1284,6 +1297,10 @@ function useBoardCore() {
     setPenMode,
     commandsOpen,
     setCommandsOpen,
+    connectTarget,
+    setConnectTarget,
+    peeling,
+    setPeeling,
     lasso,
     setLasso,
     penPresetList,

@@ -1085,3 +1085,201 @@ kbd {
   margin: 0;
   overflow-wrap: anywhere;
 }
+/* Sticky note tool (item 109): two columns of note-shaped swatches and a Stack toggle. */
+.tool-options.note-options {
+  display: grid;
+  gap: 8px;
+  width: auto;
+  padding: 10px;
+}
+.note-swatches {
+  display: grid !important;
+  grid-template-columns: repeat(2, 44px);
+  gap: 6px !important;
+}
+.note-swatches button {
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 2px !important;
+  box-shadow: 0 1px 2px #00000026;
+}
+.note-swatches button.chosen,
+.note-swatches button[aria-pressed='true'] {
+  outline: 2px solid #4262ff;
+  outline-offset: 2px;
+}
+.note-stack-button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f1f1f5;
+  font-size: 13px;
+}
+.note-stack-button[aria-pressed='true'] {
+  background: #edf0ff;
+  color: #4262ff;
+}
+/* Rail and undo/redo stack as one column so they never overlap (item 109). Phones and short screens keep
+   their own layout (the wrapper is transparent there). */
+.tool-column {
+  display: contents;
+}
+@media (min-width: 721px) and (min-height: 761px) {
+  .tool-column {
+    position: absolute;
+    left: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 5;
+  }
+  .tool-column > .tools,
+  .tool-column > .history {
+    position: static;
+    transform: none;
+  }
+  .tool-column > .history {
+    padding: 6px;
+    gap: 3px;
+    border-radius: 13px;
+  }
+  .tool-column > .history .icon-button {
+    width: 40px;
+    height: 40px;
+    border-radius: 7px;
+  }
+}
+/* The sticky palette is as wide as its two swatch columns; Stack fills exactly that width. */
+.anchored-panel > .tool-options.note-options {
+  width: max-content;
+  padding: 8px;
+}
+.note-options .note-stack-button {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 4px;
+  font-size: 12px;
+}
+/* Main menu (item 109): a panel under the ⋮ button with cascading submenus. */
+.main-menu {
+  position: relative;
+}
+.main-menu-list {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: -8px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 250px;
+  max-height: calc(100vh - 100px);
+  overflow: visible;
+  padding: 6px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow:
+    0 8px 28px #0000001f,
+    0 0 0 1px #0000000d;
+}
+.main-menu-sub {
+  position: relative;
+}
+.main-menu-sub > .main-menu-list {
+  top: -6px;
+  left: calc(100% + 6px);
+}
+.main-menu-list > button,
+.main-menu-sub > button {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: left;
+  white-space: nowrap;
+}
+.main-menu-list > button > span,
+.main-menu-sub > button > span {
+  flex: 1;
+}
+.main-menu-list > button:hover,
+.main-menu-list > button:focus-visible,
+.main-menu-sub > button:hover,
+.main-menu-sub > button:focus-visible,
+.main-menu-sub > button.open {
+  background: #f1f1f5;
+  outline: none;
+}
+.main-menu-list > button.danger {
+  color: #d6455d;
+}
+.main-menu-list kbd {
+  border: 0;
+  background: none;
+  color: #696973;
+  font: inherit;
+  font-size: 12px;
+}
+.main-menu-list hr {
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid #ececf0;
+}
+.main-menu-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px #0000001f;
+}
+.main-menu-field form {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+}
+.main-menu-field input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid #d4d4db;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.main-menu-field button {
+  padding: 6px 10px;
+  border: 1px solid #d4d4db;
+  border-radius: 6px;
+  font-size: 13px;
+}
+/* Left side panels (History, Catch up, Details) push the tool rail to their right, like the reference. */
+.board-side-panel {
+  top: 84px;
+  left: 20px;
+  width: 340px;
+}
+@media (min-width: 721px) and (min-height: 761px) {
+  body:has(.board-side-panel) .tool-column {
+    left: 376px;
+    transition: left 0.15s ease;
+  }
+}
+/* Sticky stack: the curl settles back in after each peel (item 110). */
+.stickypad-curl {
+  animation: pad-curl 0.5s ease-out;
+}
+@keyframes pad-curl {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

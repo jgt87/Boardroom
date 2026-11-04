@@ -168,6 +168,7 @@ function validateItem(i: Item, groups: Set<string>): void {
       (c.labelAt !== undefined && !finite(c.labelAt, 0, 1)) ||
       (c.avoid !== undefined && typeof c.avoid !== 'boolean') ||
       (c.clearance !== undefined && !finite(c.clearance, 0, 80)) ||
+      (c.gap !== undefined && !finite(c.gap, 0, 40)) ||
       [c.startSide, c.endSide].some(s => s !== undefined && !sides.includes(s)) ||
       (c.bends !== undefined &&
         (!Array.isArray(c.bends) ||
@@ -213,6 +214,7 @@ function validateItem(i: Item, groups: Set<string>): void {
   )
     throw new Error('Invalid sticky note marker.');
   if (i.author !== undefined && !isValidAuthor(i.author)) throw new Error('Invalid author name.');
+  if (i.showAuthor !== undefined && typeof i.showAuthor !== 'boolean') throw new Error('Invalid author setting.');
   if (
     i.frame !== undefined &&
     (!i.frame ||

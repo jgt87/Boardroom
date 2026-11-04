@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { readableTextOn } from './board-tools';
 import { X } from 'lucide-react';
 import type { Board, Item } from './model';
 import { datasetChoices } from './notes';
@@ -29,17 +30,17 @@ export function AuthorTag({ item }: { item: Item }) {
   const label = item.author.length > max ? item.author.slice(0, max - 1) + '…' : item.author;
   return (
     <text
-      x={item.w - 8}
+      x={8}
       y={item.h - 8}
-      textAnchor="end"
+      textAnchor="start"
       fontSize={size}
       fontFamily="Arial"
-      fill="#22232b"
-      fillOpacity={0.65}
+      fill={readableTextOn(item.fill)}
+      fillOpacity={0.7}
       pointerEvents="none"
       className="note-author"
     >
-      <title>{`Created by ${item.author}`}</title>
+      <title>{`Last edited by ${item.author}`}</title>
       {label}
     </text>
   );

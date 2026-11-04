@@ -3,6 +3,23 @@ import type { Board, Item, Point } from './model.ts';
 export type Bounds = { x: number; y: number; w: number; h: number };
 export type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 export const handles: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+/** Screen-pixel gap between an object and its selection outline (item 112). */
+export const SELECT_GAP = 6;
+/** Screen-pixel distance of the connection dots outside the outline (item 112). */
+export const ANCHOR_GAP = 16;
+export type AnchorSide = 'top' | 'right' | 'bottom' | 'left';
+export const anchorSides: AnchorSide[] = ['top', 'right', 'bottom', 'left'];
+/** World position of a connection dot for bounds `b` at zoom `z`. */
+export function anchorPoint(b: Bounds, side: AnchorSide, z: number) {
+  const g = (SELECT_GAP + ANCHOR_GAP) / z;
+  return side === 'top'
+    ? { x: b.x + b.w / 2, y: b.y - g }
+    : side === 'bottom'
+      ? { x: b.x + b.w / 2, y: b.y + b.h + g }
+      : side === 'left'
+        ? { x: b.x - g, y: b.y + b.h / 2 }
+        : { x: b.x + b.w + g, y: b.y + b.h / 2 };
+}
 export type Guide = { axis: 'x' | 'y'; at: number; start: number; end: number };
 export function itemBounds(item: Item, items: Item[]): Bounds {
   if (item.type !== 'arrow') return { x: item.x, y: item.y, w: item.w, h: item.h };

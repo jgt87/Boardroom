@@ -973,3 +973,54 @@
   color: #5c5c66;
   padding: 6px 10px 0;
 }
+/* Compact Shapes and lines menu (item 109): a short list like the reference toolbar. */
+.shape-menu.compact {
+  width: 240px !important;
+  padding: 8px !important;
+}
+.shape-menu-compact {
+  display: flex;
+  flex-direction: column;
+}
+.shape-menu-compact hr {
+  width: 100%;
+  margin: 6px 0;
+  border: 0;
+  border-top: 1px solid #ececf0;
+}
+.shape-menu-list > .shape-menu-compact > .shape-menu-row,
+.shape-menu-row {
+  display: grid !important;
+  grid-template-columns: 22px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px !important;
+  border-radius: 8px;
+  font-size: 14px;
+  text-align: left;
+}
+.shape-menu-row:hover,
+.shape-menu-row:focus-visible {
+  background: #f1f1f5;
+}
+.shape-menu-row kbd {
+  border: 0;
+  background: none;
+  color: #696973;
+  font: inherit;
+  font-size: 12px;
+}
+.shape-menu-icon {
+  display: grid;
+  place-items: center;
+  color: #25252c;
+}
+.shape-menu-back {
+  margin-bottom: 6px;
+  padding: 6px 8px !important;
+  font-size: 13px;
+}
+.shape-menu.compact:has(.shape-pack-grid) {
+  width: 340px !important;
+}

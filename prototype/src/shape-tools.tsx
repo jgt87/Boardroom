@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { Item, ShapeStyle } from './model';
 import { shapePacks, shapeLabels, shapePath, shapeDetail, shapeSizes, textBox } from './shapes';
 import type { ShapeKind } from './shapes';
+import { Minus, MoveUpRight, CornerUpRight, Network } from 'lucide-react';
 
 export const DEFAULT_BORDER = {
   borderColor: '#2d2d34',
@@ -159,6 +160,65 @@ export function BorderControls({
           Mixed
         </span>
       )}
+    </div>
+  );
+}
+
+/** Line presets offered by the compact shapes menu (item 109). */
+export type LinePreset = 'line' | 'arrow' | 'elbow';
+
+/**
+ * Compact Shapes and lines menu (item 109): lines first, then the common shapes, Divider, More shapes
+ * (the full pack grid) and Diagram, each with its keyboard hint where one exists.
+ */
+export function CompactShapesMenu({
+  onLine,
+  onShape,
+  onKind,
+}: {
+  onLine: (preset: LinePreset) => void;
+  onShape: (kind: ShapeKind) => void;
+  onKind: (kind: 'divider' | 'mermaid') => void;
+}) {
+  const [more, setMore] = useState(false);
+  if (more)
+    return (
+      <>
+        <button className="shape-menu-back" onClick={() => setMore(false)}>
+          ‹ Back
+        </button>
+        <ShapeMenuItems onChoose={onShape} />
+      </>
+    );
+  const row = (label: string, icon: React.ReactNode, onClick: () => void, key?: string) => (
+    <button key={label} className="shape-menu-row" onClick={onClick}>
+      <span className="shape-menu-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span>{label}</span>
+      {key && <kbd>{key}</kbd>}
+    </button>
+  );
+  const glyph = (kind: ShapeKind) => <ShapeGlyph kind={kind} size={16} />;
+  return (
+    <div className="shape-menu-compact" role="group" aria-label="Shapes and lines choices">
+      {row('Line', <Minus size={16} style={{ transform: 'rotate(-45deg)' }} />, () => onLine('line'), 'L')}
+      {row('Arrow', <MoveUpRight size={16} />, () => onLine('arrow'))}
+      {row('Elbow arrow', <CornerUpRight size={16} />, () => onLine('elbow'))}
+      {row('Block arrow', glyph('arrowright'), () => onShape('arrowright'))}
+      <hr />
+      {row('Rectangle', glyph('rectangle'), () => onShape('rectangle'), 'R')}
+      {row('Oval', glyph('ellipse'), () => onShape('ellipse'), 'O')}
+      {row('Rhombus', glyph('diamond'), () => onShape('diamond'), 'D')}
+      {row('Triangle', glyph('triangle'), () => onShape('triangle'))}
+      {row('Divider', <Minus size={16} />, () => onKind('divider'))}
+      <button className="shape-menu-row shape-menu-more" onClick={() => setMore(true)}>
+        <span className="shape-menu-icon" aria-hidden="true" />
+        <span>More shapes</span>
+        <span aria-hidden="true">›</span>
+      </button>
+      <hr />
+      {row('Diagram', <Network size={16} />, () => onKind('mermaid'))}
     </div>
   );
 }

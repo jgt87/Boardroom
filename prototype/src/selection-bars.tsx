@@ -18,11 +18,13 @@ import {
   ExternalLink as OpenIcon,
   MessageSquare,
   EyeOff,
+  UserRound,
+  ArrowLeftRight,
 } from 'lucide-react';
 import type { Item, FrameFormat } from './model';
 import { TextControls } from './text-format';
 import { NoteSizeControl } from './sticky-tools';
-import { ConnectorControls } from './connectors';
+import { ConnectorControls, swapConnectorEnds } from './connectors';
 import { isShapeKind, shapeLabels } from './shapes';
 import { BorderControls } from './shape-tools';
 import { expandGroups } from './arrange';
@@ -63,7 +65,9 @@ export function SelectionBars() {
     setThread,
     toggleLock,
     update,
+    boardRef,
     widgetCtx,
+    authorName,
   } = useApp();
   return (
     <>
@@ -208,12 +212,49 @@ export function SelectionBars() {
           )}
           {selectedItem?.type === 'note' && selected.length === 1 && (
             <button
+              className={`icon-button ${selectedItem.showAuthor ? 'active' : ''}`}
+              aria-label="Show author"
+              aria-pressed={!!selectedItem.showAuthor}
+              title={
+                selectedItem.author
+                  ? `Show author (${selectedItem.author})`
+                  : 'Show author: set your name under Profile settings'
+              }
+              onClick={() =>
+                patch(
+                  selectedItem.showAuthor
+                    ? { showAuthor: false }
+                    : { showAuthor: true, ...(!selectedItem.author && authorName ? { author: authorName } : {}) },
+                )
+              }
+            >
+              <UserRound size={17} />
+            </button>
+          )}
+          {selectedItem?.type === 'note' && selected.length === 1 && (
+            <button
               className="icon-button"
               aria-label="Add connected note"
               title="Add connected note"
               onClick={quickAddNote}
             >
               <Plus size={17} />
+            </button>
+          )}
+          {selectedItem?.type === 'arrow' && selected.length === 1 && (
+            <button
+              className="icon-button"
+              aria-label="Swap line ends"
+              title="Swap line ends"
+              disabled={selectedItem.locked}
+              onClick={() =>
+                update({
+                  ...boardRef.current,
+                  items: boardRef.current.items.map(i => (i.id === selectedItem.id ? swapConnectorEnds(i) : i)),
+                })
+              }
+            >
+              <ArrowLeftRight size={17} />
             </button>
           )}
           {selectedItem?.type === 'arrow' && selected.length === 1 && (

@@ -10,7 +10,22 @@ import { canCopyToRecords, copyToRecords, recordDropAt } from './record-canvas';
 import { adoptGridObjects, detachGridObjects, gridDropAt } from './grid-canvas';
 import { stackNext, simplify, strokeFromPoints, eraseAt, eraseAlong, nearestAlong } from './board-tools';
 import { recognizeStroke, lassoSelect } from './pen-smart';
+import { peelNote } from './specs-stickypad';
 
+/** Topmost object a connector being drawn would attach to at `p` (item 113). */
+const connectTargetAt = (board: { items: Item[] }, p: Point, fromId?: string) =>
+  [...board.items]
+    .reverse()
+    .find(
+      i =>
+        !['arrow', 'pen', 'frame', 'stickypad'].includes(i.type) &&
+        !i.hidden &&
+        i.id !== fromId &&
+        p.x >= i.x &&
+        p.x <= i.x + i.w &&
+        p.y >= i.y &&
+        p.y <= i.y + i.h,
+    );
 /** A pen stroke's points in world coordinates. */
 const absolutePoints = (i: Item) => (i.points ?? []).map(p => ({ x: i.x + p.x, y: i.y + p.y }));
 import type { BoardCore, Gesture } from './board-app';
@@ -59,6 +74,8 @@ export function useCanvasGestures(core: BoardCore) {
     setCodeId,
     penMode,
     setLasso,
+    setConnectTarget,
+    setPeeling,
   } = core;
   const hit = (e: React.PointerEvent) => (e.target as Element).closest<SVGGElement>('[data-item]')?.dataset.item;
   function cancelGesture() {
@@ -70,6 +87,8 @@ export function useCanvasGestures(core: BoardCore) {
     setDropLine(null);
     setMarquee(null);
     setLasso(null);
+    setConnectTarget(null);
+    setPeeling(null);
     setGuides([]);
   }
   function transformed(g: Gesture, p: Point, shift: boolean, alt: boolean) {
@@ -195,7 +214,45 @@ export function useCanvasGestures(core: BoardCore) {
         ids: editableIds(current, selected),
         handle: (e.target as Element).getAttribute('data-resize') as Handle,
       };
-    else if (tool === 'select') {
+    else if (
+      (e.target as Element).getAttribute('data-anchor') &&
+      selectedItem &&
+      !selectedItem.locked &&
+      selected.length === 1
+    ) {
+      // Connection dot (item 112): drag out a connector that starts at the selected object.
+      const next = makePlacedItem('arrow', start);
+      next.x = start.x;
+      next.y = start.y;
+      next.w = 0;
+      next.h = 0;
+      next.from = selectedItem.id;
+      next.connector = { ...next.connector, path: 'curved', gap: 8 };
+      gesture.current = { ...base, mode: 'create', item: next };
+      setSelected([next.id]);
+      setDraft({ ...board, items: [...board.items, next] });
+    } else if (
+      tool === 'select' &&
+      item?.type === 'stickypad' &&
+      !item.locked &&
+      !e.shiftKey &&
+      (e.target as Element).getAttribute('data-pad-peel')
+    ) {
+      // Sticky stack (item 110): peel a new note off the pad and drag it; the pad stays.
+      const note = peelNote(item, (x, y, f) => createItem('note', x, y, f)),
+        withNote = {
+          ...base.board,
+          items: [
+            ...base.board.items.map(i =>
+              i.id === item.id ? { ...i, data: { ...i.data, peels: ((i.data?.peels as number) ?? 0) + 1 } } : i,
+            ),
+            note,
+          ],
+        };
+      setPeeling(note.id);
+      setSelected([note.id]);
+      gesture.current = { ...base, board: withNote, ids: [note.id], mode: 'move' };
+    } else if (tool === 'select') {
       if (item) {
         const group = expandGroups(current, [id!]),
           ids = e.shiftKey
@@ -240,7 +297,10 @@ export function useCanvasGestures(core: BoardCore) {
     else if (g.mode === 'endpoint' && g.moved)
       setDraft(moveConnectorEndpoint(g.board, g.ids[0], g.endpoint!, p, 12 / g.camera.z, !e.altKey));
     else if (g.mode === 'bend' && g.moved) setDraft(dragBend(g.board, g.ids[0], g.bend!, p));
-    else if (g.mode === 'lasso') {
+    if (g.mode === 'create' && g.item?.type === 'arrow') {
+      setConnectTarget(connectTargetAt(g.board, p, g.item.from)?.id ?? null);
+    }
+    if (g.mode === 'lasso') {
       g.path!.push(p);
       setLasso([...g.path!]);
     } else if (g.mode === 'erase') {
@@ -290,6 +350,12 @@ export function useCanvasGestures(core: BoardCore) {
       } else if (g.item.type === 'arrow') {
         g.item.w = dx;
         g.item.h = dy;
+        const over = connectTargetAt(g.board, p, g.item.from),
+          preview = clone(g.item);
+        if (over) preview.to = over.id;
+        else delete preview.to;
+        setDraft({ ...g.board, items: [...g.board.items, preview] });
+        return;
       } else if (g.moved)
         Object.assign(g.item, {
           x: Math.min(p.x, g.start.x),
@@ -304,6 +370,8 @@ export function useCanvasGestures(core: BoardCore) {
     const g = gesture.current;
     if (!g) return;
     gesture.current = null;
+    setConnectTarget(null);
+    setPeeling(null);
     const final = toWorld(e.clientX, e.clientY),
       moved = g.moved || Math.hypot(e.clientX - g.screen.x, e.clientY - g.screen.y) > 3;
     if (g.mode === 'lasso') {

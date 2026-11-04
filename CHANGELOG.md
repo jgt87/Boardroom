@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Look and behaviour matched to the reference board
+- **Main menu** (⋮ beside the board name) now has Board, Edit, View, Preferences, Accessibility and Assign status submenus, with keyboard navigation; menus close on Escape or a click outside.
+- **Tool rail:** Comment and + (tools) buttons; only one rail popup at a time; undo/redo sit below the rail at the same size, and the rail moves aside when History, Catch up or Details is open.
+- **Shapes and lines** is a compact list (Line, Arrow, Elbow arrow, Block arrow, Rectangle, Oval, Rhombus, Triangle, Divider, More shapes, Diagram). The **sticky note** popup is a two-column palette with a Stack button.
+- **Sticky stack:** a card holding a pad of notes with a curled corner; drag from the pad to take any number of notes (the note lifts while dragged and the curl settles back); drag the title to move the stack.
+- **Selection:** outline with a small gap, round corner handles, and four connection dots; drag a dot to draw a curved connector that previews its attachment, highlights the target and attaches to the nearest side, leaving a small gap. **Swap line ends** reverses a connector.
+- **Sticky authors:** a Show author button per note shows, bottom-left, the person who last edited its text.
+
 ### Parity with the live inventory: view menu, people, capture, templates
 - **View menu:** the zoom percentage now also offers 50–2000% presets, Fit to screen, and toggles for Grid, Object dimensions (W × H under the selection), Minimap, Spell check and full screen. Zoom goes up to 2000%.
 - **People** and **User card** objects show who works on a board, using the local profile name (no server accounts).

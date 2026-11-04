@@ -1,4 +1,5 @@
 import React from 'react';
+import { SELECT_GAP } from './interactions';
 import { readableTextOn } from './board-tools';
 import { Lock, Link as LinkIcon } from 'lucide-react';
 import { richKinds } from './model';
@@ -269,7 +270,7 @@ export function useRenderItem() {
           </foreignObject>
         )}
         {i.type === 'note' && <EmojiBadge item={i} />}
-        {i.type === 'note' && shown.showAuthors && <AuthorTag item={i} />}
+        {i.type === 'note' && (shown.showAuthors || i.showAuthor) && <AuthorTag item={i} />}
         {editing === i.id && (
           <foreignObject
             x={frame ? 0 : shape ? tb.x - 4 : 8}
@@ -318,10 +319,10 @@ export function useRenderItem() {
         {isSelected && (
           <g className="selection">
             <rect
-              x={-3 / camera.z}
-              y={-3 / camera.z}
-              width={i.w + 6 / camera.z}
-              height={i.h + 6 / camera.z}
+              x={-SELECT_GAP / camera.z}
+              y={-SELECT_GAP / camera.z}
+              width={i.w + (2 * SELECT_GAP) / camera.z}
+              height={i.h + (2 * SELECT_GAP) / camera.z}
               fill="none"
               stroke={i.locked ? '#8a8a94' : '#4262ff'}
               strokeDasharray={i.locked ? `${4 / camera.z} ${3 / camera.z}` : undefined}

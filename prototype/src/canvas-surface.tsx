@@ -1,6 +1,6 @@
 import { expandGroups } from './arrange';
 import React from 'react';
-import { selectionBounds, handles, handlePoint } from './interactions';
+import { selectionBounds, handles, handlePoint, SELECT_GAP, anchorSides, anchorPoint } from './interactions';
 import { dimensionLabel } from './view-prefs';
 import { connectorGeometry, ConnectorMarkers } from './connectors';
 import { bendHandles } from './connector-geometry';
@@ -41,6 +41,8 @@ export function CanvasSurface() {
     selected,
     viewPrefs,
     lasso,
+    connectTarget,
+    peeling,
     selectedItem,
     selectionLocked,
     setMindEditId,
@@ -277,10 +279,10 @@ export function CanvasSurface() {
               <g className="selection" transform={`translate(${camera.x} ${camera.y}) scale(${camera.z})`}>
                 {selected.length > 1 && (
                   <rect
-                    x={b.x - 3 / camera.z}
-                    y={b.y - 3 / camera.z}
-                    width={b.w + 6 / camera.z}
-                    height={b.h + 6 / camera.z}
+                    x={b.x - SELECT_GAP / camera.z}
+                    y={b.y - SELECT_GAP / camera.z}
+                    width={b.w + (2 * SELECT_GAP) / camera.z}
+                    height={b.h + (2 * SELECT_GAP) / camera.z}
                     fill="none"
                     stroke="#4262ff"
                     strokeWidth={1.5 / camera.z}
@@ -303,23 +305,51 @@ export function CanvasSurface() {
                   !selectionLocked &&
                   !(selected.length === 1 && selectedItem?.type === 'arrow') &&
                   handles.map(handle => {
-                    const p = handlePoint(b, handle);
+                    // Handles sit on the outline (item 112): round corners are drawn; sides only resize.
+                    const g = SELECT_GAP / camera.z,
+                      p = handlePoint({ x: b.x - g, y: b.y - g, w: b.w + 2 * g, h: b.h + 2 * g }, handle),
+                      corner = handle.length === 2,
+                      hit = (corner ? 11 : 7) / camera.z;
                     return (
                       <g key={handle}>
                         <rect
                           data-resize={handle}
-                          x={p.x - 11 / camera.z}
-                          y={p.y - 11 / camera.z}
-                          width={22 / camera.z}
-                          height={22 / camera.z}
+                          x={p.x - hit}
+                          y={p.y - hit}
+                          width={2 * hit}
+                          height={2 * hit}
                           fill="transparent"
-                          style={{ cursor: `${handle}-resize` }}
+                          style={{ cursor: handle + '-resize' }}
                         />
-                        <rect
-                          x={p.x - 4 / camera.z}
-                          y={p.y - 4 / camera.z}
-                          width={8 / camera.z}
-                          height={8 / camera.z}
+                        {corner && (
+                          <circle
+                            className="resize-handle"
+                            cx={p.x}
+                            cy={p.y}
+                            r={5 / camera.z}
+                            fill="white"
+                            stroke="#4262ff"
+                            strokeWidth={1.5 / camera.z}
+                            pointerEvents="none"
+                          />
+                        )}
+                      </g>
+                    );
+                  })}
+                {!editing &&
+                  !selectionLocked &&
+                  selected.length === 1 &&
+                  selectedItem &&
+                  !['arrow', 'pen', 'frame', 'stickypad'].includes(selectedItem.type) &&
+                  anchorSides.map(side => {
+                    const p = anchorPoint(b, side, camera.z);
+                    return (
+                      <g key={side} className="connect-anchor" style={{ cursor: 'crosshair' }}>
+                        <circle cx={p.x} cy={p.y} r={10 / camera.z} fill="transparent" data-anchor={side} />
+                        <circle
+                          cx={p.x}
+                          cy={p.y}
+                          r={4.5 / camera.z}
                           fill="white"
                           stroke="#4262ff"
                           strokeWidth={1.5 / camera.z}
@@ -348,7 +378,7 @@ export function CanvasSurface() {
                     y={h.at.y - (h.kind === 'bend' ? 6 : 5) / camera.z}
                     width={(h.kind === 'bend' ? 12 : 10) / camera.z}
                     height={(h.kind === 'bend' ? 12 : 10) / camera.z}
-                    rx={2 / camera.z}
+                    rx={(h.kind === 'bend' ? 6 : 5) / camera.z}
                     fill={h.kind === 'bend' ? '#4262ff' : '#ffffff'}
                     stroke="#4262ff"
                     strokeWidth={1.5 / camera.z}
@@ -361,10 +391,10 @@ export function CanvasSurface() {
                     data-connector-end={end}
                     cx={g[end].x}
                     cy={g[end].y}
-                    r={7 / camera.z}
-                    fill={selectedItem[end === 'start' ? 'from' : 'to'] ? '#4262ff' : '#ffffff'}
+                    r={6 / camera.z}
+                    fill="#ffffff"
                     stroke="#4262ff"
-                    strokeWidth={2 / camera.z}
+                    strokeWidth={1.5 / camera.z}
                     style={{ cursor: 'crosshair' }}
                   />
                 ))}
@@ -398,6 +428,40 @@ export function CanvasSurface() {
             pointerEvents="none"
           />
         ))}
+        {peeling && (
+          // A note peeled off a sticky stack is lifted while it is dragged (item 110).
+          <style>{`[data-item="${peeling}"]{filter:drop-shadow(0 12px 18px rgb(0 0 0 / 0.26));}`}</style>
+        )}
+        {connectTarget &&
+          (() => {
+            // Drop target while drawing a connector (item 113): shaded, outlined, with its connection points.
+            const target = shown.items.find(i => i.id === connectTarget);
+            if (!target) return null;
+            const b = { x: target.x, y: target.y, w: target.w, h: target.h },
+              g = SELECT_GAP / camera.z;
+            return (
+              <g
+                className="connect-target"
+                transform={`translate(${camera.x} ${camera.y}) scale(${camera.z})`}
+                pointerEvents="none"
+              >
+                <rect x={b.x} y={b.y} width={b.w} height={b.h} fill="#00000014" />
+                <rect
+                  x={b.x - g}
+                  y={b.y - g}
+                  width={b.w + 2 * g}
+                  height={b.h + 2 * g}
+                  fill="none"
+                  stroke="#4262ff"
+                  strokeWidth={1.5 / camera.z}
+                />
+                {anchorSides.map(side => {
+                  const p = anchorPoint(b, side, camera.z);
+                  return <circle key={side} cx={p.x} cy={p.y} r={4 / camera.z} fill="#4262ff" />;
+                })}
+              </g>
+            );
+          })()}
         {lasso && lasso.length > 1 && (
           <polygon
             className="lasso-path"

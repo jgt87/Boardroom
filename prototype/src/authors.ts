@@ -25,14 +25,20 @@ export function initials(name: string): string {
     .join('');
 }
 
-/** Record the author on sticky notes created by this change (new ids without an author). */
+/**
+ * Record the author on sticky notes: new notes without an author, and (item 111) notes whose text this
+ * change edited, so the shown author is the person who last wrote on the note.
+ */
 export function stampAuthors(previous: Board, next: Board, author: string): Board {
   const name = cleanAuthor(author);
   if (!name) return next;
-  const known = new Set(previous.items.map(i => i.id));
-  if (!next.items.some(i => i.type === 'note' && !i.author && !known.has(i.id))) return next;
-  return {
-    ...next,
-    items: next.items.map(i => (i.type === 'note' && !i.author && !known.has(i.id) ? { ...i, author: name } : i)),
+  const before = new Map(previous.items.map(i => [i.id, i]));
+  const needs = (i: Board['items'][number]) => {
+    if (i.type !== 'note') return false;
+    const old = before.get(i.id);
+    if (!old) return !i.author;
+    return old.text !== i.text && i.author !== name;
   };
+  if (!next.items.some(needs)) return next;
+  return { ...next, items: next.items.map(i => (needs(i) ? { ...i, author: name } : i)) };
 }

@@ -1,4 +1,4 @@
-import { test, expect, seed, openApp, item, savedBoard, waitForSave, openTools, chooseTool } from './helpers';
+import { test, expect, seed, openApp, item, savedBoard, waitForSave, openTools, chooseTool, fit } from './helpers';
 
 /** Place the chosen catalogue tool at the centre of the canvas. */
 async function placeTool(page: import('@playwright/test').Page, category: string, label: string) {
@@ -203,21 +203,31 @@ test('pen panel: smart pen turns a drawn box into a rectangle, lasso selects, pr
   await expect(page.getByLabel('Stroke width')).toHaveValue('5');
 });
 
-test('board menu sets status, background and a start view that is used on reload', async ({ page }) => {
+/** Open the main menu and follow a path of submenus, clicking the last entry. */
+async function mainMenu(page: import('@playwright/test').Page, ...path: string[]) {
+  if (await page.locator('.main-menu-list').count()) await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Main menu' }).click();
+  for (const [k, label] of path.entries()) {
+    const target = page
+      .locator('.main-menu-list')
+      .last()
+      .locator('[role="menuitem"],[role="menuitemcheckbox"]', { hasText: new RegExp(`^${label}`) })
+      .first();
+    if (k < path.length - 1) await target.hover();
+    else await target.click();
+  }
+}
+
+test('main menu sets status, background and a start view that is used on reload', async ({ page }) => {
   await seed(page, `return {...m.newBoard(),items:[{...m.createItem('note',2000,1500),id:'n',text:'Far'}]};`);
-  await page.getByRole('button', { name: 'Board menu' }).click();
-  const menu = page.getByRole('dialog', { name: 'Board settings' });
-  await menu
-    .getByRole('radiogroup', { name: 'Board status' })
-    .getByRole('radio', { name: /In review/ })
-    .click();
+  await mainMenu(page, 'Assign status', 'In review');
   await expect(page.locator('.board-status')).toHaveText('In review');
-  await menu.getByRole('radio', { name: 'Light Blue' }).click();
+  await mainMenu(page, 'Board', 'Background color', 'Light Blue');
   await expect(page.locator('svg.canvas')).toHaveCSS('background-color', 'rgb(227, 237, 255)');
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Fit to screen' }).click();
-  await page.getByRole('button', { name: 'Board menu' }).click();
-  await menu.getByRole('button', { name: 'Use current view' }).click();
+  await expect(page.locator('.main-menu-list')).toHaveCount(0);
+  await fit(page);
+  await mainMenu(page, 'Board', 'Start view', 'Use current view');
   await waitForSave(page, b => !!b.startView && b.status === 'review' && b.background === '#e3edff', 'settings saved');
   await page.reload();
   await expect(item(page, 'n')).toBeInViewport();
@@ -256,7 +266,7 @@ test('command palette runs a tool and a view action from the keyboard', async ({
   await expect(page.getByRole('complementary', { name: 'Validation report' })).toBeVisible();
 });
 
-test('board menu: history restores a deleted note, catch up, details, star and move to a space', async ({ page }) => {
+test('main menu: history restores a deleted note, catch up, details, star and move to a space', async ({ page }) => {
   await seed(
     page,
     `return {...m.newBoard(),title:'Plan',items:[{...m.createItem('note',0,0),id:'n',text:'Keep me'}]};`,
@@ -264,31 +274,31 @@ test('board menu: history restores a deleted note, catch up, details, star and m
   await item(page, 'n').click();
   await page.keyboard.press('Delete');
   await waitForSave(page, b => b.items.length === 0, 'note deleted');
-  const openMenu = () => page.getByRole('button', { name: 'Board menu' }).click();
-  await openMenu();
-  await page.getByRole('dialog', { name: 'Board settings' }).getByRole('button', { name: 'History' }).click();
+  await mainMenu(page, 'Board', 'History');
   const history = page.getByRole('complementary', { name: 'History' });
   await expect(history.getByText(/deleted sticky note/)).toBeVisible();
   await history.getByRole('button', { name: 'Restore' }).click();
   await waitForSave(page, b => b.items.some(i => i.id === 'n'), 'note restored');
   await history.getByRole('button', { name: 'Close history' }).click();
 
-  await openMenu();
-  await page.getByRole('dialog', { name: 'Board settings' }).getByRole('button', { name: 'Catch up' }).click();
+  await mainMenu(page, 'Board', 'Catch up');
   const catchUp = page.getByRole('complementary', { name: 'Catch up' });
-  await expect(catchUp.getByText(/1 added · 0 edited · 1 deleted|added ·/)).toBeVisible();
+  await expect(catchUp.getByText(/added ·/)).toBeVisible();
   await catchUp.getByRole('button', { name: 'Close catch up' }).click();
 
-  await openMenu();
-  const menu = page.getByRole('dialog', { name: 'Board settings' });
-  await menu.getByRole('button', { name: 'Star this board' }).click();
-  await menu.getByLabel('New space name').fill('Design');
-  await menu.getByRole('button', { name: 'Move', exact: true }).click();
-  await expect(menu.getByRole('radio', { name: 'Design' })).toHaveAttribute('aria-checked', 'true');
-  await menu.getByRole('button', { name: 'Details' }).click();
+  await mainMenu(page, 'Board', 'Star this board');
+  await expect(
+    page.locator('.main-menu-list').last().getByRole('menuitemcheckbox', { name: 'Star this board' }),
+  ).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  await mainMenu(page, 'Board', 'Move to');
+  await page.getByLabel('New space name').fill('Design');
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
+  await expect(page.getByRole('menuitemcheckbox', { name: 'Design' })).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  await mainMenu(page, 'Board', 'Details');
   const details = page.getByRole('complementary', { name: 'Board details' });
   await expect(details).toContainText('This browser · Design');
-  await expect(details).toContainText('Plan');
   await details.getByRole('button', { name: 'Close board details' }).click();
 
   await page.getByRole('button', { name: 'boardroom: all boards' }).click();
@@ -305,4 +315,124 @@ test('Do Not Disturb hides reaction animations but still announces them', async 
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('boardroom:reaction', { detail: '👍' })));
   await expect(page.getByText(/Reaction sent/)).toBeAttached();
   await expect(page.locator('.reaction-float')).toHaveCount(0);
+});
+
+test('sticky stack: each drag off the pad takes a new note and the pad stays', async ({ page }) => {
+  await openApp(page);
+  await page.getByRole('button', { name: 'Sticky note', exact: true }).click();
+  await page.getByRole('button', { name: 'Stack' }).click();
+  await waitForSave(page, b => b.items.some(i => i.type === 'stickypad'), 'pad placed');
+  const pad = (await savedBoard(page)).items.find(i => i.type === 'stickypad')!;
+  const peel = page.locator(`[data-pad-peel="${pad.id}"]`);
+  for (const dx of [320, 560]) {
+    const b = (await peel.boundingBox())!;
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2 + dx, b.y + b.height / 2 + 20, { steps: 8 });
+    await page.mouse.up();
+  }
+  await waitForSave(page, b => b.items.filter(i => i.type === 'note').length === 2, 'two notes taken');
+  const board = await savedBoard(page);
+  expect(board.items.filter(i => i.type === 'stickypad')).toHaveLength(1);
+  expect(board.items.filter(i => i.type === 'note').every(n => n.fill === pad.fill)).toBe(true);
+});
+
+test('Show author displays the last editor in the bottom-left of a sticky note', async ({ page }) => {
+  await openApp(page);
+  await page.evaluate(() => localStorage.setItem('boardroom.profile.name', 'Sam Lee'));
+  await seed(
+    page,
+    `return {...m.newBoard(),items:[{...m.createItem('note',200,200),id:'n',text:'Idea',author:'Alex'}]};`,
+  );
+  await item(page, 'n').click();
+  await page.getByRole('button', { name: 'Show author' }).click();
+  await expect(item(page, 'n').locator('.note-author')).toContainText('Alex');
+  await item(page, 'n').dblclick();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('Better idea');
+  await page.keyboard.press('Escape');
+  await waitForSave(page, b => b.items[0]?.text === 'Better idea' && b.items[0]?.author === 'Sam Lee', 'last editor');
+  await expect(item(page, 'n').locator('.note-author')).toContainText('Sam Lee');
+  const tag = (await item(page, 'n').locator('.note-author').boundingBox())!,
+    note = (await item(page, 'n').boundingBox())!;
+  expect(tag.x - note.x).toBeLessThan(note.width / 2);
+});
+
+test('only one tool rail popup is open at a time', async ({ page }) => {
+  await openApp(page);
+  await page.getByRole('button', { name: 'Sticky note', exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Colors' })).toBeVisible();
+  await page.getByRole('button', { name: 'Shapes and lines', exact: true }).click();
+  await expect(page.getByRole('complementary', { name: 'Shapes and lines' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Colors' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Emoji and stickers' }).click();
+  await expect(page.getByRole('complementary', { name: 'Shapes and lines' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Tools, media and integrations' }).click();
+  await expect(page.locator('.emoji-picker, [aria-label="Emoji and stickers"][role="dialog"]')).toHaveCount(0);
+});
+
+test('selection shows a gapped outline, round corner handles and four connection dots that draw connectors', async ({
+  page,
+}) => {
+  await seed(
+    page,
+    `return {...m.newBoard(),items:[{...m.createItem('note',300,250),id:'a'},{...m.createItem('note',800,250),id:'b'}]};`,
+  );
+  await item(page, 'a').click();
+  await expect(page.locator('circle.resize-handle')).toHaveCount(4);
+  await expect(page.locator('[data-anchor]')).toHaveCount(4);
+  const outline = (await item(page, 'a').locator('.selection rect').boundingBox())!,
+    note = (await item(page, 'a').locator('rect').first().boundingBox())!;
+  expect(note.x - outline.x).toBeGreaterThan(4);
+  const dot = (await page.locator('[data-anchor="right"]').boundingBox())!,
+    target = (await item(page, 'b').boundingBox())!;
+  await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 10 });
+  await page.mouse.up();
+  await waitForSave(page, b => b.items.some(i => i.type === 'arrow' && i.from === 'a' && i.to === 'b'), 'connected');
+});
+
+test('connector from a connection dot: target highlight, curved with a gap, sides follow the notes, swap ends', async ({
+  page,
+}) => {
+  await seed(
+    page,
+    `return {...m.newBoard(),items:[{...m.createItem('note',300,300),id:'a'},{...m.createItem('note',800,200),id:'b'}]};`,
+  );
+  await item(page, 'a').click();
+  const dot = (await page.locator('[data-anchor="right"]').boundingBox())!,
+    target = (await item(page, 'b').boundingBox())!;
+  await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 10 });
+  await expect(page.locator('.connect-target')).toHaveCount(1);
+  await page.mouse.up();
+  await expect(page.locator('.connect-target')).toHaveCount(0);
+  await waitForSave(page, b => b.items.some(i => i.type === 'arrow' && i.to === 'b'), 'connected');
+  const arrow = (await savedBoard(page)).items.find(i => i.type === 'arrow')!;
+  expect(arrow.connector).toMatchObject({ path: 'curved', gap: 8 });
+  const swapped = page.getByRole('button', { name: 'Swap line ends' });
+  await swapped.click();
+  await waitForSave(page, b => b.items.find(i => i.type === 'arrow')?.from === 'b', 'swapped');
+  const after = (await savedBoard(page)).items.find(i => i.type === 'arrow')!;
+  expect([after.from, after.to, after.connector.startHead, after.connector.endHead]).toEqual([
+    'b',
+    'a',
+    'arrow',
+    'none',
+  ]);
+});
+
+test('opening History moves the tool rail to the right of the panel', async ({ page }) => {
+  await openApp(page);
+  const rail = page.getByRole('navigation', { name: 'Creation tools' });
+  const before = (await rail.boundingBox())!;
+  await page.getByRole('button', { name: 'Main menu' }).click();
+  await page.locator('.main-menu-list').getByRole('menuitem', { name: 'Board' }).hover();
+  await page.locator('.main-menu-list').last().getByRole('menuitem', { name: 'History' }).click();
+  const panel = (await page.getByRole('complementary', { name: 'History' }).boundingBox())!;
+  await expect.poll(async () => (await rail.boundingBox())!.x).toBeGreaterThan(panel.x + panel.width);
+  await page.getByRole('button', { name: 'Close history' }).click();
+  await expect.poll(async () => (await rail.boundingBox())!.x).toBeLessThan(before.x + 5);
 });

@@ -426,3 +426,30 @@ export function ConnectorCaption({
     </>
   );
 }
+
+/** Reverse a connector: ends, attachments, heads and fixed sides swap; free ends keep their positions. */
+export function swapConnectorEnds(item: Item): Item {
+  const f = item.connector ?? {};
+  const connector: ConnectorFormat = { ...f };
+  const swap = <K extends keyof ConnectorFormat>(a: K, b: K) => {
+    const x = f[a],
+      y = f[b];
+    if (y === undefined) delete connector[a];
+    else connector[a] = y as ConnectorFormat[K];
+    if (x === undefined) delete connector[b];
+    else connector[b] = x as ConnectorFormat[K];
+  };
+  // A connector without explicit heads ends in an arrow; keep that visible after swapping.
+  if (f.startHead === undefined && f.endHead === undefined) {
+    connector.startHead = 'arrow';
+    connector.endHead = 'none';
+  } else swap('startHead', 'endHead');
+  swap('startSide', 'endSide');
+  const next: Item = { ...item, connector, x: item.x + item.w, y: item.y + item.h, w: -item.w, h: -item.h };
+  if (item.to) next.from = item.to;
+  else delete next.from;
+  if (item.from) next.to = item.from;
+  else delete next.to;
+  if (connector.bends?.length) connector.bends = [...connector.bends].reverse().map(b => ({ u: 1 - b.u, v: -b.v }));
+  return next;
+}
