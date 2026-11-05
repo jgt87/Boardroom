@@ -52,7 +52,9 @@ import { AutoLayoutGapHandle } from './autolayout-gap-handle';
 export function CanvasSurface() {
   const {
     dropDrawio,
+    dropSpreadsheets,
     importDocument,
+    importWhiteboardFile,
     update,
     size,
     geometries,
@@ -257,8 +259,11 @@ export function CanvasSurface() {
             .filter(f => !images.includes(f))
             .slice(0, 10)
             .entries()) {
-            const p = toWorld(e.clientX, e.clientY);
-            void insertMedia(f, 'file', { x: p.x + k * 40, y: p.y + 100 + k * 40 });
+            const p = toWorld(e.clientX, e.clientY),
+              keep = () => void insertMedia(f, 'file', { x: p.x + k * 40, y: p.y + 100 + k * 40 });
+            // A whiteboard REST export (JSON) opens as a new board; other JSON files are kept as files.
+            if (/\.json$/i.test(f.name)) void importWhiteboardFile(f).then(done => done || keep());
+            else keep();
           }
           // Mermaid files and PDF or video files (gap list B8, B9).
           for (const [k, f] of mermaid.slice(0, 5).entries()) {
@@ -277,10 +282,16 @@ export function CanvasSurface() {
               y: p.y + k * 40,
             });
           }
-          // A spreadsheet dropped on a Grid fills that grid (gap b3-5); elsewhere it becomes a Table.
+          // A spreadsheet dropped on a Grid fills that grid (gap b3-5); elsewhere the person picks a Table (the
+          // default) or sticky notes.
           const dropId = (e.target as Element).closest?.('[data-item]')?.getAttribute('data-item'),
-            dropGrid = boardRef.current.items.find(i => i.id === dropId && i.type === 'grid');
-          for (const [k, f] of documents.slice(0, 5).entries()) {
+            dropGrid = boardRef.current.items.find(i => i.id === dropId && i.type === 'grid'),
+            sheets = dropGrid ? [] : documents.filter(f => /\.(csv|tsv|xlsx)$/i.test(f.name));
+          if (sheets.length) void dropSpreadsheets(sheets, toWorld(e.clientX, e.clientY));
+          for (const [k, f] of documents
+            .filter(f => !sheets.includes(f))
+            .slice(0, 5)
+            .entries()) {
             const p = toWorld(e.clientX, e.clientY);
             void importDocument(
               f,

@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+### Import from other whiteboards: REST JSON
+
+- New **Whiteboard JSON (REST export)** import (Upload menu): a board exported through another whiteboard
+  service's public REST API (v2 board items and connectors) opens as a new library board. The same file is also
+  recognised by the regular board import, by "Import as a new board" and when dropped on the canvas (other JSON
+  files dropped on the canvas are still kept as File objects). Nothing on the open board is replaced.
+- Mapping (`src/whiteboard-import.ts`, pure): sticky notes (colour names to the sticky palette, rectangle shape,
+  alignment, tags), shapes (nearest Boardroom shape, including the flowchart shapes; fill, border colour, width,
+  style and opacity, text colour, font and size), text, frames (titles, nested frames), cards and app cards (title,
+  description, due date, custom fields, accent, tags), images (as images when the export carries the file,
+  otherwise as links), embeds (allow-listed providers as embeds, others as bookmarks), link previews and documents
+  (bookmarks), connectors (remapped ends, attached sides, straight/elbow/curved, stroke colour, width and style,
+  end caps including ERD caps, captions as labels with colour and size). Item centres, frame-relative positions,
+  rotation and lock state are converted; frames paint first.
+- Rich text arrives as HTML and is read as data into text plus style spans (bold, italic, underline, strike,
+  colours, safe links, lists, paragraphs); scripts, styles and unknown markup are dropped, never injected.
+- The import message reports what was created and what was skipped, per type (for example "Skipped 3 mind map
+  nodes"), plus objects over the 2,000-object limit, connectors whose ends were not imported, approximated shapes,
+  images kept as links and card assignees that are only user ids. Malformed entries are skipped, never fatal.
+- New `prototype/scripts/export-whiteboard.mjs` (Node 18+, no dependencies) writes the export file: board details,
+  all items and connectors (cursor pagination, 50 per page), board and item tags, and optionally image files
+  (`--images`). The token comes from `WHITEBOARD_TOKEN` only, is never printed and is only sent to the API host
+  (`WHITEBOARD_API`); 429 responses wait for `Retry-After`; 401, 403 and 404 stop with a clear message. See
+  `prototype/scripts/README-export-whiteboard.md`.
+- Tests: `tests/whiteboard-import.test.ts` (hand-written fixtures: nested frames, connectors, unknown types, bad
+  values, limit, random junk), `tests/export-whiteboard.test.ts` (the script against a local mock API: pagination,
+  429 retry, tags, images, error messages, token never printed) and `e2e/whiteboard-import.spec.ts` (upload menu,
+  regular import, drop).
+
+### Import from other whiteboards: CSV to sticky notes
+
+- New "CSV as sticky notes" choice in the Upload gallery: a .csv, .tsv or .xlsx file becomes one sticky note per row, laid out in a tidy grid centred on the view, in one undo step (`csv-stickies.ts`, reusing the existing CSV parser).
+- With a header row, the note text comes from the first column named content, text, title, sticky, note, idea or name (else the first non-empty column). Colour columns (hex codes or colour names) map to the nearest sticky colour, tags columns (comma or semicolon separated) become note tags, author or assignee columns set the note author, and group, category, column or frame columns put each group in its own titled frame, side by side. Without a header, every non-empty cell becomes a note and each CSV column a column of notes.
+- Rows without text are skipped; the import stops at the 2,000-object board limit. The message reports how many notes and frames were made, how many rows were skipped and how many notes were left out.
+- A spreadsheet dropped on the board (not on a Grid) now asks "Table" (the default, as before) or "Sticky notes" in the in-app choice dialog; Cancel adds nothing.
+- Pasting a note export (a header naming the text column, as tab-separated cells or comma lines) still pastes a Grid or line notes as before, and the notification now offers "Sticky notes per row" next to "One sticky per cell".
+
 ## 0.5.0 — 2026-11-05
 
 ### Decided questions, colours and records

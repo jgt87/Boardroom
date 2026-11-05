@@ -22,7 +22,7 @@ import { BLUEPRINT_LIMIT, loadBlueprints, mergeBlueprints, storeBlueprints, type
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 export function useLibraryFiles() {
-  const { boardActions, setAssets, display } = useApp();
+  const { boardActions, setAssets, display, importWhiteboardFile } = useApp();
   const { saveBlob } = useExporters();
   const storeMedia = async (assets: Record<string, ImageAsset>) => {
     for (const [id, asset] of Object.entries(assets))
@@ -116,6 +116,9 @@ export function useLibraryFiles() {
   const importFile = async (file: File) => {
     try {
       if (file.size > 320_000_000) throw new Error('Choose a backup smaller than 300 MB.');
+      // A board exported from another whiteboard's REST API (JSON) becomes a new board too.
+      if ((/\.json$/i.test(file.name) || file.type === 'application/json') && (await importWhiteboardFile(file)))
+        return;
       const { readBackup } = await import('./library-backup');
       const contents = readBackup(new Uint8Array(await file.arrayBuffer()), parseBoard);
       await storeMedia(contents.assets);

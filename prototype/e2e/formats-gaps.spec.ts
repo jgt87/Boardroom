@@ -23,7 +23,7 @@ test('Import CSV appends typed records to a Table and a dropped CSV becomes a ne
   expect(schema.fields.map((f: any) => [f.name, f.type])).toEqual([['Team', 'text']]);
   expect(board.datasets!.d[1]).toMatchObject({ title: 'Design', assignee: 'Ana', end: '2026-02-01', points: 3 });
 
-  // A .csv file dropped on the canvas becomes its own Table.
+  // A .csv file dropped on the canvas asks Table or sticky notes; Table makes its own Table.
   await page.locator('svg.canvas').dispatchEvent('drop', {
     clientX: 300,
     clientY: 700,
@@ -33,6 +33,10 @@ test('Import CSV appends typed records to a Table and a dropped CSV becomes a ne
       return d;
     }, CSV),
   });
+  await page
+    .getByRole('dialog', { name: 'Add a spreadsheet' })
+    .getByRole('button', { name: /^Table/ })
+    .click();
   await waitForSave(page, b => b.items.length === 2, 'table from dropped file');
   const added = (await savedBoard(page)).items[1];
   expect(added).toMatchObject({ type: 'table', text: 'Q3 plan' });

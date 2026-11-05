@@ -316,17 +316,19 @@ export function BoardChrome() {
       {notice && (
         <div className={`notice floating ${saveError ? 'error' : ''}`} role="status">
           {notice}
-          {noticeAction?.message === notice && (
-            <button
-              className="text-button"
-              onClick={() => {
-                setNotice('');
-                noticeAction.run();
-              }}
-            >
-              {noticeAction.label}
-            </button>
-          )}
+          {noticeAction?.message === notice &&
+            noticeAction.actions.map(action => (
+              <button
+                key={action.label}
+                className="text-button"
+                onClick={() => {
+                  setNotice('');
+                  action.run();
+                }}
+              >
+                {action.label}
+              </button>
+            ))}
           <button className="icon-button" aria-label="Dismiss notification" onClick={() => setNotice('')}>
             <X size={15} />
           </button>

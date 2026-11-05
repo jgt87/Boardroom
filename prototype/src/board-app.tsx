@@ -118,6 +118,7 @@ import type { WidgetCtx } from './widget-types';
 import { readDrawioFile } from './drawio-files';
 import { askChoice } from './choice-prompt';
 import { BOARD_OBJECT_LIMIT, drawioImportNote, drawioToItems } from './drawio-shapes';
+import { csvStickiesNote, looksLikeStickyRows, rowsToStickies } from './csv-stickies';
 import { docFromMarkdown, DOC_FILE_MAX } from './doc-tools';
 import { validateWidget } from './widget-specs';
 import { stampAuthors, cleanAuthor, AUTHOR_KEY } from './authors';
@@ -155,8 +156,11 @@ export const tools = [
 ] as const;
 export type Tool = 'select' | 'hand' | Kind | 'stack' | 'comment';
 export type Camera = { x: number; y: number; z: number };
+/** A one-click follow-up button in the notification. */
+type NoticeAction = { label: string; run: () => void };
 /** Which import the shared document file chooser was opened for. */
-type DocImportKind = 'markdown' | 'pptx' | 'docx' | 'odt' | 'odp' | 'table' | 'grid' | 'drawio';
+type DocImportKind =
+  'markdown' | 'pptx' | 'docx' | 'odt' | 'odp' | 'table' | 'grid' | 'drawio' | 'stickies' | 'whiteboard';
 export type Gesture =
   | {
       mode: 'move' | 'resize' | 'pan' | 'draw' | 'create' | 'marquee' | 'endpoint' | 'bend' | 'lasso' | 'rotate';
@@ -367,13 +371,14 @@ function useBoardCore() {
     space = useRef(false);
   const pauseSave = useRef(Boolean(initial.error)),
     noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  /** A one-click follow-up shown in the notification, e.g. "One sticky per cell" after a grid paste. */
-  const [noticeAction, setNoticeAction] = useState<{ message: string; label: string; run: () => void } | null>(null);
-  const display = (message: string, action?: { label: string; run: () => void }) => {
+  /** One-click follow-ups shown in the notification, e.g. "One sticky per cell" after a grid paste. */
+  const [noticeAction, setNoticeAction] = useState<{ message: string; actions: NoticeAction[] } | null>(null);
+  const display = (message: string, action?: NoticeAction | NoticeAction[]) => {
+    const actions = action ? ([] as NoticeAction[]).concat(action) : [];
     setNotice(message);
-    setNoticeAction(action ? { message, ...action } : null);
+    setNoticeAction(actions.length ? { message, actions } : null);
     clearTimeout(noticeTimer.current);
-    noticeTimer.current = setTimeout(() => setNotice(''), action ? 8000 : 5000);
+    noticeTimer.current = setTimeout(() => setNotice(''), actions.length ? 8000 : 5000);
   };
   const normalize = (input: Board): Board => {
     const next = applyGridLayouts(applyLayouts(syncRecordCards(stripRotation(input), boardRef.current)));
@@ -825,12 +830,32 @@ function useBoardCore() {
       text: '',
     }[made.kind];
     const message = [what, made.note].filter(Boolean).join(' ');
+    // Rows exported from a whiteboard (a header naming the text column) can become one note per row instead.
+    const rows = made.kind === 'cells' || made.kind === 'lines' ? parseDelimited(text.trim()) : [];
+    const actions: NoticeAction[] = [];
+    // Offer the other reading of spreadsheet cells without asking up front (one click, then gone).
     if (made.kind === 'cells') {
-      // Offer the other reading of spreadsheet cells without asking up front (one click, then gone).
       const gridId = made.items[0].id;
-      display(message, { label: 'One sticky per cell', run: () => cellsAsNotes(gridId, text, center) });
-    } else if (message) display(message);
+      actions.push({ label: 'One sticky per cell', run: () => cellsAsNotes(gridId, text, center) });
+    }
+    if ((made.kind === 'cells' || made.kind === 'lines') && looksLikeStickyRows(rows)) {
+      const ids = made.items.map(i => i.id);
+      actions.push({ label: 'Sticky notes per row', run: () => rowsAsNotes(ids, rows, center) });
+    }
+    if (actions.length || message) display(message, actions);
     return true;
+  }
+  /** Replace just-pasted objects with one sticky note per row of a pasted note export (csv-stickies.ts). */
+  function rowsAsNotes(ids: string[], rows: string[][], center: Point) {
+    const b = boardRef.current,
+      gone = new Set(ids);
+    if (!b.items.some(i => gone.has(i.id))) return display('The pasted objects are no longer on the board.');
+    const kept = b.items.filter(i => !gone.has(i.id)),
+      made = rowsToStickies(rows, { center, room: BOARD_OBJECT_LIMIT - kept.length });
+    if (!made.items.length) return display(csvStickiesNote(made));
+    update({ ...b, items: [...kept, ...made.items] });
+    setSelected(made.items.map(i => i.id));
+    display(csvStickiesNote(made));
   }
   /** Replace a just-pasted Grid with one sticky note per non-empty cell. */
   function cellsAsNotes(gridId: string, text: string, center: Point) {
@@ -959,6 +984,50 @@ function useBoardCore() {
     }
   }
   /**
+   * A board exported through another whiteboard's REST API (export-whiteboard.mjs) opens as a new library board;
+   * the import message reports what was mapped and what was skipped. Image files in the export are stored first.
+   */
+  async function importWhiteboardData(raw: unknown) {
+    try {
+      const { importWhiteboardRest, whiteboardImportNote } = await import('./whiteboard-import');
+      const made = importWhiteboardRest(raw);
+      for (const [id, asset] of Object.entries(made.assets))
+        await saveAsset(id, asset).catch(() => {
+          throw new Error('Images in this export could not be stored in this browser.');
+        });
+      if (Object.keys(made.assets).length) setAssets(a => ({ ...a, ...made.assets }));
+      if (boardActions.createFrom(made.board)) display(whiteboardImportNote(made.report));
+    } catch (error) {
+      display((error as Error).message || 'The whiteboard export could not be imported.');
+    }
+  }
+  /**
+   * Open a JSON file as a whiteboard REST export. Returns false (and shows nothing) when the file is not one, so
+   * callers can treat it another way; with `required`, that case is reported instead.
+   */
+  async function importWhiteboardFile(file: File, required = false): Promise<boolean> {
+    try {
+      const { isWhiteboardRestExport, WHITEBOARD_MAX_BYTES } = await import('./whiteboard-import');
+      if (file.size > WHITEBOARD_MAX_BYTES) throw new Error('Choose a whiteboard export smaller than 120 MB.');
+      let raw: unknown;
+      try {
+        raw = JSON.parse(await file.text());
+      } catch {
+        raw = null;
+      }
+      if (!isWhiteboardRestExport(raw)) {
+        if (required)
+          display('This file is not a whiteboard JSON export. Create one with scripts/export-whiteboard.mjs.');
+        return false;
+      }
+      await importWhiteboardData(raw);
+      return true;
+    } catch (error) {
+      display((error as Error).message || 'The whiteboard export could not be imported.');
+      return true;
+    }
+  }
+  /**
    * .drawio files dropped on the board (P2-Q4): ask whether they become draw.io objects (edited in the draw.io
    * editor) or native shapes and connectors, with an in-app choice. Cancelling adds nothing.
    */
@@ -982,6 +1051,52 @@ function useBoardCore() {
     if (how !== 'shapes') return;
     const center = at ?? toWorld(size.w / 2, size.h / 2);
     for (const [k, f] of list.entries()) await importDrawioShapes(f, { x: center.x + k * 40, y: center.y + k * 40 });
+  }
+  /**
+   * A CSV, TSV or Excel file as sticky notes (rows exported from other whiteboards): one note per row, grouped
+   * into frames by a group column, centred on `at` or the view; one undo step.
+   */
+  async function importStickies(file: File, at?: Point) {
+    const center = at ?? toWorld(size.w / 2, size.h / 2);
+    try {
+      const { readTableFile } = await import('./table-file'),
+        rows = await readTableFile(file, askSheet);
+      if (!rows) return;
+      const current = boardRef.current,
+        room = BOARD_OBJECT_LIMIT - current.items.length;
+      if (room <= 0) return display('This prototype supports up to 2,000 objects per board.');
+      const made = rowsToStickies(rows, { center, room, fill: lastColors.apply(createItem('note', 0, 0, fill)).fill });
+      if (made.items.length) {
+        update({ ...current, items: [...current.items, ...made.items] });
+        setSelected(made.items.map(i => i.id));
+        setTool('select');
+      }
+      display(csvStickiesNote(made));
+    } catch (error) {
+      display((error as Error).message || 'The file could not be imported.');
+    }
+  }
+  /**
+   * Spreadsheet files dropped on the board (not on a Grid): ask whether they become a Table of records (the
+   * default) or sticky notes, with the in-app choice. Cancelling adds nothing.
+   */
+  async function dropSpreadsheets(files: File[], at: Point) {
+    const list = files.slice(0, 5);
+    if (!list.length) return;
+    const what = list.length === 1 ? `"${list[0].name}"` : `these ${list.length} spreadsheet files`;
+    const how = await askChoice('Add a spreadsheet', `How should ${what} be added to the board?`, [
+      { id: 'table', label: 'Table', detail: 'One Table with a record per row, which you can sort and filter.' },
+      {
+        id: 'stickies',
+        label: 'Sticky notes',
+        detail: 'A sticky note per row, grouped into frames by a group or category column.',
+      },
+    ]);
+    if (!how) return;
+    for (const [k, f] of list.entries()) {
+      const p = { x: at.x + k * 40, y: at.y + k * 40 };
+      await (how === 'stickies' ? importStickies(f, p) : importDocument(f, p));
+    }
   }
   /** Add a recorded or captured file (Talktrack video, Photobooth photo) to the board. */
   async function insertCaptured(file: File) {
@@ -1295,7 +1410,9 @@ function useBoardCore() {
       choice === 'import:odp' ||
       choice === 'import:table' ||
       choice === 'import:drawio' ||
-      choice === 'import:grid'
+      choice === 'import:grid' ||
+      choice === 'import:stickies' ||
+      choice === 'import:whiteboard'
     ) {
       setTool('select');
       docImportKind.current = choice.slice(7) as DocImportKind;
@@ -1311,9 +1428,11 @@ function useBoardCore() {
                   ? '.odp,application/vnd.oasis.opendocument.presentation'
                   : choice === 'import:drawio'
                     ? '.drawio,.xml,application/xml,text/xml'
-                    : choice === 'import:table' || choice === 'import:grid'
-                      ? '.csv,.tsv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                      : '.md,.markdown,text/markdown,text/plain';
+                    : choice === 'import:whiteboard'
+                      ? '.json,application/json'
+                      : choice === 'import:table' || choice === 'import:grid' || choice === 'import:stickies'
+                        ? '.csv,.tsv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                        : '.md,.markdown,text/markdown,text/plain';
         docImportFile.current.click();
       }
       return;
@@ -1632,6 +1751,9 @@ function useBoardCore() {
           if (pass === null) return display('Import cancelled.');
           raw = JSON.parse(await decryptBackup(raw, pass));
         }
+        // A board exported from another whiteboard's REST API opens as a new board instead (nothing is replaced).
+        const { isWhiteboardRestExport } = await import('./whiteboard-import');
+        if (isWhiteboardRestExport(raw)) return importWhiteboardData(raw);
         parsed = parseBoard(raw);
       }
       const split = splitAssets(parsed, assetsRef.current);
@@ -1974,6 +2096,10 @@ function useBoardCore() {
     insertDrawio,
     dropDrawio,
     importDrawioShapes,
+    importWhiteboardData,
+    importWhiteboardFile,
+    importStickies,
+    dropSpreadsheets,
     editSeed,
     pendingPlacement,
     setPendingPlacement,

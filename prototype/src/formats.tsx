@@ -26,6 +26,7 @@ import {
   AppWindow,
   BookOpen,
   Workflow,
+  FileJson,
   Map as MapIcon,
   Smartphone,
   LayoutPanelTop,
@@ -108,6 +109,7 @@ export const kindIcons: Record<string, typeof Layers3> = {
   'import:table': FileSpreadsheet,
   'import:grid': Grid3x3,
   'import:drawio': Workflow,
+  'import:whiteboard': FileJson,
   'import:docx': FileText,
   'import:odt': FileText,
   'import:odp': Presentation,
@@ -464,9 +466,19 @@ export function ToolGallery({
       },
       { label: 'Spreadsheet as Grid', kind: 'import:grid', description: 'A .csv or .xlsx file fills a Grid' },
       {
+        label: 'CSV as sticky notes',
+        kind: 'import:stickies',
+        description: 'Rows exported from other whiteboards become notes, grouped into frames',
+      },
+      {
         label: 'Draw.io as shapes',
         kind: 'import:drawio',
         description: 'A .drawio file becomes native shapes and lines',
+      },
+      {
+        label: 'Whiteboard JSON (REST export)',
+        kind: 'import:whiteboard',
+        description: 'A board exported from another whiteboard opens as a new board',
       },
     ],
     wireframes: wireframeComponents.map(c => ({
