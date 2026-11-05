@@ -51,6 +51,7 @@ export const basicSpecs: WidgetSpec[] = [
       )
         fail('Invalid card details.');
       if (x.points !== undefined && !num(x.points, 0, 1000)) fail('Story points must be between 0 and 1,000.');
+      if (x.pointsUnknown !== undefined && x.pointsUnknown !== true) fail('Invalid estimate.');
       if (x.size !== undefined && !(tshirtSizes as readonly string[]).includes(x.size)) fail('Invalid T-shirt size.');
     },
     searchText: i => [d(i).description, d(i).assignee].filter(Boolean).join(' '),

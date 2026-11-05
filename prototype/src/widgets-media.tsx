@@ -5,6 +5,7 @@ import { Dialog as WidgetDialog, saveAssetFile } from './widget-kit';
 import { useLatest } from './use-latest';
 import {
   MAX_CUTS,
+  MIN_CUT,
   PLAYBACK_RATES,
   SKIP_SECONDS,
   atPlayableEnd,
@@ -17,9 +18,15 @@ import {
   resolvePlayhead,
   skipBy,
   stepRate,
+  storedRate,
   waveformPeaks,
+  withRate,
+  timeAtX,
+  cutEdgeAt,
+  cutFromDrag,
 } from './media-playback';
-import type { PlaybackLimits, TimeRange } from './media-playback';
+import type { CutGrab, PlaybackLimits, TimeRange } from './media-playback';
+import { editableIds } from './arrange';
 import {
   X,
   Play,
@@ -66,6 +73,7 @@ import { statusAction } from './status-chip';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import './widgets-media.css';
 import { BrandSwatches } from './brand-kit-panel';
+import { ColorMenu } from './color-menu';
 import { FocusView } from './focus-view';
 
 /** Fired by widget actions that need main.tsx to open the widget's Editor: detail { id }. */
@@ -384,7 +392,7 @@ async function loadPdf(file: File) {
 }
 
 // ---- Video (item 30) ---------------------------------------------------------------------------------
-type VideoData = { duration?: number; poster?: string; trim?: TimeRange; cuts?: TimeRange[] };
+type VideoData = { duration?: number; poster?: string; trim?: TimeRange; cuts?: TimeRange[]; rate?: number };
 const peaksCache = new Map<string, Promise<number[] | null>>();
 /**
  * Waveform of a recording's sound (track G), decoded with the Web Audio API from the stored file. Resolves to null
@@ -419,6 +427,8 @@ function Waveform({
   start,
   end,
   cuts,
+  onCutChange,
+  onCutDone,
 }: {
   assetKey: string;
   data?: string;
@@ -426,8 +436,13 @@ function Waveform({
   start: number;
   end: number;
   cuts: TimeRange[];
+  /** Drawing a cut (P2-Q3): cut `index` (the next free index for a new cut) now spans `cut`. */
+  onCutChange?: (index: number, cut: TimeRange) => void;
+  /** The drag of cut `index` ended. */
+  onCutDone?: (index: number) => void;
 }) {
-  const [peaks, setPeaks] = useState<{ key: string; value: number[] | null } | null>(null);
+  const [peaks, setPeaks] = useState<{ key: string; value: number[] | null } | null>(null),
+    drag = useRef<CutGrab | null>(null);
   useEffect(() => {
     if (!data) return;
     let live = true;
@@ -445,25 +460,57 @@ function Waveform({
         Reading the sound…
       </div>
     );
-  if (!value || !total)
+  if (!total)
     return (
       <div className="waveform waveform-note" role="status">
-        No waveform: the sound of this recording could not be read. Trim and cuts still work.
+        No waveform: the length of this recording is not known. Trim and cuts still work.
       </div>
     );
-  const W = value.length,
+  const W = value?.length || 160,
     H = 40,
     x = (s: number) => (Math.max(0, Math.min(total, s)) / total) * W,
     bad = (s: number, e: number) => Number.isFinite(s) && Number.isFinite(e) && e > s;
+  /** Seconds under the pointer, and how many seconds a few pixels are (to grab a cut edge). */
+  const at = (e: React.PointerEvent<SVGSVGElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return { t: timeAtX(e.clientX - r.left, r.width, total), slack: r.width > 0 ? (6 / r.width) * total : 0 };
+  };
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!onCutChange || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const { t, slack } = at(e);
+    const grab = cutEdgeAt(t, cuts, slack);
+    if (!grab && cuts.length >= MAX_CUTS) return;
+    drag.current = grab ?? { index: cuts.length, edge: 'end', anchor: t };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const { t, slack } = at(e);
+    if (!drag.current) {
+      if (onCutChange) e.currentTarget.style.cursor = cutEdgeAt(t, cuts, slack) ? 'ew-resize' : 'crosshair';
+      return;
+    }
+    onCutChange?.(drag.current.index, cutFromDrag(drag.current.anchor, t, total));
+  };
+  const onPointerEnd = () => {
+    const grab = drag.current;
+    drag.current = null;
+    if (grab) onCutDone?.(grab.index);
+  };
   return (
     <svg
-      className="waveform"
+      className={`waveform${value ? '' : ' waveform-plain'}${onCutChange ? ' waveform-draw' : ''}`}
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
       role="img"
-      aria-label={`Waveform, ${clockLabel(total)} long, ${cuts.length} ${cuts.length === 1 ? 'cut' : 'cuts'}`}
+      aria-label={`${value ? 'Waveform' : 'Timeline (the sound could not be read)'}, ${clockLabel(total)} long, ${cuts.length} ${cuts.length === 1 ? 'cut' : 'cuts'}${onCutChange ? '. Drag across it to cut a part out, or drag the edge of a cut to change it.' : ''}`}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
     >
-      {value.map((p, k) => {
+      {(value ?? []).map((p, k) => {
         const h = Math.max(0.6, p * (H - 4));
         return <rect key={k} className="waveform-bar" x={k + 0.15} y={(H - h) / 2} width={0.7} height={h} />;
       })}
@@ -525,6 +572,26 @@ function VideoEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
       half = Math.min(1, Math.max(0.1, (to - from) / 10));
     setCutText(list => [...list, { start: clockLabel(mid - half / 2), end: clockLabel(mid + half / 2) }]);
   };
+  /** A cut drawn or resized on the waveform; the dialog's Apply stores every change as one undo step. */
+  const drawCut = (index: number, cut: TimeRange) => {
+    const text = { start: clockLabel(cut.start), end: clockLabel(cut.end) };
+    setCutText(list =>
+      index >= list.length
+        ? list.length >= MAX_CUTS
+          ? list
+          : [...list, text]
+        : list.map((x, j) => (j === index ? text : x)),
+    );
+  };
+  /** Drop a cut that the drag left shorter than can be heard (a click, or an edge dragged onto the other). */
+  const finishCut = (index: number) =>
+    setCutText(list => {
+      const c = list[index];
+      if (!c) return list;
+      const from = parseClock(c.start),
+        to = parseClock(c.end);
+      return to - from < MIN_CUT ? list.filter((_, j) => j !== index) : list;
+    });
   const apply = () => {
     if (error) return;
     const trimmed = s > 0 || (total ? e < total - 0.25 : true);
@@ -564,7 +631,14 @@ function VideoEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
             start={Number.isNaN(s) ? 0 : s}
             end={Number.isNaN(e) ? total : e}
             cuts={cuts}
+            onCutChange={drawCut}
+            onCutDone={finishCut}
           />
+          {total > 0 && (
+            <p className="waveform-hint">
+              Drag across the waveform to cut a part out; drag the edge of a cut to change it.
+            </p>
+          )}
         </div>
         <label>
           Play from
@@ -629,13 +703,28 @@ function VideoEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
  * player has focus: J or ← back 10 s, L or → forward 10 s, K or space play/pause, < and > slower and faster.
  * The trim window and the cut-out ranges are enforced whichever way the time changes.
  */
-function VideoPlayer({ item, src, onStop }: { item: Item; src: string; onStop: () => void }) {
+function VideoPlayer({
+  item,
+  src,
+  onStop,
+  onRate,
+}: {
+  item: Item;
+  src: string;
+  onStop: () => void;
+  /** Remember a chosen speed on the video (P2-Q1). */
+  onRate: (rate: number) => void;
+}) {
   const d = (item.data ?? {}) as VideoData,
     limits: PlaybackLimits = { trim: d.trim, cuts: d.cuts, duration: d.duration },
     video = useRef<HTMLVideoElement>(null),
     player = useRef<HTMLDivElement>(null),
-    [rate, setRate] = useState(1),
+    [rate, setRateState] = useState(() => storedRate(d.rate)),
     [paused, setPaused] = useState(false);
+  const setRate = (next: number) => {
+    setRateState(next);
+    onRate(next);
+  };
   /** Keep playback inside the window and out of the cuts; stop at the end. */
   const enforce = () => {
     const v = video.current;
@@ -690,7 +779,7 @@ function VideoPlayer({ item, src, onStop }: { item: Item; src: string; onStop: (
     if (action === 'back') seek(-SKIP_SECONDS);
     else if (action === 'forward') seek(SKIP_SECONDS);
     else if (action === 'toggle') toggle();
-    else setRate(r => stepRate(r, action === 'faster' ? 1 : -1));
+    else setRate(stepRate(rate, action === 'faster' ? 1 : -1));
   };
   return (
     <div
@@ -779,6 +868,20 @@ function VideoView({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     d = (item.data ?? {}) as VideoData,
     edited = !!(d.trim || d.cuts?.length),
     shownLength = d.duration ? (edited ? playableLength({ ...d }) : d.duration) : 0;
+  /** Store the chosen speed on the video so the next play starts at it; locked videos keep it for this play only. */
+  const rememberRate = (rate: number) =>
+    ctx.update(b => {
+      if (!editableIds(b, [item.id]).includes(item.id)) return b;
+      let changed = false;
+      const items = b.items.map(i => {
+        if (i.id !== item.id) return i;
+        const data = withRate((i.data ?? {}) as VideoData, rate);
+        if (data === i.data || (!i.data && data.rate === undefined)) return i;
+        changed = true;
+        return { ...i, data };
+      });
+      return changed ? { ...b, items } : b;
+    });
   return (
     <div className="video-object">
       <div className="media-bar">
@@ -792,7 +895,7 @@ function VideoView({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       {!asset ? (
         <div className="video-stage">{missing('Video unavailable')}</div>
       ) : playing ? (
-        <VideoPlayer item={item} src={asset.data} onStop={() => setPlaying(false)} />
+        <VideoPlayer item={item} src={asset.data} onStop={() => setPlaying(false)} onRate={rememberRate} />
       ) : (
         <div className="video-stage">
           {d.poster ? <img src={d.poster} alt={item.alt || ''} draggable={false} /> : <div className="video-blank" />}
@@ -1799,15 +1902,10 @@ function ScreenEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onCl
           </label>
         ))}
       </fieldset>
-      <label>
+      <span>
         Background
-        <input
-          type="color"
-          aria-label="Screen background"
-          value={background}
-          onChange={e => setBackground(e.target.value)}
-        />
-      </label>
+        <ColorMenu label="Screen background" value={background} onPick={setBackground} />
+      </span>
       <BrandSwatches label="Brand colours for screen background" value={background} onPick={setBackground} />
     </Dialog>
   );

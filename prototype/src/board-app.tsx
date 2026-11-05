@@ -48,6 +48,7 @@ import { createImageItem, decodeDataUrl, replaceImage, splitAssets, referencedAs
 import { droppedImageName, type DroppedImage } from './web-drop';
 import { loadAssets, saveAsset, pruneAssets, readImageWithOriginal } from './assets-store';
 import { wireframeItem } from './specs-media';
+import { besideConversion, FILE_MAX_BYTES, keepsOriginalFile } from './specs-file';
 import { OPEN_EDITOR_EVENT } from './widgets-media';
 import { startObjectOf } from './board-settings';
 import { stampChoice } from './widgets-graphics';
@@ -115,13 +116,15 @@ import { useKeyboardShortcuts } from './use-keyboard-shortcuts';
 import { useDeepLinks } from './use-deep-links';
 import type { WidgetCtx } from './widget-types';
 import { readDrawioFile } from './drawio-files';
+import { askChoice } from './choice-prompt';
 import { BOARD_OBJECT_LIMIT, drawioImportNote, drawioToItems } from './drawio-shapes';
 import { docFromMarkdown, DOC_FILE_MAX } from './doc-tools';
 import { validateWidget } from './widget-specs';
 import { stampAuthors, cleanAuthor, AUTHOR_KEY } from './authors';
 import { stampTimes } from './item-times';
 import { linkOf, syncMermaidLinks } from './mermaid-link';
-import { lastColors, rememberKindColors } from './last-color';
+import { lastColors, rememberKindColors, stickyColorFrom } from './last-color';
+import { placementPreset } from './tool-catalog';
 import { modeRefusal } from './board-modes';
 
 export const KEY = LEGACY_KEY;
@@ -433,10 +436,18 @@ function useBoardCore() {
     rawSelectedItem && gridOwner(shown, rawSelectedItem.id)?.locked
       ? { ...rawSelectedItem, locked: true }
       : rawSelectedItem;
+  /**
+   * Remember a colour applied to these objects: shapes, text and connectors keep it per kind (session only), and a
+   * colour applied to sticky notes alone becomes the tool-rail sticky colour for new notes.
+   */
+  const rememberColor = (items: Item[], color: string) => {
+    rememberKindColors(items, color);
+    const sticky = stickyColorFrom(items, color);
+    if (sticky) setFill(sticky);
+  };
   const patch = (changes: Partial<Item>) => {
     const editable = (i: Item) => selected.includes(i.id) && !i.locked && !gridOwner(boardRef.current, i.id)?.locked;
-    // A colour applied to shapes, text or connectors becomes the default for new ones of that kind (session only).
-    if (changes.fill) rememberKindColors(boardRef.current.items.filter(editable), changes.fill);
+    if (changes.fill) rememberColor(boardRef.current.items.filter(editable), changes.fill);
     update({
       ...boardRef.current,
       items: boardRef.current.items.map(i => (editable(i) ? { ...i, ...changes } : i)),
@@ -947,6 +958,31 @@ function useBoardCore() {
       display((error as Error).message);
     }
   }
+  /**
+   * .drawio files dropped on the board (P2-Q4): ask whether they become draw.io objects (edited in the draw.io
+   * editor) or native shapes and connectors, with an in-app choice. Cancelling adds nothing.
+   */
+  async function dropDrawio(files: File[], at?: Point) {
+    const list = files.slice(0, 20);
+    if (!list.length) return;
+    const what = list.length === 1 ? `"${list[0].name}"` : `these ${list.length} diagram files`;
+    const how = await askChoice('Add a draw.io diagram', `How should ${what} be added to the board?`, [
+      {
+        id: 'object',
+        label: 'Draw.io object',
+        detail: 'One object you open and edit in the draw.io editor. The file is kept as it is.',
+      },
+      {
+        id: 'shapes',
+        label: 'Native shapes',
+        detail: 'Board shapes and connectors you edit directly. Every page is imported, each in its own frame.',
+      },
+    ]);
+    if (how === 'object') return insertDrawio(list, at);
+    if (how !== 'shapes') return;
+    const center = at ?? toWorld(size.w / 2, size.h / 2);
+    for (const [k, f] of list.entries()) await importDrawioShapes(f, { x: center.x + k * 40, y: center.y + k * 40 });
+  }
   /** Add a recorded or captured file (Talktrack video, Photobooth photo) to the board. */
   async function insertCaptured(file: File) {
     if (file.type.startsWith('image/')) return insertImages([file]);
@@ -1053,12 +1089,15 @@ function useBoardCore() {
     if (!['arrow', 'pen', 'frame'].includes(kind)) setEditing(i.id);
   };
   /** Place a tool dropped on the board (gap F12): object kinds are created at the point, others open as usual. */
-  const placeAt = (kind: string, at: Point) => {
+  const placeAt = (choice: string, at: Point) => {
+    const preset = placementPreset(choice),
+      kind = preset?.kind ?? choice;
     if (!(allKinds as string[]).includes(kind) || ['image', 'video', 'pdf', 'file', 'drawio', 'pen'].includes(kind)) {
-      chooseFormat(kind);
+      chooseFormat(choice);
       return;
     }
     const i = lastColors.apply(createItem(kind as Kind, at.x, at.y, kind === 'note' ? fill : undefined));
+    if (preset) i.data = { ...i.data, ...preset.data };
     i.x -= i.w / 2;
     i.y -= i.h / 2;
     update({ ...boardRef.current, items: [...boardRef.current.items, i] });
@@ -1166,8 +1205,31 @@ function useBoardCore() {
       validateWidget(item);
       item.x -= item.w / 2;
       item.y -= item.h / 2;
-      update({ ...boardRef.current, items: [...boardRef.current.items, item] });
-      setSelected([item.id]);
+      // The original Office/OpenDocument/RTF file is always kept too, as a File object beside the conversion
+      // (question P2-Q8). Its bytes go to the asset store first; both objects are added in one undo step.
+      const added: Item[] = [item];
+      if (keepsOriginalFile(file.name)) {
+        if (file.size > FILE_MAX_BYTES) note += ' The original file is larger than 25 MB, so it was not kept.';
+        else {
+          const loaded = await viewFor('file')!.fromFile!.load(file),
+            assetId = crypto.randomUUID();
+          await saveAsset(assetId, loaded.asset);
+          setAssets(a => ({ ...a, [assetId]: loaded.asset }));
+          const original = besideConversion(item, {
+            ...createItem('file', 0, 0),
+            w: loaded.size[0],
+            h: loaded.size[1],
+            assetId,
+            data: loaded.data,
+            text: loaded.text ?? file.name.slice(0, 200),
+          });
+          validateWidget(original);
+          added.push(original);
+          note += ' The original file is kept beside it.';
+        }
+      }
+      update({ ...boardRef.current, items: [...boardRef.current.items, ...added] });
+      setSelected(added.map(i => i.id));
       setTool('select');
       display(note);
     } catch (error) {
@@ -1181,6 +1243,8 @@ function useBoardCore() {
     const stamp =
       kind === 'stamp' && pendingPlacement?.startsWith('stamp:') ? stampChoice(pendingPlacement.slice(6)) : null;
     if (stamp) Object.assign(item, { data: stamp.data, fill: stamp.fill });
+    const preset = placementPreset(pendingPlacement);
+    if (preset?.kind === kind) item.data = { ...item.data, ...preset.data };
     if (kind === 'mermaid') item.text = starters.Flowchart;
     // Compact shapes menu line presets (item 109).
     if (kind === 'arrow' && pendingPlacement === 'line:line') item.connector = { endHead: 'none' };
@@ -1319,6 +1383,13 @@ function useBoardCore() {
       setTool('select');
       insertAt.current = null;
       imageFile.current?.click();
+      return;
+    }
+    const preset = placementPreset(choice);
+    if (preset) {
+      // A catalogue variant (e.g. T-shirt sizing): place its kind, with the preset data added in makePlacedItem.
+      setPendingPlacement(choice);
+      setTool(preset.kind as Kind);
       return;
     }
     setPendingPlacement(choice);
@@ -1786,6 +1857,7 @@ function useBoardCore() {
     setNotesOpen,
     panel,
     patch,
+    rememberColor,
     patchStyle,
     pauseSave,
     penColor,
@@ -1900,6 +1972,7 @@ function useBoardCore() {
     activeLayer,
     setActiveLayer,
     insertDrawio,
+    dropDrawio,
     importDrawioShapes,
     editSeed,
     pendingPlacement,

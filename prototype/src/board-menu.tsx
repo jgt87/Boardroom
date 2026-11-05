@@ -23,7 +23,7 @@ import {
 import { CatchUpPanel, DetailsPanel, HistoryPanel } from './board-history';
 import { boardEmoji, boardsInSameSpace, spaceInfoOf, spacesOf } from './board-library';
 import { undo, redo, newBoard } from './model';
-import { withBoardMode } from './board-modes';
+import { settingsLocked, settingsLockedNote, withBoardMode } from './board-modes';
 import { TemplatePicker } from './template-picker';
 import { BrandKitPanel } from './brand-kit-panel';
 import { boardFromTemplate } from './user-templates';
@@ -79,6 +79,8 @@ type Entry =
       hint?: string;
       danger?: boolean;
       swatch?: string;
+      /** Shown but not usable (a board setting on a comment-only or view-only board, question P2-Q11). */
+      disabled?: boolean;
     }
   | { kind: 'sub'; label: string; entries: Entry[] }
   | { kind: 'sep' }
@@ -213,8 +215,11 @@ function MenuList({
             role={e.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
             aria-checked={e.checked}
             className={e.danger ? 'danger' : ''}
+            aria-disabled={e.disabled || undefined}
             onPointerEnter={() => setSub(null)}
             onClick={() => {
+              // aria-disabled (not disabled) keeps the entry focusable, so arrow keys still reach it.
+              if (e.disabled) return;
               e.run();
               if (e.checked === undefined) onDone();
             }}
@@ -275,6 +280,17 @@ export function BoardMenu() {
     background = board.background ?? DEFAULT_BACKGROUND;
   const toggle = (label: string, checked: boolean, run: () => void): Entry => ({ kind: 'item', label, checked, run });
   const item = (label: string, run: () => void, hint?: string): Entry => ({ kind: 'item', label, run, hint });
+  // Board settings are read-only on a comment-only or view-only board (question P2-Q11): the entries still show
+  // the current value (checked, swatch) but are disabled, with a note saying why.
+  const locked = settingsLocked(board);
+  const setting = (e: Entry): Entry => (locked && e.kind === 'item' ? { ...e, disabled: true } : e);
+  const lock = (entries: Entry[]): Entry[] =>
+    locked
+      ? [
+          { kind: 'field', node: <p className="main-menu-note settings-locked-note">{settingsLockedNote(board)}</p> },
+          ...entries.map(setting),
+        ]
+      : entries;
   const startChoices = startObjectChoices(board),
     startObject = startObjectOf(board);
   const fullscreen = typeof document !== 'undefined' && !!document.fullscreenElement;
@@ -295,19 +311,23 @@ export function BoardMenu() {
       entries: [
         item('Catch up', () => setPanel('catchup')),
         item('New board…', () => setPanel('new')),
-        item(board.thumbnailFrame ? 'Reset thumbnail' : 'Use selected frame as thumbnail', () => {
-          const next = { ...boardRef.current };
-          if (board.thumbnailFrame) delete next.thumbnailFrame;
-          else {
-            const frame = boardRef.current.items.find(i => selected.includes(i.id) && i.type === 'frame');
-            if (!frame) return display('Select a frame to use as the thumbnail.');
-            next.thumbnailFrame = frame.id;
-          }
-          update(next);
-          display(
-            next.thumbnailFrame ? 'The dashboard now shows this frame.' : 'The dashboard shows the whole board again.',
-          );
-        }),
+        setting(
+          item(board.thumbnailFrame ? 'Reset thumbnail' : 'Use selected frame as thumbnail', () => {
+            const next = { ...boardRef.current };
+            if (board.thumbnailFrame) delete next.thumbnailFrame;
+            else {
+              const frame = boardRef.current.items.find(i => selected.includes(i.id) && i.type === 'frame');
+              if (!frame) return display('Select a frame to use as the thumbnail.');
+              next.thumbnailFrame = frame.id;
+            }
+            update(next);
+            display(
+              next.thumbnailFrame
+                ? 'The dashboard now shows this frame.'
+                : 'The dashboard shows the whole board again.',
+            );
+          }),
+        ),
         toggle('View only', !!board.viewOnly, () => {
           const next = withBoardMode(boardRef.current, boardRef.current.viewOnly ? 'edit' : 'view');
           update(next);
@@ -413,7 +433,7 @@ export function BoardMenu() {
         {
           kind: 'sub',
           label: 'Board emoji',
-          entries: [
+          entries: lock([
             {
               kind: 'field',
               node: (
@@ -421,7 +441,7 @@ export function BoardMenu() {
                   className="board-emoji-form"
                   onSubmit={e => {
                     e.preventDefault();
-                    setEmoji((emojiDraft ?? emoji).trim());
+                    if (!locked) setEmoji((emojiDraft ?? emoji).trim());
                   }}
                 >
                   <input
@@ -429,10 +449,13 @@ export function BoardMenu() {
                     placeholder="Emoji"
                     maxLength={16}
                     value={emojiDraft ?? emoji}
+                    readOnly={locked}
                     onKeyDown={e => e.stopPropagation()}
                     onChange={e => setEmojiDraft(e.target.value)}
                   />
-                  <button type="submit">Set</button>
+                  <button type="submit" disabled={locked}>
+                    Set
+                  </button>
                 </form>
               ),
             },
@@ -446,6 +469,7 @@ export function BoardMenu() {
                       type="button"
                       aria-label={`Use ${c} as the board emoji`}
                       aria-pressed={emoji === c}
+                      disabled={locked}
                       onClick={() => setEmoji(c)}
                     >
                       {c}
@@ -455,7 +479,7 @@ export function BoardMenu() {
               ),
             },
             ...(emoji ? [item('Remove emoji', () => setEmoji(''))] : []),
-          ],
+          ]),
         },
         toggle('Star this board', !!meta?.starred, () =>
           boardActions.setMeta(library.activeId, { starred: !meta?.starred }),
@@ -463,18 +487,20 @@ export function BoardMenu() {
         {
           kind: 'sub',
           label: 'Background color',
-          entries: boardBackgrounds.map(b => ({
-            kind: 'item' as const,
-            label: b.name,
-            swatch: b.color,
-            checked: background === b.color,
-            run: () => update(withSetting(boardRef.current, 'background', b.color)),
-          })),
+          entries: lock(
+            boardBackgrounds.map(b => ({
+              kind: 'item' as const,
+              label: b.name,
+              swatch: b.color,
+              checked: background === b.color,
+              run: () => update(withSetting(boardRef.current, 'background', b.color)),
+            })),
+          ),
         },
         {
           kind: 'sub',
           label: 'Start view',
-          entries: [
+          entries: lock([
             item(board.startView ? 'Update to current view' : 'Use current view', () => {
               const c = screenToWorld(camera, { x: size.w / 2, y: size.h / 2 });
               update(
@@ -500,12 +526,12 @@ export function BoardMenu() {
                   ),
                 ]
               : []),
-          ],
+          ]),
         },
         {
           kind: 'sub',
           label: 'Sensitivity label',
-          entries: [
+          entries: lock([
             toggle('No label', !board.sensitivity, () => update(withSetting(boardRef.current, 'sensitivity', null))),
             ...sensitivityLevels.map(l => ({
               kind: 'item' as const,
@@ -522,6 +548,7 @@ export function BoardMenu() {
                   className="sensitivity-form"
                   onSubmit={e => {
                     e.preventDefault();
+                    if (locked) return;
                     const label = customSensitivity(
                       customLabel ?? (board.sensitivity?.level === 'custom' ? (board.sensitivity.label ?? '') : ''),
                       customColor ?? board.sensitivity?.color ?? DEFAULT_CUSTOM_SENSITIVITY_COLOR,
@@ -540,6 +567,7 @@ export function BoardMenu() {
                     value={
                       customLabel ?? (board.sensitivity?.level === 'custom' ? (board.sensitivity.label ?? '') : '')
                     }
+                    readOnly={locked}
                     onKeyDown={e => e.stopPropagation()}
                     onChange={e => setCustomLabel(e.target.value)}
                   />
@@ -551,13 +579,16 @@ export function BoardMenu() {
                       (board.sensitivity?.level === 'custom' ? board.sensitivity.color : undefined) ??
                       DEFAULT_CUSTOM_SENSITIVITY_COLOR
                     }
+                    disabled={locked}
                     onChange={e => setCustomColor(e.target.value)}
                   />
-                  <button type="submit">Apply</button>
+                  <button type="submit" disabled={locked}>
+                    Apply
+                  </button>
                 </form>
               ),
             },
-          ],
+          ]),
         },
         item('History', () => setPanel('history')),
         item('Details', () => setPanel('details')),
@@ -663,7 +694,7 @@ export function BoardMenu() {
     {
       kind: 'sub',
       label: 'Assign status',
-      entries: [
+      entries: lock([
         toggle('No status', !board.status, () => update(withSetting(boardRef.current, 'status', null))),
         ...boardStatuses.map(s => ({
           kind: 'item' as const,
@@ -672,7 +703,7 @@ export function BoardMenu() {
           checked: board.status === s.id,
           run: () => update(withSetting(boardRef.current, 'status', s.id)),
         })),
-      ],
+      ]),
     },
   ];
   return (

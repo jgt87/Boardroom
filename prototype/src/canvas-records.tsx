@@ -5,8 +5,9 @@ import type { KanbanLane } from './record-views';
 import { CanvasField, canvasControl } from './canvas-fields';
 import { addChildRecord, deleteRecord, indentRecord, outdentRecord, recordTree, recordsError } from './records';
 import { RecordSavedViews } from './record-saved-views';
-import { recordColors, schemaOf, validateRecordValues } from './record-schema';
-import { applyRecordTemplate, isFreshDataset, recordTemplates } from './record-templates';
+import { builtInColumnNames, recordColors, schemaOf, shownBuiltIns, validateRecordValues } from './record-schema';
+import { applyRecordTemplate, isFreshDataset, recordTemplatesFor } from './record-templates';
+import { datasetTimelineFlags, setDatasetTimelineFlags } from './timeline-flags';
 import { RecordFields, RecordFieldInput } from './record-fields';
 import { createItem } from './model';
 import { syncedCard } from './record-canvas';
@@ -38,7 +39,8 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const view = item.type;
   const schema = schemaOf(ctx.board, item.datasetId!);
   const statuses = schema.statuses;
-  const fields = schema.fields.filter(f => !f.hidden);
+  const fields = schema.fields.filter(f => !f.hidden),
+    builtIns = shownBuiltIns(schema);
   const relations = rows.some(r => r.dependsOn?.length);
   const group = schema.fields.find(f => f.id === item.recordGroup && f.type === 'select');
   const kanbanColumns = group ? ['', ...group.options!] : statuses;
@@ -240,10 +242,7 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         <tr>
           {[
             'Title',
-            'Status',
-            'Assignee',
-            'Start',
-            'End',
+            ...builtIns.map(c => builtInColumnNames[c]),
             ...fields.map(f => f.name),
             ...(relations ? ['Blocked by', 'Blocking'] : []),
             '',
@@ -274,7 +273,7 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                 onDragOver={dragOver}
                 onDrop={event => dropRecord(event, undefined, entry.value)}
               >
-                <th colSpan={6 + fields.length + (relations ? 2 : 0)} scope="rowgroup">
+                <th colSpan={2 + builtIns.length + fields.length + (relations ? 2 : 0)} scope="rowgroup">
                   <button
                     disabled={!!item.locked}
                     aria-expanded={!config.hiddenGroups?.includes(entry.value)}
@@ -319,43 +318,51 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                   />
                 </span>
               </td>
-              <td>
-                <select
-                  {...canvasControl}
-                  aria-label={`Status: ${r.title}`}
-                  value={r.status}
-                  onChange={e => patch(r.id, { status: e.target.value as RecordRow['status'] })}
-                >
-                  {statuses.map(s => (
-                    <option key={s}>{s}</option>
-                  ))}
-                </select>
-              </td>
-              <td>
-                <CanvasField
-                  value={r.assignee}
-                  label={`Assignee: ${r.title}`}
-                  onCommit={assignee => patch(r.id, { assignee })}
-                />
-              </td>
-              <td>
-                <input
-                  {...canvasControl}
-                  aria-label={`Start date: ${r.title}`}
-                  type="date"
-                  value={r.start}
-                  onChange={e => patch(r.id, { start: e.target.value })}
-                />
-              </td>
-              <td>
-                <input
-                  {...canvasControl}
-                  aria-label={`End date: ${r.title}`}
-                  type="date"
-                  value={r.end}
-                  onChange={e => patch(r.id, { end: e.target.value })}
-                />
-              </td>
+              {builtIns.includes('status') && (
+                <td>
+                  <select
+                    {...canvasControl}
+                    aria-label={`Status: ${r.title}`}
+                    value={r.status}
+                    onChange={e => patch(r.id, { status: e.target.value as RecordRow['status'] })}
+                  >
+                    {statuses.map(s => (
+                      <option key={s}>{s}</option>
+                    ))}
+                  </select>
+                </td>
+              )}
+              {builtIns.includes('assignee') && (
+                <td>
+                  <CanvasField
+                    value={r.assignee}
+                    label={`Assignee: ${r.title}`}
+                    onCommit={assignee => patch(r.id, { assignee })}
+                  />
+                </td>
+              )}
+              {builtIns.includes('start') && (
+                <td>
+                  <input
+                    {...canvasControl}
+                    aria-label={`Start date: ${r.title}`}
+                    type="date"
+                    value={r.start}
+                    onChange={e => patch(r.id, { start: e.target.value })}
+                  />
+                </td>
+              )}
+              {builtIns.includes('end') && (
+                <td>
+                  <input
+                    {...canvasControl}
+                    aria-label={`End date: ${r.title}`}
+                    type="date"
+                    value={r.end}
+                    onChange={e => patch(r.id, { end: e.target.value })}
+                  />
+                </td>
+              )}
               {fields.map(f => (
                 <td key={f.id}>
                   <RecordFieldInput
@@ -431,7 +438,7 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
           <th scope="row">
             {visible.length} {visible.length === 1 ? 'record' : 'records'}
           </th>
-          <td colSpan={4} />
+          {builtIns.length > 0 && <td colSpan={builtIns.length} />}
           {fields.map(f => {
             const id = `field:${f.id}`,
               numeric = numericRecordFields(schema).includes(id),
@@ -476,23 +483,25 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         <span>{item.text || 'Records'}</span>
         <StatusChip status={item.data?.status} />
         <div {...canvasControl} className="canvas-view-switch" role="group" aria-label="Record layout">
-          {(view === 'table' || view === 'kanban') && !item.locked && isFreshDataset(ctx.board, item.datasetId) && (
-            // Starter column sets (track L), offered until the new format holds real work.
+          {!item.locked && isFreshDataset(ctx.board, item.datasetId) && (
+            // Starter templates (track L; Timeline ones P2-Q13b), offered until the new format holds real work.
             <select
               className="record-template-select"
               aria-label="Start from a template"
               value=""
               onMouseDown={e => e.stopPropagation()}
               onChange={e => {
-                const t = recordTemplates.find(x => x.id === e.target.value);
+                const t = recordTemplatesFor(view).find(x => x.id === e.target.value);
                 e.target.value = '';
                 if (!t) return;
                 ctx.update(b => applyRecordTemplate(b, item, t.id, () => crypto.randomUUID()));
-                ctx.display(`${t.label} columns applied. Undo restores the starter records.`);
+                ctx.display(
+                  `${t.label} ${view === 'timeline' ? 'template' : 'columns'} applied. Undo restores the starter records.`,
+                );
               }}
             >
               <option value="">Templates…</option>
-              {recordTemplates.map(t => (
+              {recordTemplatesFor(view).map(t => (
                 <option key={t.id} value={t.id} title={t.about}>
                   {t.label}
                 </option>
@@ -659,6 +668,17 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
               onAllRows={item.locked ? undefined : change}
               settings={config.timeline}
               onSettings={timeline => onView({ ...config, timeline })}
+              flags={datasetTimelineFlags(ctx.board, item.datasetId!)}
+              onFlags={
+                item.locked
+                  ? undefined
+                  : flags =>
+                      ctx.update(b =>
+                        b.items.find(i => i.id === item.id)?.locked
+                          ? b
+                          : setDatasetTimelineFlags(b, item.datasetId!, flags),
+                      )
+              }
               onError={ctx.display}
               onRows={item.locked ? undefined : next => change(mergeRecordSubset(rows, selectable, next))}
               recordAction={recordAction}

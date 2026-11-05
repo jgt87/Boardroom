@@ -301,6 +301,16 @@ export function CardBar() {
                   {n === 0.5 ? '½' : n}
                 </button>
               ))}
+              <button
+                draggable
+                aria-label="Points unknown"
+                title="Points unknown (?)"
+                onDragStart={e => e.dataTransfer.setData(CHIP_MIME, encodeChip({ kind: 'estimate', value: '?' }))}
+                className={same('points') === undefined && same('pointsUnknown') ? 'active' : ''}
+                onClick={() => apply({ points: 'unknown' }, false)}
+              >
+                ?
+              </button>
             </span>
             <span className="estimate-chips" role="group" aria-label="T-shirt size">
               {tshirtSizes.map(z => (

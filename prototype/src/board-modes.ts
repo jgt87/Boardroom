@@ -11,6 +11,16 @@ export const VIEW_ONLY_MESSAGE = 'This board is view-only. Turn off View only in
 export const COMMENT_ONLY_MESSAGE =
   'This board is comment-only: you can add, reply to and resolve comments. Turn off Comment only in the Board menu to edit.';
 
+/**
+ * Board settings (name, status, sensitivity, description, background, start view, thumbnail, emoji) are read-only
+ * on a comment-only or view-only board (question P2-Q11): the controls show the current value but cannot change it.
+ */
+export const settingsLocked = (b: Board): boolean => !!(b.viewOnly || b.commentOnly);
+export const settingsLockedNote = (b: Board): string =>
+  b.viewOnly
+    ? 'Board settings are read-only while the board is view-only.'
+    : 'Board settings are read-only while the board is comment-only.';
+
 /** Keys a comment-only board accepts changes to: its comments, and the mode switches themselves. */
 const commentKeys = new Set(['comments', 'commentOnly', 'viewOnly']);
 const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);

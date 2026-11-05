@@ -116,7 +116,7 @@ export const kindIcons: Record<string, typeof Layers3> = {
   estimates: Gauge,
   dotpile: CircleDot,
 };
-import { catalog, toolCategories } from './tool-catalog';
+import { catalog, placementPreset, toolCategories } from './tool-catalog';
 import type { CatalogEntry } from './tool-catalog';
 import { wireframeComponents } from './specs-media';
 import { allKinds, clone, removeBranch } from './model';
@@ -317,19 +317,30 @@ export function MindPreview({
     </svg>
   );
 }
-export function RecordsPreview({ rows, view }: { rows: RecordRow[]; view: string }) {
+export function RecordsPreview({
+  rows,
+  view,
+  hidden = [],
+}: {
+  rows: RecordRow[];
+  view: string;
+  /** Built-in columns the dataset's schema hides (poll and voting results). */
+  hidden?: readonly string[];
+}) {
   if (view === 'kanban') return <KanbanView rows={rows} limit={4} />;
   if (view === 'timeline') return <TimelineView rows={rows.slice(0, 8)} />;
   const points = rows.reduce((s, r) => s + (r.points ?? 0), 0),
-    estimated = rows.some(r => r.points !== undefined);
+    estimated = rows.some(r => r.points !== undefined),
+    cols = (['status', 'assignee', 'start'] as const).filter(c => !hidden.includes(c));
+  const names = { status: 'Status', assignee: 'Assignee', start: 'Start date' };
   return (
     <table className="records-preview">
       <thead>
         <tr>
           <th>Title</th>
-          <th>Status</th>
-          <th>Assignee</th>
-          <th>Start date</th>
+          {cols.map(c => (
+            <th key={c}>{names[c]}</th>
+          ))}
           {estimated && <th>Points</th>}
         </tr>
       </thead>
@@ -337,9 +348,9 @@ export function RecordsPreview({ rows, view }: { rows: RecordRow[]; view: string
         {rows.slice(0, 8).map(r => (
           <tr key={r.id}>
             <td>{r.title || 'Untitled record'}</td>
-            <td>{r.status}</td>
-            <td>{r.assignee || '—'}</td>
-            <td>{r.start || '—'}</td>
+            {cols.map(c => (
+              <td key={c}>{c === 'status' ? r.status : r[c] || '—'}</td>
+            ))}
             {estimated && <td>{r.points ?? '—'}</td>}
           </tr>
         ))}
@@ -347,7 +358,7 @@ export function RecordsPreview({ rows, view }: { rows: RecordRow[]; view: string
       {estimated && (
         <tfoot>
           <tr>
-            <td colSpan={4}>Total points{rows.length > 8 ? ` (all ${rows.length} records)` : ''}</td>
+            <td colSpan={1 + cols.length}>Total points{rows.length > 8 ? ` (all ${rows.length} records)` : ''}</td>
             <td>{points}</td>
           </tr>
         </tfoot>
@@ -378,7 +389,11 @@ export function RichPreview({ item, board }: { item: Item; board: Board }) {
             viewport={item.data?.autoLayout === false ? mindViewport(item) : undefined}
           />
         ) : (
-          <RecordsPreview rows={board.datasets?.[item.datasetId!] ?? []} view={item.type} />
+          <RecordsPreview
+            rows={board.datasets?.[item.datasetId!] ?? []}
+            view={item.type}
+            hidden={board.recordSchemas?.[item.datasetId!]?.hiddenBuiltIns}
+          />
         )}
       </div>
     </div>
@@ -539,8 +554,10 @@ export function ToolGallery({
         <div className="gallery-items">
           {!isFormats && !sub && <h3>{category}</h3>}
           {entries.map(entry => {
+            const preset = placementPreset(entry.kind);
             const Icon =
               kindIcons[entry.kind] ??
+              (preset ? kindIcons[preset.kind] : undefined) ??
               (entry.kind === 'mermaid' || entry.kind === 'submenu:diagram'
                 ? Network
                 : entry.kind === 'table'
@@ -560,7 +577,7 @@ export function ToolGallery({
                 className="gallery-pick"
                 disabled={entry.unavailable}
                 onClick={() => pick(entry)}
-                draggable={placeable}
+                draggable={placeable || !!preset}
                 onDragStart={e => {
                   // Drag a tool onto the board to place it there (gap F12).
                   e.dataTransfer.setData(TOOL_MIME, entry.kind);

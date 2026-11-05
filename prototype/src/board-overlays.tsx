@@ -376,6 +376,7 @@ export function BoardOverlays() {
           onChange={change => run(change)}
           onClose={() => setInspector(false)}
           onEditMermaid={openEditor}
+          onColorPicked={app.rememberColor}
         />
       )}
       <DeckPresenter board={board} update={update} boardRef={boardRef} />

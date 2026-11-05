@@ -4,7 +4,11 @@ import type { Item, RecordRow } from './model';
 import type { WidgetCtx } from './widget-types';
 import type { RecordField, RecordSchema } from './record-schema';
 import { BrandSwatches } from './brand-kit-panel';
+import { ColorMenu } from './color-menu';
 import {
+  builtInColumnNames,
+  builtInColumns,
+  setBuiltInHidden,
   fieldTypes,
   formatFieldNumber,
   formulaError,
@@ -239,11 +243,10 @@ function ProgressSettings({ field, onField }: { field: RecordField; onField: (ne
                 if (v.trim() && Number.isFinite(n)) setRule(k, { value: n });
               }}
             />
-            <input
-              type="color"
-              aria-label={`Rule ${k + 1} colour: ${field.name}`}
+            <ColorMenu
+              label={`Rule ${k + 1} colour: ${field.name}`}
               value={r.color}
-              onChange={e => hex.test(e.target.value) && setRule(k, { color: e.target.value })}
+              onPick={c => hex.test(c) && setRule(k, { color: c })}
             />
             <BrandSwatches
               label={`Brand colours for rule ${k + 1}: ${field.name}`}
@@ -292,11 +295,10 @@ function ProgressToggle({ field, set }: { field: RecordField; set: (patch: Parti
             value={String(field.max ?? 100)}
             onCommit={v => set({ max: v.trim() === '' ? undefined : Number(v) })}
           />
-          <input
-            type="color"
-            aria-label={`Progress bar colour: ${field.name}`}
+          <ColorMenu
+            label={`Progress bar colour: ${field.name}`}
             value={field.color ?? '#4262ff'}
-            onChange={e => hex.test(e.target.value) && set({ color: e.target.value })}
+            onPick={c => hex.test(c) && set({ color: c })}
           />
           <BrandSwatches
             label={`Brand colours for progress bar: ${field.name}`}
@@ -359,6 +361,22 @@ export function RecordFields({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     >
       <summary>Fields</summary>
       <div className="record-fields-panel" role="group" aria-label="Record fields">
+        {item.type === 'table' && (
+          <fieldset disabled={!!item.locked}>
+            <legend>Table columns</legend>
+            {builtInColumns.map(c => (
+              <label key={c}>
+                <input
+                  type="checkbox"
+                  aria-label={`Show column: ${builtInColumnNames[c]}`}
+                  checked={!schema.hiddenBuiltIns?.includes(c)}
+                  onChange={e => write(setBuiltInHidden(schema, c, !e.target.checked))}
+                />
+                {builtInColumnNames[c]}
+              </label>
+            ))}
+          </fieldset>
+        )}
         <fieldset disabled={!!item.locked}>
           <legend>Status columns</legend>
           {schema.statuses.map((status, k) => (
@@ -388,11 +406,11 @@ export function RecordFields({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
               >
                 <ArrowDown size={12} />
               </button>
-              <input
-                type="color"
-                aria-label={`Column colour: ${status}`}
+              <ColorMenu
+                label={`Column colour: ${status}`}
                 value={schema.columns?.[status]?.color ?? '#f4f4f6'}
-                onChange={e => setColumn(status, { color: hex.test(e.target.value) ? e.target.value : undefined })}
+                board={ctx.board}
+                onPick={c => setColumn(status, { color: hex.test(c) ? c : undefined })}
               />
               <BrandSwatches
                 label={`Brand colours for column: ${status}`}

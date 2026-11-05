@@ -51,7 +51,7 @@ import { AutoLayoutGapHandle } from './autolayout-gap-handle';
 
 export function CanvasSurface() {
   const {
-    insertDrawio,
+    dropDrawio,
     importDocument,
     update,
     size,
@@ -121,7 +121,18 @@ export function CanvasSurface() {
           Math.max(...pts.map(p => p.y)) >= view.y)
       );
     }
-    return i.x <= view.r && i.x + i.w >= view.x && i.y <= view.b && i.y + i.h >= view.y;
+    if (i.x <= view.r && i.x + i.w >= view.x && i.y <= view.b && i.y + i.h >= view.y) return true;
+    // A callout whose tail reaches into view stays rendered, so its tail can still be clicked (P2-Q5).
+    if (isCallout(i) && i.tail) {
+      if (i.rotation) return true;
+      const tip = tailTip(i, shown.items),
+        x0 = Math.min(i.x, i.x + tip.x),
+        x1 = Math.max(i.x + i.w, i.x + tip.x),
+        y0 = Math.min(i.y, i.y + tip.y),
+        y1 = Math.max(i.y + i.h, i.y + tip.y);
+      return x0 <= view.r && x1 >= view.x && y0 <= view.b && y1 >= view.y;
+    }
+    return false;
   };
   return (
     <>
@@ -277,7 +288,8 @@ export function CanvasSurface() {
               dropGrid && k === 0 && /\.(csv|tsv|xlsx)$/i.test(f.name) ? { gridId: dropGrid.id } : undefined,
             );
           }
-          if (diagrams.length) void insertDrawio(diagrams, toWorld(e.clientX, e.clientY));
+          // Draw.io files: ask whether they become a draw.io object or native shapes (P2-Q4).
+          if (diagrams.length) void dropDrawio(diagrams, toWorld(e.clientX, e.clientY));
           if (images.length) void insertImages(images, toWorld(e.clientX, e.clientY));
         }}
         className={`canvas tool-${tool}`}

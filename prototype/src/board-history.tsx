@@ -20,6 +20,7 @@ import {
 } from './activity';
 import { BOARD_DESCRIPTION_MAX, boardStatuses, cleanDescription, withSetting } from './board-settings';
 import { boardEmoji, cleanEmoji, spacesOf } from './board-library';
+import { settingsLocked, settingsLockedNote } from './board-modes';
 import { useLibraryFiles } from './use-library-files';
 import './library-r2.css';
 
@@ -306,12 +307,16 @@ export function DetailsPanel({ onClose }: { onClose: () => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const libraryFiles = useLibraryFiles();
   const emoji = boardEmoji(meta);
+  // Read-only on a comment-only or view-only board (question P2-Q11).
+  const locked = settingsLocked(board);
   const saveEmoji = (value: string) => {
+    if (locked) return;
     const clean = cleanEmoji(value);
     if (value.trim() && !clean) return display('Use one short emoji or symbol.');
     if (clean !== emoji) boardActions.setMeta(library.activeId, { emoji: clean || null });
   };
   const saveDescription = (text: string) => {
+    if (locked) return;
     const clean = cleanDescription(text);
     if (clean !== (boardRef.current.description ?? ''))
       update(withSetting(boardRef.current, 'description', clean || null));
@@ -323,6 +328,7 @@ export function DetailsPanel({ onClose }: { onClose: () => void }) {
   const date = (iso?: string) => (iso ? new Date(iso).toLocaleString() : 'Unknown');
   return (
     <Shell title="Board details" onClose={onClose}>
+      {locked && <p className="main-menu-note settings-locked-note">{settingsLockedNote(board)}</p>}
       <label className="field board-description-field">
         Description
         <textarea
@@ -332,6 +338,7 @@ export function DetailsPanel({ onClose }: { onClose: () => void }) {
           rows={3}
           maxLength={BOARD_DESCRIPTION_MAX}
           defaultValue={board.description ?? ''}
+          readOnly={locked}
           onBlur={e => saveDescription(e.target.value)}
         />
       </label>
@@ -343,6 +350,7 @@ export function DetailsPanel({ onClose }: { onClose: () => void }) {
           placeholder="None"
           maxLength={16}
           defaultValue={emoji}
+          readOnly={locked}
           onKeyDown={e => {
             if (e.key === 'Enter') e.currentTarget.blur();
           }}

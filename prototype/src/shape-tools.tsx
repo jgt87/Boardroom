@@ -93,6 +93,19 @@ export function ShapeBody({ item, tip }: { item: Item & { type: ShapeKind }; tip
       <g data-callout-tail-shape={item.id}>
         <path d={d} fill="none" {...common} strokeWidth={b.borderWidth * 2} strokeLinejoin="round" />
         <path d={d} fill={item.fill} stroke="none" />
+        {/* The tail reaches outside the object's box: an invisible, slightly wider copy keeps it clickable and
+            draggable even with no fill (P2-Q5). */}
+        {p.tail && (
+          <path
+            className="callout-tail-hit"
+            d={p.tail}
+            fill="transparent"
+            stroke="transparent"
+            strokeWidth={8}
+            strokeLinejoin="round"
+            pointerEvents="all"
+          />
+        )}
       </g>
     );
   }

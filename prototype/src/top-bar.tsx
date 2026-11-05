@@ -7,6 +7,7 @@ import { IMAGE_ACCEPT, withAssets } from './images';
 import { setPrivate } from './board-tools';
 import { useApp } from './board-app';
 import { BoardEmoji, BoardMenu, BoardStatusChip, SensitivityChip, useDismiss } from './board-menu';
+import { settingsLocked, settingsLockedNote } from './board-modes';
 import {
   addTemplate,
   loadTemplates,
@@ -114,6 +115,9 @@ export function TopBar() {
           aria-label="Board name"
           value={board.title}
           maxLength={200}
+          // The name is a board setting: read-only on a comment-only or view-only board (question P2-Q11).
+          readOnly={settingsLocked(board)}
+          title={settingsLocked(board) ? settingsLockedNote(board) : undefined}
           onChange={e => update({ ...boardRef.current, title: e.target.value })}
         />
         <BoardStatusChip />

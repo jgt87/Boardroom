@@ -355,9 +355,16 @@ export function useExporters() {
           .replace(/[\\/:*?"<>|]+/g, ' ')
           .trim()
           .slice(0, 80) || 'board';
-      // Objects linked to another object or frame click through to it in the page (track J).
+      // Objects linked to another object or frame click through to it in the page (track J). The sensitivity
+      // label is shown on the page as well as in the SVG's corner (question P2-Q12).
       download(
-        standaloneHtml(built.svg, boardRef.current.title, new Date(), exportLinks(boardRef.current, built.box)),
+        standaloneHtml(
+          built.svg,
+          boardRef.current.title,
+          new Date(),
+          exportLinks(boardRef.current, built.box),
+          boardRef.current.sensitivity,
+        ),
         `${name}.html`,
         'text/html',
       );

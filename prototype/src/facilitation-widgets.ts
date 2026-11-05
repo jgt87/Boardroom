@@ -16,28 +16,42 @@ export type CardData = {
   /** Empty string means no status (not allowed on record-synced cards). */
   status: CardStatus;
   points?: number;
+  /**
+   * The "?" estimate (open question P1-Q6): points are still unknown. Set only without `points`; when both are
+   * present (an older or hand-edited board), the number wins. Totals skip it.
+   */
+  pointsUnknown?: true;
   size?: (typeof tshirtSizes)[number];
 };
+/** The story points text a card shows: "5 pt", "? pt" for unknown, or '' with no points estimate. */
+export const cardPointsLabel = (d: Pick<CardData, 'points' | 'pointsUnknown'>) =>
+  typeof d.points === 'number' ? `${d.points} pt` : d.pointsUnknown ? '? pt' : '';
 export const isIsoDate = (s: string) =>
   /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(s)) && new Date(s).toISOString().slice(0, 10) === s;
 
 /** Convert a sticky note to a card: keeps id (connectors stay attached), text, tags, link; note colour becomes the accent. */
 export const noteToCard = (note: Item): Item => toCard(note);
-/** Total story points and t-shirt size counts for a set of cards. */
-export function estimateTotals(items: Item[]): { points: number; sizes: Record<string, number>; estimated: number } {
+/** Total story points and t-shirt size counts for a set of cards; unknown ("?") points are counted, not summed. */
+export function estimateTotals(items: Item[]): {
+  points: number;
+  sizes: Record<string, number>;
+  estimated: number;
+  unknown: number;
+} {
   const sizes: Record<string, number> = {};
   let points = 0,
-    estimated = 0;
+    estimated = 0,
+    unknown = 0;
   for (const i of items) {
     if (i.type !== 'card' || !i.data) continue;
     const d = i.data as CardData;
     if (typeof d.points === 'number') {
       points += d.points;
       estimated++;
-    }
+    } else if (d.pointsUnknown) unknown++;
     if (d.size) sizes[d.size] = (sizes[d.size] ?? 0) + 1;
   }
-  return { points, sizes, estimated };
+  return { points, sizes, estimated, unknown };
 }
 
 // ---- Matrix ----------------------------------------------------------------------------------

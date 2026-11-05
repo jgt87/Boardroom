@@ -141,7 +141,10 @@ export function syncedCard(board: Board, datasetId: string, recordId: string, it
         tags: r.tags,
         link: r.link,
         data: {
-          ...item.data,
+          // Records hold numeric points only; a card's unknown ("?") estimate stays until the record gets points.
+          ...(r.points === undefined
+            ? item.data
+            : Object.fromEntries(Object.entries(item.data ?? {}).filter(([k]) => k !== 'pointsUnknown'))),
           description: r.description ?? '',
           assignee: r.assignee,
           status: r.status,

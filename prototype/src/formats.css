@@ -956,3 +956,20 @@ select:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* In-app choice, e.g. how to add a dropped .drawio file (P2-Q4) */
+.format-editor .choice-prompt .sheet-picker-list button {
+  align-items: flex-start;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.sheet-picker-list .choice-prompt-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  white-space: normal;
+}
+.choice-prompt-text small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}

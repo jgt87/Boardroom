@@ -8,7 +8,16 @@ import { LinkPopover, MentionMenu, SwatchRow, mentionPeople, textColors } from '
 import { canvasControl } from './canvas-fields';
 import { useLatest } from './use-latest';
 import { filterSlash, docTemplates, calloutLabels, DOC_MAX, docShortcut, emojiQuery } from './doc-tools';
-import { blockSpan, joinBlocks, moveBlocks, removeBlocks, stepBlockRange, type BlockRange } from './doc-tools';
+import {
+  blockSpan,
+  insertBlocksAt,
+  joinBlocks,
+  moveBlocks,
+  removeBlocks,
+  stepBlockRange,
+  type BlockRange,
+  type BlockSpot,
+} from './doc-tools';
 import { announce } from './announce';
 import { loadEmojiGroups, searchEmojis } from './emoji-data';
 import type { EmojiEntry, EmojiGroup } from './emoji-data';
@@ -205,6 +214,7 @@ export function RichDocEditor({
   onSave,
   title,
   templates,
+  templateMode = 'replace',
   label = 'Document content. Type / on an empty line for blocks, @ to mention someone. Esc selects the block.',
   placeholder,
   className = 'canvas-doc-object',
@@ -217,6 +227,11 @@ export function RichDocEditor({
   onSave: (markdown: string) => void;
   title: React.ReactNode;
   templates: DocTemplateOption[];
+  /**
+   * 'replace' (Docs): a template replaces the content. 'insert' (board notes, P2-Q13a): it goes in at the caret
+   * the editor had when the template menu was opened, or at the end when the editor had no caret.
+   */
+  templateMode?: 'replace' | 'insert';
   label?: string;
   placeholder?: string;
   className?: string;
@@ -238,7 +253,10 @@ export function RichDocEditor({
     popoverOpen = useRef(false),
     // Block selection (track L): the selected top-level blocks, and the selection to restore after a save.
     blockSel = useRef<BlockRange | null>(null),
-    pendingBlocks = useRef<BlockRange | null>(null);
+    pendingBlocks = useRef<BlockRange | null>(null),
+    // Template insertion (P2-Q13a): the template menu, and the blocks and caret spot when the editor left for it.
+    templateMenu = useRef<HTMLSelectElement>(null),
+    templateSpot = useRef<{ blocks: string[]; spot: BlockSpot | null } | null>(null);
   /** Save new Markdown; false when nothing changed (or the Doc is locked). */
   const save = (next: string) => {
     if (locked || next === md.trim()) return false;
@@ -299,6 +317,31 @@ export function RichDocEditor({
     const index = Math.max(0, els.indexOf(top as HTMLElement));
     showBlocks({ anchor: index, focus: index });
     return true;
+  };
+  /**
+   * The top-level block holding the caret, and whether a template goes before it (caret at its start), after it
+   * or in its place (an empty block). Null when the caret is not in the editor.
+   */
+  const caretSpot = (): BlockSpot | null => {
+    const root = editor.current,
+      sel = getSelection();
+    if (!root || !sel?.rangeCount || !sel.anchorNode || !root.contains(sel.anchorNode)) return null;
+    const els = blockEls();
+    if (!els.length) return null;
+    let top: Node | null =
+      sel.anchorNode === root
+        ? (root.childNodes[Math.min(sel.anchorOffset, root.childNodes.length - 1)] ?? null)
+        : sel.anchorNode;
+    while (top && top.parentNode !== root) top = top.parentNode;
+    const index = els.indexOf(top as HTMLElement);
+    if (index < 0) return null;
+    const el = els[index];
+    if (!el.textContent?.trim()) return { index, place: 'replace' };
+    const before = document.createRange();
+    before.setStart(el, 0);
+    if (sel.anchorNode === root) before.setEnd(el, 0);
+    else before.setEnd(sel.anchorNode, sel.anchorOffset);
+    return { index, place: before.toString().trim() ? 'after' : 'before' };
   };
   /** Save the (already updated) editor content, then select `next` again once the Doc re-renders. */
   const persistBlocks = (next: BlockRange | null) => {
@@ -786,8 +829,13 @@ export function RichDocEditor({
     keyDown,
     watchMention,
     clearBlocks,
-    blur: () => {
+    blur: (to: EventTarget | null) => {
       if (popoverOpen.current) return;
+      // Leaving for the template menu: remember where the caret was, before the save re-renders the content.
+      templateSpot.current =
+        templateMode === 'insert' && to && to === templateMenu.current
+          ? { blocks: blockEls().map(markdownFrom), spot: caretSpot() }
+          : null;
       clearBlocks();
       setSlash(null);
       setEmoji(null);
@@ -827,7 +875,7 @@ export function RichDocEditor({
         suppressContentEditableWarning
         {...canvasControl}
         dangerouslySetInnerHTML={{ __html: renderMarkdown(md) }}
-        onBlur={() => live.current.blur()}
+        onBlur={e => live.current.blur(e.relatedTarget)}
         onInput={() => {
           live.current.watchSlash();
           live.current.watchEmoji();
@@ -911,14 +959,24 @@ export function RichDocEditor({
             List
           </button>
           <select
+            ref={templateMenu}
             aria-label="Apply a doc template"
             value=""
             disabled={locked}
             onMouseDown={e => e.stopPropagation()}
+            onBlur={() => (templateSpot.current = null)}
             onChange={e => {
               const t = templates.find(t => t.id === e.target.value);
               e.target.value = '';
               if (!t) return;
+              if (templateMode === 'insert') {
+                // One save, so one undo step; without a caret the template goes at the end.
+                const at = templateSpot.current;
+                templateSpot.current = null;
+                save(at ? insertBlocksAt(at.blocks, at.spot, t.markdown) : insertBlocksAt([md], null, t.markdown));
+                display(`${t.label} template inserted. Undo removes it.`);
+                return;
+              }
               save(t.markdown.trim());
               display(`${t.label} template applied. Undo restores the previous content.`);
             }}

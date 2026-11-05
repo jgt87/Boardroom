@@ -108,6 +108,61 @@ export function stepRate(rate: number, dir: 1 | -1): number {
   return rates[Math.max(0, Math.min(rates.length - 1, i + dir))];
 }
 export const rateLabel = (rate: number) => `${rate}×`;
+/** Is `v` one of the offered playback speeds (the value a video remembers in `data.rate`)? */
+export const validRate = (v: unknown): v is number =>
+  typeof v === 'number' && (PLAYBACK_RATES as readonly number[]).includes(v);
+/** The remembered speed of a video, or normal speed when none (or an unknown one) is stored. */
+export const storedRate = (v: unknown): number => (validRate(v) ? v : 1);
+/**
+ * Video data with the speed remembered: normal speed removes the field so untouched videos stay unchanged.
+ * Returns the same object when nothing changes.
+ */
+export function withRate<T extends { rate?: number }>(data: T, rate: number): T {
+  const next = validRate(rate) && rate !== 1 ? rate : undefined;
+  if (data.rate === next) return data;
+  const copy = { ...data };
+  if (next === undefined) delete copy.rate;
+  else copy.rate = next;
+  return copy;
+}
+
+// ---- Drawing cuts on the waveform ----------------------------------------------------------------------
+
+/** Seconds at horizontal offset `px` of a strip `width` pixels wide showing `total` seconds, to tenths. */
+export function timeAtX(px: number, width: number, total: number): number {
+  if (!(width > 0) || !(total > 0)) return 0;
+  return Math.round(Math.max(0, Math.min(total, (px / width) * total)) * 10) / 10;
+}
+
+export type CutGrab = { index: number; edge: 'start' | 'end'; anchor: number };
+/**
+ * The cut edge nearest to `t` within `tolerance` seconds, as the cut index and which end, or null. A drag that
+ * starts there moves that edge; the other end stays as the drag's anchor.
+ */
+export function cutEdgeAt(t: number, cuts: TimeRange[], tolerance: number): CutGrab | null {
+  let best: CutGrab | null = null,
+    dist = tolerance;
+  cuts.forEach((c, index) => {
+    if (!Number.isFinite(c.start) || !Number.isFinite(c.end)) return;
+    for (const edge of ['start', 'end'] as const) {
+      const d = Math.abs(c[edge] - t);
+      if (d <= dist) {
+        dist = d;
+        best = { index, edge, anchor: edge === 'start' ? c.end : c.start };
+      }
+    }
+  });
+  return best;
+}
+
+/** The cut a drag describes: from the anchor to the pointer, either way round, inside [0, total]. */
+export function cutFromDrag(anchor: number, t: number, total: number): TimeRange {
+  const max = total > 0 ? total : 1e6,
+    clamp = (s: number) => Math.round(Math.max(0, Math.min(max, s)) * 10) / 10;
+  const a = clamp(anchor),
+    b = clamp(t);
+  return { start: Math.min(a, b), end: Math.max(a, b) };
+}
 
 export type MediaKeyAction = 'back' | 'forward' | 'toggle' | 'slower' | 'faster';
 /** Player keys while the player has focus: J/← back 10 s, L/→ forward 10 s, K/space play-pause, < > speed. */

@@ -3,6 +3,8 @@ import { isIsoDate } from './facilitation-widgets.ts';
 import { cleanRecordView, validateRecordView } from './record-query.ts';
 import type { RecordViewConfig } from './record-query.ts';
 import { formulaRefs, parseFormula, renameFormulaRef } from './record-formula.ts';
+import { TIMELINE_FLAG_STORE_LIMIT, validateTimelineFlags } from './timeline-axis.ts';
+import type { TimelineFlag } from './timeline-axis.ts';
 
 export const fieldTypes = ['text', 'number', 'date', 'select', 'checkbox', 'formula', 'url'] as const;
 export type RecordField = {
@@ -113,7 +115,34 @@ export type RecordSchema = {
   /** What a column capacity counts: cards (default) or story points. */
   capacity?: 'count' | 'points';
   views?: SavedRecordView[];
+  /** Free Timeline flags shared by every Timeline view of the dataset (P2-Q6); see timeline-flags.ts. */
+  timelineFlags?: TimelineFlag[];
+  /**
+   * Built-in columns the Table view leaves out (open question P1-Q8). Poll and voting results use it for a minimal
+   * table: their rows still hold a status, but no "Not started" column shows next to the votes.
+   */
+  hiddenBuiltIns?: BuiltInColumn[];
 };
+/** Built-in record columns a Table can hide; the title always shows. */
+export const builtInColumns = ['status', 'assignee', 'start', 'end'] as const;
+export type BuiltInColumn = (typeof builtInColumns)[number];
+export const builtInColumnNames: Record<BuiltInColumn, string> = {
+  status: 'Status',
+  assignee: 'Assignee',
+  start: 'Start',
+  end: 'End',
+};
+/** The built-in columns a Table shows, in order. */
+export const shownBuiltIns = (schema: RecordSchema): BuiltInColumn[] =>
+  builtInColumns.filter(c => !schema.hiddenBuiltIns?.includes(c));
+/** Show or hide one built-in column; an empty list is removed so older boards stay unchanged. */
+export function setBuiltInHidden(schema: RecordSchema, column: BuiltInColumn, hidden: boolean): RecordSchema {
+  const rest = (schema.hiddenBuiltIns ?? []).filter(c => c !== column),
+    list = builtInColumns.filter(c => (c === column ? hidden : rest.includes(c)));
+  const next: RecordSchema = { ...schema, hiddenBuiltIns: list };
+  if (!list.length) delete next.hiddenBuiltIns;
+  return next;
+}
 export type RecordValues = Record<string, string | number | boolean>;
 export const defaultSchema: RecordSchema = { statuses: ['Not started', 'In progress', 'Complete'], fields: [] };
 export const schemaOf = (board: Board, id: string): RecordSchema =>
@@ -170,6 +199,13 @@ export function validateRecordSchema(schema: RecordSchema): void {
   if (formulaCycle(schema.fields)) throw new Error('Formula fields cannot refer to each other in a cycle.');
   if (schema.capacity !== undefined && !['count', 'points'].includes(schema.capacity))
     throw new Error('Invalid column capacity setting.');
+  if (
+    schema.hiddenBuiltIns !== undefined &&
+    (!Array.isArray(schema.hiddenBuiltIns) ||
+      schema.hiddenBuiltIns.some(c => !(builtInColumns as readonly string[]).includes(c)) ||
+      new Set(schema.hiddenBuiltIns).size !== schema.hiddenBuiltIns.length)
+  )
+    throw new Error('Invalid hidden columns.');
   if (schema.columns !== undefined) {
     if (!schema.columns || typeof schema.columns !== 'object' || Array.isArray(schema.columns))
       throw new Error('Invalid column settings.');
@@ -197,6 +233,7 @@ export function validateRecordSchema(schema: RecordSchema): void {
       validateRecordView(v.config, schema);
     }
   }
+  validateTimelineFlags(schema.timelineFlags, TIMELINE_FLAG_STORE_LIMIT);
 }
 /** True when formula fields refer to each other in a loop (including a field referring to itself). */
 export function formulaCycle(fields: RecordField[]): boolean {

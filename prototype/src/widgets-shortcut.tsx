@@ -7,6 +7,7 @@ import type { Item } from './model';
 import type { WidgetCtx, WidgetView } from './widget-types';
 import { Dialog, data, setData, stop } from './widget-kit';
 import { BrandSwatches } from './brand-kit-panel';
+import { ColorMenu } from './color-menu';
 import { isSafeLink, shortcutActions, shortcutGroups, shortcutUsesTarget, SHORTCUT_EVENT } from './specs-shortcut';
 import type { ShortcutAction, ShortcutData } from './specs-shortcut';
 import { readableTextOn } from './board-tools';
@@ -73,10 +74,10 @@ function ShortcutEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; on
           Label
           <input aria-label="Shortcut label" value={label} maxLength={80} onChange={e => setLabel(e.target.value)} />
         </label>
-        <label>
+        <span>
           Colour
-          <input type="color" aria-label="Shortcut colour" value={fill} onChange={e => setFill(e.target.value)} />
-        </label>
+          <ColorMenu label="Shortcut colour" value={fill} onPick={setFill} />
+        </span>
         <BrandSwatches label="Brand colours for shortcut" value={fill} onPick={setFill} />
         <label className="span2">
           Action

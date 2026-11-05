@@ -78,7 +78,8 @@ export const catalog: Record<string, CatalogEntry[]> = {
     e('Planner (Program Board)', 'planner'),
     unavailable('Smartsheet'),
     e('Story points', 'estimates', 'Story point chips to drag onto cards and sticky notes'),
-    e('T-shirt sizing', 'estimates', 'T-shirt size chips to drag onto cards and sticky notes'),
+    // Opens the estimate palette in Sizes mode (open question P1-Q7); see `placementPreset` in tool-catalog.ts.
+    e('T-shirt sizing', 'estimates:tshirt', 'T-shirt size chips to drag onto cards and sticky notes'),
     e('User story mapping', 'storymap'),
   ],
   'Engage activities': [
@@ -127,3 +128,14 @@ export const catalog: Record<string, CatalogEntry[]> = {
     e('Validation report', 'validation', 'Find loose connectors, unlabelled and overlapping shapes'),
   ],
 };
+
+/**
+ * Catalogue choices that place an object kind with preset data, written `kind:variant`. "T-shirt sizing" places
+ * the estimate palette in Sizes mode (open question P1-Q7).
+ */
+const placementPresets: Record<string, { kind: string; data: Record<string, unknown> }> = {
+  'estimates:tshirt': { kind: 'estimates', data: { scale: 'tshirt' } },
+};
+/** The kind and preset data a catalogue choice places, or null for a plain kind or another choice. */
+export const placementPreset = (choice: string | null | undefined) =>
+  (choice && Object.hasOwn(placementPresets, choice) ? placementPresets[choice] : undefined) ?? null;

@@ -133,6 +133,11 @@ test('Draw.io is available under Diagramming and Diagram, uses placement, and ac
       return d;
     }, source),
   });
+  // A dropped file asks whether it becomes a draw.io object or native shapes (P2-Q4).
+  await page
+    .getByRole('dialog', { name: 'Add a draw.io diagram' })
+    .getByRole('button', { name: /^Draw.io object/ })
+    .click();
   await waitForSave(page, b => b.items.length === 1 && b.items[0].data.xml === source, 'drop imported');
   await expect(page.getByRole('dialog', { name: 'Draw.io diagram', exact: true })).toBeVisible();
 });

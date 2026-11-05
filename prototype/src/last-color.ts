@@ -85,3 +85,11 @@ export const lastColors = createLastColorStore(sessionStore);
 export function rememberKindColors(items: Item[], color: string): void {
   for (const kind of new Set(items.map(i => i.type))) lastColors.remember(kind, color);
 }
+/**
+ * The colour new sticky notes take after `color` was applied to `items` (open question P1-Q2): only when every
+ * recoloured object is a sticky note, so colours picked for shapes, text or a mixed selection leave it alone.
+ * Null when it does not change.
+ */
+export function stickyColorFrom(items: Item[], color: string): string | null {
+  return items.length && items.every(i => i.type === 'note') ? normalizeHex(color) : null;
+}

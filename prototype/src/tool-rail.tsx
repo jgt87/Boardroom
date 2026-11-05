@@ -531,8 +531,14 @@ export function ToolRail() {
             )}
             {!['arrow', 'text', 'pen', 'frame', 'comment'].includes(tool) && (
               <div className={`swatches ${noteTool ? 'note-swatches' : ''}`} role="group" aria-label="Colors">
-                {brandFirst(brandKit, colors).map(c => {
-                  // Shapes start with the colour last applied to a shape this session, else the tool colour.
+                {(() => {
+                  // Shapes start with the colour last applied to a shape this session, else the tool colour (for
+                  // sticky notes, the colour last picked for sticky notes). A chosen colour outside the swatches,
+                  // e.g. from the colour menu, shows as one more swatch at the end.
+                  const chosen = (isShapeKind(tool) ? lastColors.get('shape') : undefined) ?? fill,
+                    list = brandFirst(brandKit, colors);
+                  return list.includes(chosen) ? list : [...list, chosen];
+                })().map(c => {
                   const chosen = (isShapeKind(tool) ? lastColors.get('shape') : undefined) ?? fill;
                   return (
                     <button

@@ -22,7 +22,7 @@ import { boxCenter, canRotate, handleAngle, pointInBox } from './rotation';
 import type { Bounds, Handle } from './interactions';
 import { moveConnectorEndpoint, dragBend } from './connector-geometry';
 import { snap45 } from './diagram-gaps';
-import { canTailTarget, moveConnectorLabel, setCalloutTail } from './diagram-extras';
+import { canTailTarget, moveConnectorLabel, pointOnCalloutTail, setCalloutTail } from './diagram-extras';
 import { expandGroups, editableIds, moveIds, duplicateItems } from './arrange';
 import { adoptIntoContainers, insertionPreview } from './autolayout';
 import { canCopyToRecords, copyToRecords, recordDropAt } from './record-canvas';
@@ -49,15 +49,14 @@ import type { PenState } from './pointer-input';
 
 /** Topmost object a connector being drawn would attach to at `p` (item 113). */
 const connectTargetAt = (board: { items: Item[] }, p: Point, fromId?: string) =>
-  [...board.items]
-    .reverse()
-    .find(
-      i =>
-        !['arrow', 'pen', 'frame', 'swimlane', 'stickypad'].includes(i.type) &&
-        !i.hidden &&
-        i.id !== fromId &&
-        pointInBox(i, p),
-    );
+  [...board.items].reverse().find(
+    i =>
+      !['arrow', 'pen', 'frame', 'swimlane', 'stickypad'].includes(i.type) &&
+      !i.hidden &&
+      i.id !== fromId &&
+      // A callout's tail counts as part of it (P2-Q5).
+      (pointInBox(i, p) || pointOnCalloutTail(i, board.items, p)),
+  );
 /** Topmost object a callout tail dragged to `p` would point at (track R2-H). */
 const tailTargetAt = (board: { items: Item[] }, p: Point, calloutId: string) =>
   [...board.items].reverse().find(i => canTailTarget(i, calloutId) && pointInBox(i, p));

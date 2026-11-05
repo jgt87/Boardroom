@@ -59,6 +59,7 @@ export function NotesPanel() {
         board={board}
         display={display}
         templates={noteTemplatesFor(new Date())}
+        templateMode="insert"
         label="Board notes. Type / on an empty line for blocks, @ to mention someone. Esc selects the block."
         placeholder={locked ? 'No notes on this board.' : 'Write notes for this board, or start from a template.'}
         title={<span className="notes-doc-hint">{locked ? 'View only' : 'Saved with the board'}</span>}

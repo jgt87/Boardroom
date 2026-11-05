@@ -6,6 +6,7 @@ import { clone, endpoints } from './model.ts';
 import type { GridData } from './grid.ts';
 import { expandLinked, remapMermaidNode } from './mermaid-link-rules.ts';
 import { editableIds } from './arrange.ts';
+import { copyPlacedDots } from './chip-rules.ts';
 
 export const CLIP_FORMAT = 'boardroom-objects';
 export type ClipPayload = {
@@ -186,7 +187,8 @@ export function pastePayload(
         else if (!existing.has(target)) delete i[end];
       }
     }
-    return i;
+    // Placed voting dots stay behind unless their dot pile is pasted too (question P1-Q5).
+    return copyPlacedDots(i, idMap);
   });
   const groups: GroupDef[] = payload.groups.map(g => ({
     id: groupMap.get(g.id)!,

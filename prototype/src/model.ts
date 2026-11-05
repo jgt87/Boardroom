@@ -1,6 +1,7 @@
 import { shapeEdge, shapeSizes, isShapeKind, shapeKinds } from './shapes.ts';
 import type { ShapeKind } from './shapes.ts';
 import { validateExtensions } from './model-ext.ts';
+import { migrateTimelineFlags } from './timeline-flags.ts';
 import { rotatePoint } from './rotation.ts';
 import { widgetSizes, specFor } from './widget-specs.ts';
 export type WidgetKind =
@@ -835,7 +836,8 @@ export function parseBoard(raw: unknown): Board {
     if (i.type === 'mindmap') validateMindNodes(i.nodes);
   }
   validateExtensions(b);
-  return clone(b);
+  // Timeline flags stored on objects by older boards move to their datasets (P2-Q6).
+  return migrateTimelineFlags(clone(b));
 }
 export const richKinds = ['mermaid', 'mindmap', 'table', 'kanban', 'timeline'];
 export function validateMindNodes(nodes: unknown): asserts nodes is MindNode[] {

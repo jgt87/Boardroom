@@ -66,6 +66,8 @@ import { linkOf } from './mermaid-link';
 function coreActions(item: Item, ctx: WidgetCtx): WidgetAction[] {
   if (item.type === 'code') return codeActions(item, ctx);
   if (['table', 'kanban', 'timeline', 'mermaid', 'mindmap'].includes(item.type)) return [statusAction(item, ctx)];
+  // Frames linked to Mermaid code get the same status chip as Mermaid objects (P2-Q7).
+  if (item.type === 'frame' && linkOf(item)) return [statusAction(item, ctx)];
   return [];
 }
 

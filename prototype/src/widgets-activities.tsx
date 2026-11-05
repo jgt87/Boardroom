@@ -69,6 +69,7 @@ import { pdfFileName } from './doc-pdf';
 import { FocusView } from './focus-view';
 import './widgets-activities.css';
 import { BrandSwatches } from './brand-kit-panel';
+import { ColorMenu } from './color-menu';
 
 export const DECK_EVENT = 'boardroom:present-deck';
 /** Ask a canvas deck to show a slide (detail { id, index }), e.g. the one chosen in the slide sorter. */
@@ -480,15 +481,11 @@ function DeckBar({ deck }: { deck: DeckEditing }) {
           <option value={10}>1–10</option>
         </select>
       )}
-      <label className="color-chip" title="Slide background">
-        <input
-          type="color"
-          aria-label="Slide background"
-          value={slide.background}
-          onChange={e => set(x => updateSlide(x, slide.id, { background: e.target.value }))}
-        />
-        <span style={{ background: slide.background }} />
-      </label>
+      <ColorMenu
+        label="Slide background"
+        value={slide.background}
+        onPick={c => set(x => updateSlide(x, slide.id, { background: c }))}
+      />
       <BrandSwatches
         label="Brand colours for slide background"
         value={slide.background}

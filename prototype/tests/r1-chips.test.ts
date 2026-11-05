@@ -59,9 +59,10 @@ test('F an estimate chip sets card points or size, and stores an estimate badge 
   r = applyChip(r.board, ['c'], { kind: 'estimate', value: 'L' });
   assert.equal(find(r.board, 'c').data!.size, 'L');
   assert.equal(find(r.board, 'c').data!.points, 8, 'a size chip keeps the points');
-  // "?" and Clear remove a card's numeric estimate; "?" is kept on a sticky.
+  // "?" replaces a card's numeric points with an unknown estimate (P1-Q6); "?" is kept on a sticky.
   r = applyChip(r.board, ['c', 'n'], { kind: 'estimate', value: '?' });
   assert.equal(find(r.board, 'c').data!.points, undefined);
+  assert.equal(find(r.board, 'c').data!.pointsUnknown, true);
   assert.equal(find(r.board, 'n').estimate, '?');
   r = applyChip(r.board, ['n'], { kind: 'estimate', value: '' });
   assert.ok(!('estimate' in find(r.board, 'n')));

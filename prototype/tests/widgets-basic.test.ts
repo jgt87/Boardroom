@@ -238,7 +238,7 @@ test('cards convert from notes keeping identity and sum estimates', () => {
       ...createItem('card', 0, 0),
       data: { description: '', assignee: '', due: '', status: 'Complete', points: 5, size: 'M' },
     };
-  assert.deepEqual(estimateTotals([a, c, note]), { points: 8, sizes: { M: 2 }, estimated: 2 });
+  assert.deepEqual(estimateTotals([a, c, note]), { points: 8, sizes: { M: 2 }, estimated: 2, unknown: 0 });
 });
 
 test('poll votes, results and reset; scale clamps', () => {

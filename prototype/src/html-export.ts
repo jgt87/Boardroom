@@ -5,6 +5,7 @@
 import { escapeHtml } from './markdown.ts';
 import type { Board } from './model.ts';
 import { inHiddenLayer } from './layers.ts';
+import { badgeInk, sensitivityBadge } from './board-settings.ts';
 
 /** A clickable area and the area it shows, in exported-page pixels (relative to the exported region). */
 export type ExportLink = {
@@ -53,9 +54,35 @@ const num = (v: number) => (Number.isFinite(v) ? String(Math.round(v * 10) / 10)
 const hotspot = (l: ExportLink) =>
   `<button class="hotspot" type="button" style="left:${num(l.x)}px;top:${num(l.y)}px;width:${num(Math.max(1, l.w))}px;height:${num(Math.max(1, l.h))}px" data-x="${num(l.tx)}" data-y="${num(l.ty)}" data-w="${num(Math.max(1, l.tw))}" data-h="${num(Math.max(1, l.th))}" aria-label="${escapeHtml(l.label)}" title="${escapeHtml(l.label)}"></button>`;
 
-/** Wrap serialised SVG markup in a self-contained page. `svg` must come from the app's own exporter. */
-export function standaloneHtml(svg: string, title: string, exportedAt = new Date(), links: ExportLink[] = []): string {
+/**
+ * The board's sensitivity label on the page (question P2-Q12): a badge beside the name in the header and a stamp
+ * fixed in the bottom-right corner of the window, so it stays in view however the board is panned or zoomed
+ * (the SVG also carries the export stamp in its own corner, as image and PDF exports do).
+ */
+function sensitivityMarkup(sensitivity: unknown): { badge: string; corner: string } {
+  const b = sensitivityBadge(sensitivity);
+  if (!b || !/^#[0-9a-f]{6}$/i.test(b.color)) return { badge: '', corner: '' };
+  const label = escapeHtml(b.label),
+    style = `background:${b.color};color:${badgeInk(b.color)}`;
+  return {
+    badge: `<span class="sensitivity-badge" style="${style}" title="Sensitivity: ${label}">${label}</span>`,
+    corner: `<div class="sensitivity-page-stamp" style="${style}" aria-hidden="true">${label}</div>`,
+  };
+}
+
+/**
+ * Wrap serialised SVG markup in a self-contained page. `svg` must come from the app's own exporter. `sensitivity`
+ * is the board's stored sensitivity label (`board.sensitivity`); when set, the page shows it (question P2-Q12).
+ */
+export function standaloneHtml(
+  svg: string,
+  title: string,
+  exportedAt = new Date(),
+  links: ExportLink[] = [],
+  sensitivity?: unknown,
+): string {
   const name = escapeHtml(title.trim() || 'Board');
+  const label = sensitivityMarkup(sensitivity);
   const stamp = escapeHtml(exportedAt.toISOString().slice(0, 16).replace('T', ' '));
   // The SVG is placed inside a <div>; a closing </script> or </div> sequence inside it cannot occur because
   // the exporter serialises XML (text is escaped), but guard against it anyway.
@@ -83,15 +110,18 @@ export function standaloneHtml(svg: string, title: string, exportedAt = new Date
   [hidden] { display: none !important; }
   #board .hotspot { position: absolute; display: block; padding: 0; border: 0; border-radius: 4px; background: transparent; cursor: pointer; }
   #board .hotspot:hover, #board .hotspot:focus-visible { outline: 2px solid #4262ff; outline-offset: 2px; background: #4262ff14; }
+  .sensitivity-badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .sensitivity-page-stamp { position: fixed; right: 14px; bottom: 14px; z-index: 1; padding: 6px 14px; border-radius: 999px;
+    font-size: 14px; font-weight: 600; box-shadow: 0 2px 8px #24244226; pointer-events: none; }
 </style>
 </head>
 <body>
-<header><strong>${name}</strong><small>Read-only copy · exported ${stamp}</small>
+<header><strong>${name}</strong>${label.badge}<small>Read-only copy · exported ${stamp}</small>
   <span style="flex:1"></span>
   <button id="back" hidden aria-label="Back to the previous view">← Back</button>
   <button id="zoom-out" aria-label="Zoom out">−</button><button id="fit">Fit</button><button id="zoom-in" aria-label="Zoom in">+</button>
 </header>
-<div id="stage"><div id="board">${safeSvg}${spots}</div></div>
+<div id="stage"><div id="board">${safeSvg}${spots}</div></div>${label.corner}
 <script>
 (function () {
   var stage = document.getElementById('stage'), board = document.getElementById('board');

@@ -7,7 +7,7 @@ import type { Board, Item } from './model.ts';
 import type { WidgetSpec } from './widget-types.ts';
 import { presetSize } from './frame-presets.ts';
 import { validateItemStatus } from './board-settings.ts';
-import { validCuts } from './media-playback.ts';
+import { validCuts, validRate } from './media-playback.ts';
 
 // ---- URLs ------------------------------------------------------------------------------------
 /** Normalise a user-entered web address to an https URL, or throw a readable error. */
@@ -367,6 +367,8 @@ export const mediaSpecs: WidgetSpec[] = [
         fail('Invalid video trim.');
       // Cut-out ranges (track G): sorted, non-overlapping ranges skipped during playback.
       if (d.cuts !== undefined && !validCuts(d.cuts)) fail('Invalid video cuts.');
+      // Remembered playback speed (P2-Q1): one of the offered speeds.
+      if (d.rate !== undefined && !validRate(d.rate)) fail('Invalid video speed.');
     },
   },
   {

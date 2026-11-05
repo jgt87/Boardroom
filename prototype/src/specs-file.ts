@@ -74,6 +74,21 @@ export function fileData(file: { name: string; size: number; type: string }): Re
   return { size: file.size, ext: fileExtension(file.name), ...(MIME.test(file.type) ? { mime: file.type } : {}) };
 }
 
+/**
+ * Office and OpenDocument files converted into a Doc or Slides deck (Word, OpenDocument text and presentation,
+ * RTF, PowerPoint) are always kept as well, as a File object beside the conversion (question P2-Q8).
+ */
+export const keepsOriginalFile = (name: string): boolean => /\.(docx|odt|rtf|pptx|odp)$/i.test(name.trim());
+/** Gap between a conversion and the File object that keeps its original. */
+export const ORIGINAL_FILE_GAP = 24;
+/** The kept original placed to the right of the converted object, top edges aligned. */
+export function besideConversion<T extends { x: number; y: number }>(
+  converted: { x: number; y: number; w: number },
+  original: T,
+): T {
+  return { ...original, x: converted.x + converted.w + ORIGINAL_FILE_GAP, y: converted.y };
+}
+
 export const fileSpec: WidgetSpec = {
   kind: 'file',
   label: 'File',

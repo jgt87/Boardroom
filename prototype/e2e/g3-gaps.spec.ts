@@ -191,7 +191,7 @@ test('brand colours appear in the inspector, the colour menu and widget editors'
   await item(page, 's').dblclick({ position: { x: 3, y: 3 } });
   const dialog = page.getByRole('dialog', { name: 'Action Shortcut' });
   await dialog.getByRole('group', { name: 'Brand colours for shortcut' }).getByRole('button').first().click();
-  await expect(dialog.getByLabel('Shortcut colour')).toHaveValue('#123456');
+  await expect(dialog.getByRole('button', { name: /^Shortcut colour: / })).toHaveAttribute('title', /#123456$/);
   await dialog.getByRole('button', { name: 'Done' }).click();
   await waitForSave(page, b => b.items.find(i => i.id === 's').fill === '#123456', 'shortcut colour');
   // An empty kit shows no brand swatches anywhere.

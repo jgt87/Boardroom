@@ -1059,6 +1059,20 @@ textarea.wf {
   fill: #c92a2a;
   opacity: 0.35;
 }
+/* Cuts drawn by dragging across the waveform (P2-Q3). */
+.waveform-draw {
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+.waveform-plain {
+  background: repeating-linear-gradient(90deg, #ebebf0 0 1px, #f4f4f6 1px 10%);
+}
+.waveform-hint {
+  margin: 4px 0 0;
+  color: #696973;
+  font-size: 12px;
+}
 .video-cuts {
   display: grid;
   gap: 6px;

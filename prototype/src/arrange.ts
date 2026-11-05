@@ -10,6 +10,7 @@ import type { GridData } from './grid.ts';
 import { frameMoveIds, selectionBounds, translate } from './interactions.ts';
 import type { Bounds } from './interactions.ts';
 import { expandLinked, remapMermaidNode } from './mermaid-link-rules.ts';
+import { copyPlacedDots } from './chip-rules.ts';
 
 export type AlignMode = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
 
@@ -282,7 +283,7 @@ export function duplicateItems(
         objects: (i.data as GridData).objects?.filter(o => map.has(o.id)).map(o => ({ ...o, id: map.get(o.id)! })),
       };
     delete copy.locked;
-    return copy;
+    return copyPlacedDots(copy, map);
   });
   return {
     board: {

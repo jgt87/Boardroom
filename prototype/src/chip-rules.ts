@@ -78,6 +78,18 @@ export function dotsLeft(board: Board, pile: Item): number {
   return Math.max(0, total - dotsPlaced(board, pile.id));
 }
 export const dotCount = (i: Item) => (i.dots ?? []).reduce((n, d) => n + d.n, 0);
+/**
+ * Placed dots on a copy of an object (paste, duplicate; question P1-Q5): dots are dropped, except those whose dot
+ * pile is copied too, which point at the pile's copy. `idMap` maps copied ids to their new ids. A pile's count of
+ * dots left is derived from the placed dots, so it stays right for the original pile and its copy.
+ */
+export function copyPlacedDots(copy: Item, idMap: ReadonlyMap<string, string>): Item {
+  if (!copy.dots) return copy;
+  const dots = copy.dots.filter(d => idMap.has(d.pile)).map(d => ({ ...d, pile: idMap.get(d.pile)! }));
+  const next: Item = { ...copy, dots };
+  if (!dots.length) delete next.dots;
+  return next;
+}
 
 /** Kinds a chip can land on: estimates and people go on cards and sticky notes; dots on any object but connectors and chip sources. */
 export function acceptsChip(i: Item, chip: Chip): boolean {

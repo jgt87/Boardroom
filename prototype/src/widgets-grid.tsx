@@ -24,6 +24,7 @@ import {
 import type { GridData } from './grid';
 import { Dialog, setData } from './widget-kit';
 import { BrandSwatches } from './brand-kit-panel';
+import { ColorMenu } from './color-menu';
 import { CanvasField, canvasControl } from './canvas-fields';
 import { gridMetrics, GRID_HEADER, setGridResizeMode } from './grid-canvas';
 import { GridAxisHandle } from './grid-axis-handle';
@@ -586,28 +587,24 @@ export function GridEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx;
               <Icon size={14} />
             </button>
           ))}
-          <label className="w-inline">
+          <span className="w-inline">
             Text
-            <input
-              type="color"
-              aria-label="Cell text colour"
+            <ColorMenu
+              label="Cell text colour"
               value={curStyle.color ?? '#25252c'}
-              onChange={e => style({ color: e.target.value.toLowerCase() === '#25252c' ? undefined : e.target.value })}
+              onPick={c => style({ color: c.toLowerCase() === '#25252c' ? undefined : c })}
             />
-          </label>
+          </span>
           <BrandSwatches label="Brand colours for cell text" value={curStyle.color} onPick={c => style({ color: c })} />
         </span>
-        <label className="w-inline">
+        <span className="w-inline">
           Cell colour
-          <input
-            type="color"
-            aria-label="Cell colour"
+          <ColorMenu
+            label="Cell colour"
             value={g.colors?.[`${cur.r},${cur.c}`] ?? '#ffffff'}
-            onChange={e =>
-              setG(setCellColor(g, cur.r, cur.c, e.target.value === '#ffffff' ? undefined : e.target.value))
-            }
+            onPick={c => setG(setCellColor(g, cur.r, cur.c, c === '#ffffff' ? undefined : c))}
           />
-        </label>
+        </span>
         <BrandSwatches
           label="Brand colours for cell"
           value={g.colors?.[`${cur.r},${cur.c}`]}

@@ -70,8 +70,8 @@ export type CardPatch = {
   due?: string;
   addTag?: string;
   removeTag?: string;
-  /** Story points; null clears them (gap G12). */
-  points?: number | null;
+  /** Story points; null clears them (gap G12); 'unknown' is the "?" estimate (open question P1-Q6). */
+  points?: number | null | 'unknown';
   /** T-shirt size; null clears it (gap G12). */
   size?: string | null;
 };
@@ -119,8 +119,10 @@ export function patchCards(
       }
       if (patch.due !== undefined) d.due = patch.due;
       if (patch.points !== undefined) {
-        if (patch.points === null) delete d.points;
-        else d.points = patch.points;
+        delete d.points;
+        delete d.pointsUnknown;
+        if (patch.points === 'unknown') d.pointsUnknown = true;
+        else if (patch.points !== null) d.points = patch.points;
       }
       if (patch.size !== undefined) {
         if (patch.size === null) delete d.size;
@@ -185,7 +187,8 @@ export function cardsCsv(cards: Item[]): string {
     .filter(i => i.type === 'card')
     .map(i => {
       const d = (i.data ?? {}) as Partial<CardData>;
-      return [i.text, d.description, d.status, d.assignee, d.start, d.due, (i.tags ?? []).join(', '), d.points, d.size];
+      const points = d.points ?? (d.pointsUnknown ? '?' : undefined);
+      return [i.text, d.description, d.status, d.assignee, d.start, d.due, (i.tags ?? []).join(', '), points, d.size];
     });
   return toCsv([head, ...rows]);
 }

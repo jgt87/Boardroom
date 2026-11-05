@@ -13,9 +13,11 @@ import {
   removeTimelineFlag,
   flagLeft,
   timelineFlagColors,
+  validateTimelineFlags,
   TIMELINE_FLAG_LABEL_MAX,
+  TIMELINE_FLAG_STORE_LIMIT,
 } from './timeline-axis';
-import type { TimelineSettings } from './timeline-axis';
+import type { TimelineFlag, TimelineSettings } from './timeline-axis';
 import './library-r2.css';
 
 export type TimelineCanvasProps = {
@@ -26,6 +28,12 @@ export type TimelineCanvasProps = {
   recordAction?: (row: RecordRow) => React.ReactNode;
   settings?: TimelineSettings;
   onSettings?: (value: TimelineSettings) => void;
+  /**
+   * Free flags shared by every Timeline of the dataset (P2-Q6). Without `onFlags` the flags are part of
+   * `settings` (a standalone Timeline).
+   */
+  flags?: TimelineFlag[];
+  onFlags?: (flags: TimelineFlag[]) => void;
   onError?: (message: string) => void;
   /** Group rows under headings. `rows` must already be ordered by group and omit rows of hidden groups. */
   groups?: TimelineGroup[];
@@ -46,6 +54,8 @@ export function TimelineCanvas({
   recordAction,
   settings: externalSettings,
   onSettings,
+  flags: externalFlags,
+  onFlags,
   onError,
   groups,
   groupOf,
@@ -56,7 +66,8 @@ export function TimelineCanvas({
     body = useRef<HTMLDivElement>(null),
     area = useRef<HTMLDivElement>(null);
   const [localSettings, setLocalSettings] = useState<TimelineSettings>({}),
-    settings = externalSettings ?? localSettings;
+    settings = externalSettings ?? localSettings,
+    flags = externalFlags ?? settings.flags ?? [];
   const [available, setAvailable] = useState(600),
     [preview, setPreview] = useState<RecordRow[] | null>(null),
     [notice, setNotice] = useState('');
@@ -88,7 +99,7 @@ export function TimelineCanvas({
       ?.focus();
     focusAfter.current = null;
   }, [rows]);
-  const axis = timelineAxis(rows, settings, available),
+  const axis = timelineAxis(rows, { ...settings, flags }, available),
     shown = preview ?? rows,
     geometry = timelineGeometry(shown, axis);
   const bars = new Map(geometry.bars.map(bar => [bar.id, bar]));
@@ -130,6 +141,18 @@ export function TimelineCanvas({
       setNotice('');
       if (onSettings) onSettings(next);
       else setLocalSettings(next);
+    } catch (error) {
+      report((error as Error).message);
+    }
+  };
+  /** Store a new flag list: on the dataset when the Timeline is on a board, else in the local settings. */
+  const changeFlags = (next: TimelineFlag[]) => {
+    if (!onRows) return;
+    if (!onFlags) return changeSettings({ ...settings, flags: next.length ? next : undefined });
+    try {
+      validateTimelineFlags(next, TIMELINE_FLAG_STORE_LIMIT);
+      setNotice('');
+      onFlags(next);
     } catch (error) {
       report((error as Error).message);
     }
@@ -349,7 +372,9 @@ export function TimelineCanvas({
           </div>
         </details>
         <details className="timeline-flag-controls">
-          <summary>Flags{settings.flags?.length ? ` (${settings.flags.length})` : ''}</summary>
+          <summary title={onFlags ? 'Flags are shared by every Timeline of these records' : undefined}>
+            Flags{flags.length ? ` (${flags.length})` : ''}
+          </summary>
           <div>
             <input
               aria-label="Flag date"
@@ -376,7 +401,9 @@ export function TimelineCanvas({
               disabled={!flagDate}
               onClick={() => {
                 try {
-                  changeSettings(addTimelineFlag(settings, { date: flagDate, label: flagLabel, color: flagColor }));
+                  changeFlags(
+                    addTimelineFlag({ flags }, { date: flagDate, label: flagLabel, color: flagColor }).flags ?? [],
+                  );
                   setFlagLabel('');
                 } catch (error) {
                   report((error as Error).message);
@@ -385,11 +412,11 @@ export function TimelineCanvas({
             >
               Add flag
             </button>
-            {(settings.flags ?? []).map(flag => (
+            {flags.map(flag => (
               <button
                 key={flag.id}
                 aria-label={`Remove flag ${flag.label || flag.date}`}
-                onClick={() => changeSettings(removeTimelineFlag(settings, flag.id))}
+                onClick={() => changeFlags(removeTimelineFlag({ flags }, flag.id).flags ?? [])}
               >
                 <Trash2 size={12} />
                 <i className="timeline-flag-swatch" style={{ background: flag.color }} aria-hidden="true" />
@@ -624,14 +651,14 @@ export function TimelineCanvas({
             >
               Drop here to move a record last
             </div>
-            {!!settings.flags?.length && (
+            {!!flags.length && (
               <div
                 className="timeline-flags-area"
                 style={{ width: axis.width }}
                 role="list"
                 aria-label="Timeline flags"
               >
-                {settings.flags.map(flag => {
+                {flags.map(flag => {
                   const left = flagLeft(flag.date, axis);
                   if (left === null) return null;
                   return (

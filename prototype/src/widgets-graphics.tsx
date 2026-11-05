@@ -7,6 +7,7 @@ import type { StampKind } from './specs-basic';
 import { qrMatrix, qrPath, QR_MAX } from './qr';
 import { Dialog, data, setData } from './widget-kit';
 import { BrandSwatches } from './brand-kit-panel';
+import { ColorMenu } from './color-menu';
 import { EmojiPicker } from './emoji-picker';
 import { isValidEmojiValue } from './emoji-data';
 
@@ -387,10 +388,10 @@ export function IconEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx;
             }
           }}
         />
-        <label className="w-inline">
+        <span className="w-inline">
           Colour
-          <input type="color" aria-label="Icon colour" value={color} onChange={e => setColor(e.target.value)} />
-        </label>
+          <ColorMenu label="Icon colour" value={color} onPick={setColor} />
+        </span>
         <BrandSwatches label="Brand colours for icon" value={color} onPick={setColor} />
         <span>{icons ? `${names.length}${names.length === 240 ? '+' : ''} icons` : 'Loading icons…'}</span>
       </div>
@@ -485,15 +486,15 @@ export function QrEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; o
             {text.length.toLocaleString('en-US')} / {QR_MAX.toLocaleString('en-US')}
           </small>
         </label>
-        <label>
+        <span>
           Code colour
-          <input type="color" aria-label="QR colour" value={color} onChange={e => setColor(e.target.value)} />
-        </label>
+          <ColorMenu label="QR colour" value={color} onPick={setColor} />
+        </span>
         <BrandSwatches label="Brand colours for code" value={color} onPick={setColor} />
-        <label>
+        <span>
           Background
-          <input type="color" aria-label="QR background" value={bg} onChange={e => setBg(e.target.value)} />
-        </label>
+          <ColorMenu label="QR background" value={bg} onPick={setBg} />
+        </span>
         <BrandSwatches label="Brand colours for background" value={bg} onPick={setBg} />
         <label>
           Quiet zone

@@ -67,7 +67,8 @@
   background: conic-gradient(#ef4444, #eab308, #22c55e, #3b82f6, #8b5cf6, #ef4444);
 }
 .color-menu {
-  z-index: 80;
+  /* Above editor dialogs and focus views (100) and the context menu (120). */
+  z-index: 130;
   max-height: calc(100dvh - 16px);
   overflow: auto;
   box-sizing: border-box;

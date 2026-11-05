@@ -16,6 +16,18 @@
   color: #696973;
   font-size: 12px;
 }
+/* Board settings shown read-only on a comment-only or view-only board (question P2-Q11). */
+.main-menu-note.settings-locked-note {
+  max-width: 220px;
+}
+.main-menu-list > button[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.main-menu-field button:disabled,
+.main-menu-field input:read-only {
+  cursor: not-allowed;
+}
 .board-emoji-choices {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

@@ -257,14 +257,14 @@ test('Timeline free flags are drawn and saved; invalid bars show a warning with 
   await w.getByRole('button', { name: 'Add flag' }).click();
   await waitForSave(
     page,
-    b => b.items[0].recordView?.timeline?.flags?.[0]?.label === 'Launch',
-    'flag saved on the Timeline view',
+    b => (b.recordSchemas as any)?.d?.timelineFlags?.[0]?.label === 'Launch',
+    'flag saved on the dataset (shared by its Timelines, P2-Q6)',
   );
   const flag = w.locator('.timeline-flag');
   await expect(flag).toHaveCount(1);
   await expect(flag).toContainText('Launch');
   await expect(flag).toHaveAttribute('title', 'Launch · 2026-11-09');
-  expect((await savedBoard(page)).items[0].recordView.timeline.flags[0].color).toBe('#30a46c');
+  expect(((await savedBoard(page)).recordSchemas as any).d.timelineFlags[0].color).toBe('#30a46c');
   // Warnings: Build starts before Design ends; Odd ends on a day that does not exist.
   await expect(w.locator('[data-bar-warning]')).toHaveCount(2);
   await expect(w.locator('[data-bar-warning="b"]')).toHaveAttribute('title', 'Starts before “Design” ends.');
@@ -272,7 +272,7 @@ test('Timeline free flags are drawn and saved; invalid bars show a warning with 
   await expect(w.locator('[data-bar-warning="a"]')).toHaveCount(0);
   // Remove the flag.
   await w.getByRole('button', { name: 'Remove flag Launch' }).click();
-  await waitForSave(page, b => !b.items[0].recordView?.timeline?.flags, 'flag removed');
+  await waitForSave(page, b => !(b.recordSchemas as any)?.d?.timelineFlags, 'flag removed');
   await expect(w.locator('.timeline-flag')).toHaveCount(0);
 });
 

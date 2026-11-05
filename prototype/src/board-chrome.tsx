@@ -11,6 +11,7 @@ import { LayersPanel } from './board-panels';
 import { NamedLayers } from './layers-panel';
 import { PassphraseHost } from './passphrase-dialog';
 import { SheetPickerHost } from './sheet-picker';
+import { ChoicePromptHost } from './choice-prompt';
 import { BoardOutline } from './board-outline';
 import { NotesPanel } from './notes-panel';
 import { useApp } from './board-app';
@@ -300,6 +301,7 @@ export function BoardChrome() {
       )}
       <PassphraseHost />
       <SheetPickerHost />
+      <ChoicePromptHost />
       <BoardOutline />
       <NotesPanel />
       <div id="sr-announcer" className="sr-only" aria-live="polite" aria-atomic="true" />

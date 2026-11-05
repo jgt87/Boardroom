@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Decided questions, colours and records
+- **Colour menu everywhere:** Kanban column colours, number colour rules and progress bars (record fields), QR code and background, icon, Action Shortcut, Grid cell and cell text, slide background and prototype screen background now use the shared colour menu (palette with shades, hex field, custom picker, recent, saved and brand colours) instead of the browser's colour input. The menu opens above editor dialogs and focus views. The sensitivity label's custom colour (inside the main menu) and the brand kit editor keep the browser picker.
+- **Sticky colour memory:** a colour applied to sticky notes through the selection bar or the inspector becomes the colour for new sticky notes, and the tool-rail swatches show it (as an extra swatch when it is not one of them). Colours applied to shapes, text, connectors or a mixed selection leave it alone.
+- **Unknown card estimates:** the "?" estimate chip now marks a card's story points as unknown instead of clearing them. The card shows "? pt", keeps its T-shirt size, and totals skip it; a numeric chip replaces it and Clear estimate removes it. The card bar's estimate menu has a "?" chip too, and CSV export writes "?". Stored as an optional `pointsUnknown` flag on card data, validated on load; older boards load unchanged.
+- **T-shirt sizing entry:** "T-shirt sizing" in the tool gallery (Planning) places the estimate palette in Sizes mode; "Story points" still starts in Points mode. Both can be dragged onto the board.
+- **Minimal result tables:** polls and voting results exported to a Table hide the Status, Assignee, Start and End columns, so rows no longer all read "Not started"; only the option or item and the result columns (votes, share or rank) show, in a narrower table. Fields → Table columns shows them again. Stored as an optional `hiddenBuiltIns` list on the record schema, validated on load.
+
+### Decided questions, paste, modes and exports
+- Pasting or duplicating objects (copy/paste, Ctrl+D, Alt+drag, Alt+arrow, duplicate layer) no longer copies the voting dots placed on them, unless their dot pile is copied too: then the copies hold the dots and count against the copied pile. The original piles keep their counts (question P1-Q5).
+- On a comment-only or view-only board, board settings are read-only: the board name, status, sensitivity label, background, start view, thumbnail, emoji and description show their current value, but their controls are disabled, with a note saying why (question P2-Q11).
+- The web page export shows the board's sensitivity label beside the board name and as a stamp fixed in the bottom-right corner of the window, in addition to the stamp in the SVG (question P2-Q12).
+- Word (.docx), OpenDocument (.odt, .odp), RTF and PowerPoint (.pptx) files converted into a Doc or Slides are always also kept as a File object beside the conversion (up to 25 MB), in the same undo step (question P2-Q8).
+
+### Decided questions, media and diagrams
+- A video remembers its playback speed: the speed chosen in the player (menu or < and >) is stored on the video and used the next time it plays, also after a reload. Normal speed stores nothing; locked videos keep the speed for that play only.
+- Talktrack and video cuts can be drawn on the waveform: drag across it to cut a part out, or drag the edge of a cut to move that end. Typed times still work, and Apply stores every change as one undo step. When the sound cannot be read, a plain timeline takes the waveform's place so cuts can still be drawn.
+- A callout's custom tail is part of the callout: clicking or dragging it selects and moves the callout (with a few pixels of tolerance near the thin tip), a connector end dropped on it attaches to the callout, and on large boards a callout stays rendered while its tail is in view.
+- Frames linked to Mermaid code have the same status chip as Mermaid objects: set it from the selection bar (one undo step per press). It is drawn top-left inside the frame, does not count as a diagram change for the sync badge, and stays after unlinking.
+- Dropping a .drawio file on the board asks, in the app, whether to add it as a draw.io object or as native shapes; Cancel or Esc adds nothing. The "Draw.io as shapes" gallery entry still imports directly, without asking.
+- Native-shape import now brings in every page of a multi-page .drawio file: the pages sit side by side, each in a frame named after its page, and empty or unreadable pages are left out and reported. Converting a multi-page draw.io object to shapes does the same.
+
+### Decided questions, timelines and notes
+- **Shared Timeline flags:** free flags now belong to the records, not to one Timeline object, so every Timeline view of the same dataset shows and edits the same flags (stored as `timelineFlags` on the dataset's columns and checked on load). Older boards move each Timeline's own flags to its dataset when they load; flags of two Timelines of one dataset are merged (identical flags kept once), and a Timeline pasted from an older copy shows its flags merged until the next flag edit moves them. Adding or removing a flag is one undo step; up to 50 flags per dataset.
+- **Note templates insert at the caret:** choosing a template in Board notes no longer replaces the notes. It goes in after the paragraph holding the caret (before it when the caret is at its start, in place of an empty line), or at the end when the editor had no caret. One undo step removes it. Doc objects still replace their content.
+- **Timeline starter templates:** a new Timeline offers Project roadmap, Release plan and Event schedule under "Start from a template", like the Table and Kanban column sets. Each brings statuses, fields, dated records counted from today with milestones and dependencies, a flag and a fitting scale; flags added before choosing are kept.
+
 ## 0.4.0 — 2026-11-05
 
 ### Connectors and diagrams

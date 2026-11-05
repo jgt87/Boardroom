@@ -308,13 +308,16 @@ test('compressed draw.io pages are expanded; containers offset their children; t
   const pool = r.items.find(i => i.text === 'Pool')!,
     inside = r.items.find(i => i.text === 'Inside')!;
   assert.equal(pool.type, 'frame');
-  assert.equal(r.items[0].id, pool.id, 'containers come first');
+  // Every page is imported (P2-Q4): each page's frame comes first, then its containers.
+  assert.equal(r.items[0].text, 'One');
+  assert.equal(r.items[1].id, pool.id, 'containers come first');
   assert.deepEqual([inside.x - pool.x, inside.y - pool.y], [20, 40]);
   assert.equal(r.items.find(i => i.text === 'Wrapped')?.type, 'ellipse');
-  assert.match(drawioImportNote(r), /first of 2 pages/);
+  assert.match(drawioImportNote(r), /2 pages sit side by side/);
+  // The cap counts page frames: page One keeps its frame and the pool, page Two has no room left.
   const capped = drawioToItems(file, { x: 0, y: 0 }, make, 2);
   assert.equal(capped.items.length, 2);
-  assert.equal(capped.skipped, 1);
+  assert.equal(capped.skipped, 5);
   assert.match(drawioImportNote(capped), /did not fit/);
   assert.throws(() => drawioToItems('<mxfile><diagram>%%%</diagram></mxfile>', { x: 0, y: 0 }, make), /could not/);
   assert.throws(

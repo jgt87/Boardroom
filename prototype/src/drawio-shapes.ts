@@ -76,22 +76,53 @@ export function inflateDiagram(text: string): string {
   }
 }
 
-/** The first page's mxGraphModel, from a plain or compressed `.drawio` file, plus the number of pages. */
-export function drawioModel(xml: string): { model: XNode; pages: number } {
+/** The `<diagram>` pages of a file (a bare mxGraphModel is one unnamed page). */
+function diagramNodes(xml: string): { top: XNode; pages: XNode[] } {
   const doc = parseXml(xml.replace(/^\uFEFF/, ''));
   const top = doc.children.find(c => c.tag === 'mxfile' || c.tag === 'mxGraphModel');
   if (!top) throw new Error('This file is not a Draw.io XML diagram.');
-  if (top.tag === 'mxGraphModel') return { model: top, pages: 1 };
+  if (top.tag === 'mxGraphModel') return { top, pages: [] };
   const pages = top.children.filter(c => c.tag === 'diagram');
-  const first = pages[0];
-  if (!first) throw new Error('The diagram has no pages.');
-  const inner = find(first, 'mxGraphModel');
-  if (inner) return { model: inner, pages: pages.length };
-  if (!first.text.trim()) throw new Error('The first diagram page is empty.');
-  const expanded = parseXml(inflateDiagram(first.text));
+  if (!pages.length) throw new Error('The diagram has no pages.');
+  return { top, pages };
+}
+/** The mxGraphModel of one `<diagram>` page, plain or compressed. */
+function pageModel(page: XNode, which = 'The'): XNode {
+  const inner = find(page, 'mxGraphModel');
+  if (inner) return inner;
+  if (!page.text.trim()) throw new Error(`${which} diagram page is empty.`);
+  const expanded = parseXml(inflateDiagram(page.text));
   const model = expanded.tag === 'mxGraphModel' ? expanded : find(expanded, 'mxGraphModel');
   if (!model) throw new Error('The diagram page could not be read.');
-  return { model, pages: pages.length };
+  return model;
+}
+/** The first page's mxGraphModel, from a plain or compressed `.drawio` file, plus the number of pages. */
+export function drawioModel(xml: string): { model: XNode; pages: number } {
+  const { top, pages } = diagramNodes(xml);
+  if (!pages.length) return { model: top, pages: 1 };
+  return { model: pageModel(pages[0], 'The first'), pages: pages.length };
+}
+export type DrawioPage = { name: string; model: XNode };
+/**
+ * Every page of a file with its name (P2-Q4). Pages that cannot be read are counted in `unreadable` and left
+ * out; when no page can be read, the first page's error is thrown.
+ */
+export function drawioPages(xml: string): { pages: DrawioPage[]; unreadable: number } {
+  const { top, pages } = diagramNodes(xml);
+  if (!pages.length) return { pages: [{ name: '', model: top }], unreadable: 0 };
+  const out: DrawioPage[] = [];
+  let unreadable = 0,
+    firstError: unknown = null;
+  pages.forEach((p, k) => {
+    try {
+      out.push({ name: (p.attrs.name ?? '').trim().slice(0, 200), model: pageModel(p, k ? 'A' : 'The first') });
+    } catch (error) {
+      unreadable++;
+      firstError ??= error;
+    }
+  });
+  if (!out.length) throw firstError;
+  return { pages: out, unreadable };
 }
 
 /** draw.io style string as flags (bare words) and key-value pairs. */
@@ -179,14 +210,99 @@ const num = (v: string | undefined, fallback = 0) => {
 };
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-export type DrawioImport = { items: Item[]; shapes: number; connectors: number; skipped: number; pages: number };
+export type DrawioImport = {
+  items: Item[];
+  shapes: number;
+  connectors: number;
+  skipped: number;
+  /** Pages in the file. */
+  pages: number;
+  /** Pages that became objects; with more than one, each sits in a frame named after its page. */
+  imported?: number;
+  /** Pages that could not be read, or held nothing to import. */
+  unreadable?: number;
+};
+type PageImport = { items: Item[]; connectors: number; skipped: number };
+
+/** Space between a page frame and its diagram, and between page frames side by side. */
+const PAGE_PAD = 40,
+  PAGE_GAP = 120;
+const span = (i: Item) => ({
+  x0: Math.min(i.x, i.x + i.w),
+  y0: Math.min(i.y, i.y + i.h),
+  x1: Math.max(i.x, i.x + i.w),
+  y1: Math.max(i.y, i.y + i.h),
+});
+const shift = (items: Item[], dx: number, dy: number) =>
+  items.map(i => ({ ...i, x: Math.round(i.x + dx), y: Math.round(i.y + dy) }));
 
 /**
- * Native objects for the first page of a draw.io file, centred on `at`. `limit` caps the number of objects
- * (the board's remaining room): shapes come first, then connectors between shapes that were kept.
+ * Native objects for a draw.io file, centred on `at`. `limit` caps the number of objects (the board's remaining
+ * room): shapes come first, then connectors between shapes that were kept. A file with several pages imports
+ * every page (P2-Q4): the pages sit side by side, each in a frame named after it.
  */
 export function drawioToItems(xml: string, at: Point, make: Make, limit = 2000): DrawioImport {
-  const { model, pages } = drawioModel(xml);
+  const { pages, unreadable } = drawioPages(xml);
+  const total = pages.length + unreadable;
+  if (pages.length === 1) {
+    const one = pageToItems(pages[0].model, at, make, limit);
+    if (!one.items.length) throw new Error('The diagram has no shapes to import.');
+    const shapes = one.items.length - one.connectors;
+    return { ...one, shapes, pages: total, imported: 1, unreadable };
+  }
+  const items: Item[] = [];
+  let connectors = 0,
+    skipped = 0,
+    shapes = 0,
+    imported = 0,
+    empty = 0,
+    x = 0;
+  pages.forEach((page, k) => {
+    // Room for this page's objects after its frame.
+    const room = Math.max(0, limit - items.length - 1);
+    const r = pageToItems(page.model, { x: 0, y: 0 }, make, room);
+    skipped += r.skipped;
+    if (!r.items.length) {
+      if (!r.skipped) empty++;
+      return;
+    }
+    const box = r.items.map(span),
+      x0 = Math.min(...box.map(b => b.x0)),
+      y0 = Math.min(...box.map(b => b.y0)),
+      x1 = Math.max(...box.map(b => b.x1)),
+      y1 = Math.max(...box.map(b => b.y1));
+    const frame: Item = {
+      ...make('frame', 0, 0, '#ffffff'),
+      x,
+      y: 0,
+      w: Math.round(x1 - x0 + PAGE_PAD * 2),
+      h: Math.round(y1 - y0 + PAGE_PAD * 2),
+      text: page.name || `Page ${k + 1}`,
+    };
+    items.push(frame, ...shift(r.items, x + PAGE_PAD - x0, PAGE_PAD - y0));
+    connectors += r.connectors;
+    shapes += r.items.length - r.connectors;
+    imported++;
+    x += frame.w + PAGE_GAP;
+  });
+  if (!items.length) throw new Error('The diagram has no shapes to import.');
+  // Centre the row of pages on the drop point.
+  const box = items.map(span),
+    cx = (Math.min(...box.map(b => b.x0)) + Math.max(...box.map(b => b.x1))) / 2,
+    cy = (Math.min(...box.map(b => b.y0)) + Math.max(...box.map(b => b.y1))) / 2;
+  return {
+    items: shift(items, at.x - cx, at.y - cy),
+    shapes,
+    connectors,
+    skipped,
+    pages: total,
+    imported,
+    unreadable: unreadable + empty,
+  };
+}
+
+/** Native objects for one page's mxGraphModel, centred on `at` (empty when the page has nothing to import). */
+function pageToItems(model: XNode, at: Point, make: Make, limit: number): PageImport {
   const root = find(model, 'root') ?? model;
   // Cells may be wrapped in <UserObject>/<object> elements that carry the label and id.
   type Cell = { id: string; parent: string; value: string; style: Map<string, string>; node: XNode; edge: boolean };
@@ -347,8 +463,7 @@ export function drawioToItems(xml: string, at: Point, make: Make, limit = 2000):
     items.push(line);
     connectors++;
   }
-  if (!items.length) throw new Error('The diagram has no shapes to import.');
-  return { items, shapes: items.length - connectors, connectors, skipped, pages };
+  return { items, connectors, skipped };
 }
 
 export const BOARD_OBJECT_LIMIT = 2000;
@@ -383,6 +498,10 @@ export function drawioImportNote(r: DrawioImport): string {
   ];
   if (r.skipped)
     parts.push(`${r.skipped} more did not fit the ${BOARD_OBJECT_LIMIT.toLocaleString('en')}-object limit.`);
-  if (r.pages > 1) parts.push(`Only the first of ${r.pages} pages was imported.`);
+  if ((r.imported ?? 1) > 1) parts.push(`${r.imported} pages sit side by side, each in a frame named after it.`);
+  if (r.unreadable)
+    parts.push(
+      `${r.unreadable} of ${r.pages} pages ${r.unreadable === 1 ? 'was' : 'were'} left out (empty or unreadable).`,
+    );
   return parts.join(' ');
 }

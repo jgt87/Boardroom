@@ -1,6 +1,7 @@
 // Connector label styles and callout tails that point at objects (track R2-H). Pure: no React, no DOM.
 import type { Board, Item, Point } from './model.ts';
 import { calloutTailTip } from './model.ts';
+import { toLocal } from './rotation.ts';
 
 // ---- Connector label colour and size ---------------------------------------------------------------
 export const LABEL_SIZE_MIN = 8,
@@ -193,3 +194,44 @@ export function calloutPaths(kind: string, w: number, h: number, tip: Point): { 
     z = { x: c.x + uy * half, y: c.y - ux * half };
   return { body, tail: `M${r2(a.x)},${r2(a.y)} L${r2(tip.x)},${r2(tip.y)} L${r2(z.x)},${r2(z.y)} Z` };
 }
+
+// ---- Callout tail hit testing (P2-Q5) --------------------------------------------------------------
+const segmentDistance = (p: Point, a: Point, b: Point) => {
+  const dx = b.x - a.x,
+    dy = b.y - a.y,
+    len2 = dx * dx + dy * dy,
+    t = len2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
+  return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
+};
+const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+/**
+ * Is world point `p` on the custom tail of callout `i` (within `tolerance` world units)? The tail reaches
+ * outside the callout's box, so this is what lets a click or drag on it pick the callout. Built-in tails sit
+ * inside the box and are hit with it.
+ */
+export function pointOnCalloutTail(i: Item, items: Item[], p: Point, tolerance = 4): boolean {
+  if (!isCallout(i) || i.hidden) return false;
+  const tip = calloutTailTip(i, items);
+  if (!tip) return false;
+  const q = toLocal(i, p),
+    l = { x: q.x - i.x, y: q.y - i.y },
+    b = i.h * bodyShare(i.type),
+    c = { x: i.w / 2, y: b / 2 };
+  if (i.type === 'thought') return segmentDistance(l, c, tip) <= Math.min(i.w, i.h) * 0.06 + tolerance;
+  const dx = tip.x - c.x,
+    dy = tip.y - c.y,
+    len = Math.hypot(dx, dy) || 1,
+    ux = dx / len,
+    uy = dy / len,
+    half = Math.max(6, Math.min(i.w, b) * 0.1),
+    a = { x: c.x - uy * half, y: c.y + ux * half },
+    z = { x: c.x + uy * half, y: c.y - ux * half };
+  const s1 = cross(a, tip, l),
+    s2 = cross(tip, z, l),
+    s3 = cross(z, a, l),
+    inside = (s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0);
+  return inside || Math.min(segmentDistance(l, a, tip), segmentDistance(l, z, tip)) <= tolerance;
+}
+/** The topmost callout whose custom tail is under world point `p`, if any. */
+export const calloutTailAt = (items: Item[], p: Point, tolerance = 4): Item | undefined =>
+  [...items].reverse().find(i => pointOnCalloutTail(i, items, p, tolerance));

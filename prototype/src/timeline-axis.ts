@@ -8,6 +8,10 @@ export type TimelineSettings = {
   start?: string;
   end?: string;
   fit?: boolean;
+  /**
+   * Flags drawn on the axis. Board Timelines keep them on the dataset (`RecordSchema.timelineFlags`, P2-Q6);
+   * a value stored here on a Timeline object is from an older board and is moved there (timeline-flags.ts).
+   */
   flags?: TimelineFlag[];
 };
 export const TIMELINE_FLAG_LIMIT = 50;
@@ -26,13 +30,18 @@ const DAY = 86400000;
 /** A flag label without markup or control characters. */
 export const cleanFlagLabel = (v: string) =>
   [...v].filter(ch => ch.charCodeAt(0) >= 32 && ch !== '<' && ch !== '>').join('');
+/**
+ * Most flags a dataset may store. Adding stops at TIMELINE_FLAG_LIMIT; the higher ceiling only keeps every flag
+ * when older boards whose Timelines each held their own flags are merged into the dataset (P2-Q6).
+ */
+export const TIMELINE_FLAG_STORE_LIMIT = 500;
 /** Throw when the optional free flags are not valid (unique ids, real dates, short labels, #rrggbb colours). */
-export function validateTimelineFlags(flags: unknown): void {
+export function validateTimelineFlags(flags: unknown, limit = TIMELINE_FLAG_LIMIT): void {
   if (flags === undefined) return;
   const ids = new Set<string>();
   if (
     !Array.isArray(flags) ||
-    flags.length > TIMELINE_FLAG_LIMIT ||
+    flags.length > limit ||
     flags.some(f => {
       const bad =
         !f ||
@@ -73,7 +82,7 @@ export function addTimelineFlag(
   makeId: () => string = () => crypto.randomUUID(),
 ): TimelineSettings {
   const flags = settings.flags ?? [];
-  if (flags.length >= TIMELINE_FLAG_LIMIT) throw new Error(`Use up to ${TIMELINE_FLAG_LIMIT} flags per Timeline.`);
+  if (flags.length >= TIMELINE_FLAG_LIMIT) throw new Error(`Use up to ${TIMELINE_FLAG_LIMIT} flags per dataset.`);
   if (!isIsoDate(flag.date)) throw new Error('Choose a date for the flag.');
   const label = cleanFlagLabel(flag.label).trim().slice(0, TIMELINE_FLAG_LABEL_MAX);
   const next = [...flags, { id: makeId(), date: flag.date, label, color: flag.color }];

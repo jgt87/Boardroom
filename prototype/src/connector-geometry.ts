@@ -1,6 +1,7 @@
 import { endpoints, center, connectorSides, sideVector } from './model.ts';
 import type { Item, Point, Board, Side, Bend } from './model.ts';
 import { pointInBox, rotatedBounds } from './rotation.ts';
+import { pointOnCalloutTail } from './diagram-extras.ts';
 import {
   routeOrthogonal,
   polylineHits,
@@ -301,7 +302,12 @@ export function moveConnectorEndpoint(
   if (!item || item.type !== 'arrow') return board;
   const [a, b] = endpoints(item, board.items);
   const target = attach
-    ? [...board.items].reverse().find(i => canConnect(i) && pointInBox(i, point, tolerance))
+    ? [...board.items].reverse().find(
+        i =>
+          canConnect(i) &&
+          // A callout's tail counts as part of it (P2-Q5).
+          (pointInBox(i, point, tolerance) || pointOnCalloutTail(i, board.items, point, Math.max(4, tolerance))),
+      )
     : undefined;
   const start = end === 'start' ? point : a,
     finish = end === 'end' ? point : b;

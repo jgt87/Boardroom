@@ -2,6 +2,7 @@
 // Objects without a layer belong to the base layer, which always exists (id 'base'). A hidden layer is not
 // drawn; a locked layer cannot be edited. New objects go to the active layer. Pure.
 import type { Board, Item } from './model.ts';
+import { copyPlacedDots } from './chip-rules.ts';
 
 export type Layer = { id: string; name: string; hidden?: boolean; locked?: boolean };
 export const BASE_LAYER = 'base';
@@ -135,7 +136,8 @@ export function duplicateLayer(
       if (typeof d.link === 'string' && map.has(d.link)) d.link = map.get(d.link);
     }
     delete copy.locked;
-    return copy;
+    // Placed voting dots are copied only when their dot pile is on the copied layer too (question P1-Q5).
+    return copyPlacedDots(copy, map);
   });
   const groups = [...groupMap].map(([g, nid]) => {
     const parent = groupDefs.get(g)!.parent;

@@ -3,6 +3,7 @@
 import type { Board, Item, VotingResult } from './model.ts';
 import { selectionBounds, type Bounds } from './interactions.ts';
 import { tableFromImport } from './record-import.ts';
+import { builtInColumns } from './record-schema.ts';
 import { pollResults, type PollData } from './facilitation-widgets.ts';
 
 /** Gap between the source (poll or voted area) and the new table. */
@@ -11,6 +12,10 @@ export const RESULTS_GAP = 80;
 /**
  * A new Table built from `table` (header row first) with its top-left corner just right of `box`.
  * Returns the next board (one undo step for the caller) and the new Table item.
+ *
+ * Results use a minimal schema (open question P1-Q8): the Table shows only the first column (the title) and the
+ * result columns. Status, assignee and date columns are hidden, so rows do not all read "Not started"; the user
+ * can show them again from the Table's fields panel.
  */
 export function tableBeside(
   board: Board,
@@ -20,8 +25,22 @@ export function tableBeside(
   makeId?: () => string,
 ): { board: Board; item: Item } {
   const made = tableFromImport(board, table, title, { x: 0, y: 0 }, makeId),
-    item: Item = { ...made.item, x: Math.round(box.x + box.w + RESULTS_GAP), y: Math.round(box.y) };
-  return { board: { ...made.board, items: made.board.items.map(i => (i.id === item.id ? item : i)) }, item };
+    datasetId = made.item.datasetId!,
+    schema = made.board.recordSchemas![datasetId]!,
+    item: Item = {
+      ...made.item,
+      x: Math.round(box.x + box.w + RESULTS_GAP),
+      y: Math.round(box.y),
+      w: Math.max(480, (2 + schema.fields.length) * 160),
+    };
+  return {
+    board: {
+      ...made.board,
+      items: made.board.items.map(i => (i.id === item.id ? item : i)),
+      recordSchemas: { ...made.board.recordSchemas, [datasetId]: { ...schema, hiddenBuiltIns: [...builtInColumns] } },
+    },
+    item,
+  };
 }
 
 /** Poll options and counts as a table: option, votes and share in whole percent. */

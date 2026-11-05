@@ -257,6 +257,9 @@ export function useRenderItem() {
                   </g>
                 );
               })()}
+            {/* Status of a Mermaid-linked diagram (P2-Q7), top-left inside the frame's padding. It stays shown
+                if the frame is later unlinked, so a stored status never goes invisible. */}
+            <SvgStatusChip status={i.data?.status} scale={1 / camera.z} />
           </>
         )}
         {i.type === 'pen' &&

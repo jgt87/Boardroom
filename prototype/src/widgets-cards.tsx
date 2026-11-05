@@ -2,7 +2,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { Item } from './model';
 import type { WidgetCtx } from './widget-types';
-import { cardStatuses, tshirtSizes, isIsoDate } from './facilitation-widgets';
+import { cardPointsLabel, cardStatuses, tshirtSizes, isIsoDate } from './facilitation-widgets';
 import type { CardData } from './facilitation-widgets';
 import { Dialog, data, setData } from './widget-kit';
 import { CanvasField, canvasControl } from './canvas-fields';
@@ -83,9 +83,12 @@ export function CardRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
             {d.status}
           </span>
         )}
-        {(d.points !== undefined || d.size) && (
-          <span className="w-estimate" title="Estimate">
-            {[d.points !== undefined ? `${d.points} pt` : '', d.size ?? ''].filter(Boolean).join(' · ')}
+        {(cardPointsLabel(d) || d.size) && (
+          <span
+            className="w-estimate"
+            title={typeof d.points !== 'number' && d.pointsUnknown ? 'Estimate: points unknown' : 'Estimate'}
+          >
+            {[cardPointsLabel(d), d.size ?? ''].filter(Boolean).join(' · ')}
           </span>
         )}
         {ctx.openEditor && !orphan && (
@@ -346,8 +349,12 @@ export function CardEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx;
   const apply = () => {
     if (error) return;
     const next: CardData = { ...d, assignee: d.assignee.trim() };
+    // An empty field keeps an unknown ("?") estimate; a number replaces it.
     if (points === '') delete next.points;
-    else next.points = Number(points);
+    else {
+      next.points = Number(points);
+      delete next.pointsUnknown;
+    }
     if (!next.size) delete next.size;
     if (!next.start) delete next.start;
     ctx.update(b => {
@@ -514,6 +521,7 @@ export function CardEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx;
             max={1000}
             step={0.5}
             value={points}
+            placeholder={d.pointsUnknown ? '? (unknown)' : undefined}
             onChange={e => setPoints(e.target.value)}
           />
         </label>

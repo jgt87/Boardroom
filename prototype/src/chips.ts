@@ -23,9 +23,10 @@ const cardPatch = (chip: Chip): CardPatch => {
   if (chip.kind === 'person') return { assignee: chip.name };
   if (chip.kind !== 'estimate') return {};
   const v = chip.value;
-  // "?" (not estimated yet) and Clear both remove a card's estimate: card points are numbers. Points and size
-  // are separate card fields, so a points chip keeps the size and a size chip keeps the points.
-  if (!v || v === '?') return { points: null, size: null };
+  // Clear removes a card's estimate; "?" marks its points as unknown (shown as "? pt", skipped by totals). Points
+  // and size are separate card fields, so a points chip keeps the size and a size chip keeps the points.
+  if (!v) return { points: null, size: null };
+  if (v === '?') return { points: 'unknown' };
   return /^\d/.test(v) ? { points: Number(v) } : { size: v };
 };
 

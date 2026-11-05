@@ -170,8 +170,9 @@ export function removeFrameStyle(board: Board, frameIds: string[]): Board {
 
 const hex = (v: unknown) => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
 // `hideTitle` hides the title above the frame on the canvas (track R5).
-// `mermaid` (a link to Mermaid code) is validated in model-ext.ts with validateMermaidLink.
-const frameKeys = ['contentHidden', 'notes', 'skipInPresentation', 'style', 'hideTitle', 'mermaid'];
+// `mermaid` (a link to Mermaid code) is validated in model-ext.ts with validateMermaidLink, and `status` (the
+// status chip of a Mermaid-linked diagram, P2-Q7) with validateItemStatus.
+const frameKeys = ['contentHidden', 'notes', 'skipInPresentation', 'style', 'hideTitle', 'mermaid', 'status'];
 export const FRAME_NOTES_MAX = 10000;
 /** Validate `frame.data`: hidden contents, presenter notes, hidden-from-presentation flag and style. */
 export function validateFrameData(d: unknown): void {

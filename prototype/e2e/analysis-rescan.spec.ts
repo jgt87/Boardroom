@@ -116,7 +116,8 @@ test('the Slides format places a deck and PowerPoint files import as decks', asy
   await (
     await chooser
   ).setFiles({ name: 'Review.pptx', mimeType: 'application/octet-stream', buffer: Buffer.from(pptx) });
-  await waitForSave(page, b => b.items.length === 2, 'pptx imported');
+  // The original .pptx is kept beside the deck as a File object (P2-Q8).
+  await waitForSave(page, b => b.items.length === 3 && b.items[2].type === 'file', 'pptx imported');
   const imported = (await savedBoard(page)).items[1];
   expect([imported.text, imported.data.slides.map((s: { title: string }) => s.title)]).toEqual([
     'Review',

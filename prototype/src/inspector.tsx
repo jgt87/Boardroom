@@ -45,6 +45,8 @@ type Props = {
   onClose: () => void;
   /** Open the code panel of a frame linked to Mermaid code. */
   onEditMermaid?: (id: string) => void;
+  /** A fill colour was picked for these objects (remembered per kind; sticky notes set the new-note colour). */
+  onColorPicked?: (items: Item[], color: string) => void;
 };
 const DEFAULT_BORDER = { borderColor: '#2d2d34', borderWidth: 1.5, borderStyle: 'solid', borderOpacity: 1 } as const;
 const round = (n: number) => Math.round(n * 10) / 10;
@@ -109,7 +111,14 @@ function CommitField({
 
 const show = <T,>(v: Shared<T>, f: (x: T) => string) => (v === MIXED || v === undefined ? '' : f(v));
 
-export function PropertiesInspector({ board, selected, onChange, onClose, onEditMermaid }: Props) {
+export function PropertiesInspector({
+  board,
+  selected,
+  onChange,
+  onClose,
+  onEditMermaid,
+  onColorPicked = rememberKindColors,
+}: Props) {
   const panel = useRef<HTMLElement>(null);
   const items = selectedItems(board, selected);
   const locked = items.some(i => i.locked);
@@ -339,7 +348,10 @@ export function PropertiesInspector({ board, selected, onChange, onClose, onEdit
             value={show(fill, v => v) || '#ffffff'}
             board={board}
             onPick={c => {
-              rememberKindColors(items, c);
+              onColorPicked(
+                items.filter(i => !i.locked),
+                c,
+              );
               onChange(b => setFill(b, selected, c));
             }}
           />

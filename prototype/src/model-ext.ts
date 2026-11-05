@@ -363,6 +363,8 @@ function validateItem(i: Item, groups: Set<string>): void {
   if (i.type === 'mermaid' && i.data !== undefined && (!i.data || typeof i.data !== 'object' || Array.isArray(i.data)))
     throw new Error('Invalid Mermaid data.');
   if (['mermaid', 'mindmap'].includes(i.type) && i.data !== undefined) validateItemStatus(i.data);
+  // Frames linked to Mermaid code carry the same status chip (P2-Q7); the frame data shape is checked above.
+  if (i.type === 'frame' && i.data !== undefined) validateItemStatus(i.data);
   if (i.type === 'code') validateCodeData(i.data);
   if (['table', 'kanban', 'timeline'].includes(i.type) && i.data !== undefined) {
     if (!i.data || typeof i.data !== 'object' || Array.isArray(i.data)) throw new Error('Invalid records data.');

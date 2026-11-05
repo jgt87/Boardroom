@@ -76,7 +76,8 @@ test('Excel and Word files import from the Upload menu', async ({ page }) => {
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     buffer: Buffer.from(docx),
   });
-  await waitForSave(page, b => b.items.length === 2, 'docx doc');
+  // The original .docx is kept beside the Doc as a File object (P2-Q8).
+  await waitForSave(page, b => b.items.length === 3 && b.items[2].type === 'file', 'docx doc');
   const doc = (await savedBoard(page)).items[1];
   expect(doc).toMatchObject({ type: 'doc', text: 'Minutes' });
   expect(doc.data.markdown).toBe('# Minutes\n\n- **Decided**');

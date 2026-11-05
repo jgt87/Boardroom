@@ -190,6 +190,18 @@ export function removeBlocks<T>(blocks: T[], r: BlockRange): { blocks: T[]; care
     next = blocks.filter((_, k) => k < start || k > end);
   return { blocks: next, caret: next.length ? Math.min(start, next.length - 1) : -1 };
 }
+/** Where the caret was among a document's top-level blocks (P2-Q13a): before, after or in place of a block. */
+export type BlockSpot = { index: number; place: 'before' | 'after' | 'replace' };
+/**
+ * Insert Markdown (for example a template) among per-block Markdown at a caret spot and return the joined text.
+ * Without a spot, or with one outside the blocks, the Markdown goes at the end.
+ */
+export function insertBlocksAt(blocks: string[], spot: BlockSpot | null, markdown: string): string {
+  if (!spot || spot.index < 0 || spot.index >= blocks.length) return joinBlocks([...blocks, markdown]);
+  const { index, place } = spot,
+    at = place === 'after' ? index + 1 : index;
+  return joinBlocks([...blocks.slice(0, at), markdown, ...blocks.slice(place === 'replace' ? index + 1 : at)]);
+}
 /** Join per-block Markdown (each ends with its own blank line) into a Doc's stored text. */
 export const joinBlocks = (parts: string[]) =>
   parts
