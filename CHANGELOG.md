@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.0 — 2026-11-05
+
 ### Import from other whiteboards: REST JSON
 
 - New **Whiteboard JSON (REST export)** import (Upload menu): a board exported through another whiteboard
