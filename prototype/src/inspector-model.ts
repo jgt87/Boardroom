@@ -8,6 +8,7 @@ import type { Bounds } from './interactions.ts';
 import { isShapeKind, radiusKinds } from './shapes.ts';
 import { MAX_RADIUS } from './model-ext.ts';
 import { editableIds } from './arrange.ts';
+import { isImageMask } from './image-masks.ts';
 
 export const LIMIT = 1e7;
 export const MIN_W = 40;
@@ -140,9 +141,9 @@ export function setStyleField<K extends keyof ShapeStyle>(
   value: ShapeStyle[K],
 ): Board {
   if (key === 'mask')
-    return value !== undefined && value !== 'circle'
+    return value !== undefined && !isImageMask(value)
       ? board
-      : mapEditable(board, ids, i =>
+      : mapEditable(board, editableIds(board, ids), i =>
           i.type !== 'image' || i.style?.mask === value
             ? i
             : { ...i, style: mergeStyle(i.style, { mask: value as ShapeStyle['mask'] }) },

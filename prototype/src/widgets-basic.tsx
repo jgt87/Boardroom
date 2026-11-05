@@ -1,11 +1,11 @@
 // Registry entries for essential and facilitation widgets (items 21-23, 27-29, 43-44).
 import './widgets-basic.css';
-import { RotateCcw, Repeat2, Sheet, FileUp } from 'lucide-react';
+import { RotateCcw, Repeat2, Sheet, FileUp, Eye, EyeOff, Table2 } from 'lucide-react';
 import type { WidgetView } from './widget-types';
 import { stampKinds } from './specs-basic';
 import type { StampKind } from './specs-basic';
-import { pollTotal, resetPoll } from './facilitation-widgets';
-import type { PollData } from './facilitation-widgets';
+import { pollTotal, resetPoll, setPollHidden, resetScale, scaleTotal } from './facilitation-widgets';
+import type { PollData, ScaleData } from './facilitation-widgets';
 import { CardEditor, CardRender, FlipEditor, FlipRender } from './widgets-cards';
 import { data, patchItem, pickFile, saveText, setData } from './widget-kit';
 import { gridImportNote, importIntoGrid, isTableFile, readTableFile } from './table-file';
@@ -181,14 +181,33 @@ export const basicViews: WidgetView[] = [
     Render: PollRender,
     Editor: PollEditor,
     interactive: true,
-    actions: (item, ctx) => [
-      {
-        label: 'Reset votes',
-        icon: <RotateCcw size={16} />,
-        disabled: !pollTotal(data<PollData>(item)),
-        run: () => setData(ctx, item.id, resetPoll(data<PollData>(item))),
-      },
-    ],
+    actions: (item, ctx) => {
+      const d = data<PollData>(item);
+      return [
+        {
+          label: d.resultsHidden ? 'Reveal results' : 'Hide results',
+          icon: d.resultsHidden ? <Eye size={16} /> : <EyeOff size={16} />,
+          pressed: !!d.resultsHidden,
+          run: () => setData(ctx, item.id, setPollHidden(d, !d.resultsHidden)),
+        },
+        {
+          label: 'Export to Table',
+          icon: <Table2 size={16} />,
+          // The Table import code loads on demand, as it does for CSV files.
+          run: () =>
+            void import('./facilitation-results').then(({ pollToTable }) => {
+              ctx.update(b => pollToTable(b, item.id).board);
+              ctx.display('Poll results added as a Table next to the poll.');
+            }),
+        },
+        {
+          label: 'Reset votes',
+          icon: <RotateCcw size={16} />,
+          disabled: !pollTotal(d),
+          run: () => setData(ctx, item.id, resetPoll(d)),
+        },
+      ];
+    },
   },
   {
     kind: 'spinner',
@@ -197,5 +216,19 @@ export const basicViews: WidgetView[] = [
     Editor: SpinnerEditor,
     actions: spinnerActions,
   },
-  { kind: 'scale', mode: 'html', Render: ScaleRender, Editor: ScaleEditor, interactive: true },
+  {
+    kind: 'scale',
+    mode: 'html',
+    Render: ScaleRender,
+    Editor: ScaleEditor,
+    interactive: true,
+    actions: (item, ctx) => [
+      {
+        label: 'Reset responses',
+        icon: <RotateCcw size={16} />,
+        disabled: !scaleTotal(data<ScaleData>(item)),
+        run: () => setData(ctx, item.id, resetScale(data<ScaleData>(item))),
+      },
+    ],
+  },
 ];

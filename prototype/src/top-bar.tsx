@@ -6,7 +6,7 @@ import { presentationFrames } from './navigation';
 import { IMAGE_ACCEPT, withAssets } from './images';
 import { setPrivate } from './board-tools';
 import { useApp } from './board-app';
-import { BoardMenu, BoardStatusChip, useDismiss } from './board-menu';
+import { BoardEmoji, BoardMenu, BoardStatusChip, SensitivityChip, useDismiss } from './board-menu';
 import {
   addTemplate,
   loadTemplates,
@@ -40,6 +40,7 @@ export function TopBar() {
     mediaFile,
     docImportFile,
     docImportKind,
+    importDrawioShapes,
     importDocument,
     menu,
     outline,
@@ -108,6 +109,7 @@ export function TopBar() {
           <span>boardroom</span>
         </button>
         <span className="divider" />
+        <BoardEmoji />
         <input
           aria-label="Board name"
           value={board.title}
@@ -115,9 +117,18 @@ export function TopBar() {
           onChange={e => update({ ...boardRef.current, title: e.target.value })}
         />
         <BoardStatusChip />
+        <SensitivityChip />
         {board.viewOnly && (
           <span className="board-status view-only" title="Editing is off. Turn it on in Main menu → Board → View only.">
             View only
+          </span>
+        )}
+        {board.commentOnly && !board.viewOnly && (
+          <span
+            className="board-status view-only comment-only"
+            title="Only comments can be added, replied to or resolved. Turn editing on in Main menu → Board → Comment only."
+          >
+            Comment only
           </span>
         )}
         <BoardMenu />
@@ -476,7 +487,8 @@ export function TopBar() {
         onChange={e => {
           const f = e.target.files?.[0];
           e.target.value = '';
-          if (f) void importDocument(f, undefined, docImportKind.current === 'grid' ? 'grid' : undefined);
+          if (f && docImportKind.current === 'drawio') void importDrawioShapes(f);
+          else if (f) void importDocument(f, undefined, docImportKind.current === 'grid' ? 'grid' : undefined);
         }}
       />
       <input

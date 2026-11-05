@@ -1,5 +1,6 @@
 import type { WidgetSpec } from './widget-types.ts';
 import { drawioEndpoint } from './drawio-endpoint.ts';
+import { validateItemStatus } from './board-settings.ts';
 
 declare const __DRAWIO_EDITOR_URL__: string | undefined;
 const editor = drawioEndpoint(typeof __DRAWIO_EDITOR_URL__ === 'string' ? __DRAWIO_EDITOR_URL__ : undefined);
@@ -74,5 +75,8 @@ export const drawioSpec: WidgetSpec = {
   category: 'Diagramming',
   size: [560, 360],
   init: item => ({ ...item, text: 'Draw.io diagram', fill: '#ffffff', data: { xml: EMPTY_DRAWIO } }),
-  validate: item => assertDrawioXml(item.data?.xml),
+  validate: item => {
+    assertDrawioXml(item.data?.xml);
+    validateItemStatus(item.data);
+  },
 };

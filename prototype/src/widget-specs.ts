@@ -13,6 +13,8 @@ import { stickypadSpec } from './specs-stickypad.ts';
 import { chartSpecs } from './specs-charts.ts';
 import { entitySpec } from './specs-entity.ts';
 import { swimlaneSpec } from './specs-swimlane.ts';
+import { chipSpecs } from './specs-chips.ts';
+import { fileSpec } from './specs-file.ts';
 
 export const widgetSpecs: WidgetSpec[] = [
   ...basicSpecs,
@@ -27,6 +29,8 @@ export const widgetSpecs: WidgetSpec[] = [
   ...chartSpecs,
   entitySpec,
   swimlaneSpec,
+  ...chipSpecs,
+  fileSpec,
 ];
 const byKind = new Map(widgetSpecs.map(s => [s.kind, s]));
 export const specFor = (kind: string) => byKind.get(kind as WidgetKind);

@@ -298,3 +298,41 @@ export function insertionPreview(board: Board, movedIds: string[]): InsertionPre
   }
   return null;
 }
+
+// ---- Spacing handle (track J) ------------------------------------------------------------------------
+export const GAP_MAX = 400;
+export type GapHandle = {
+  /** Handle centre in world coordinates. */
+  x: number;
+  y: number;
+  /** Drag axis: 'x' between children side by side, 'y' between stacked children or wrapped rows. */
+  axis: 'x' | 'y';
+  /** World position (on `axis`) where the gap starts; the gap is twice the handle's distance from it. */
+  anchor: number;
+  gap: number;
+};
+/**
+ * The on-canvas spacing handle of a container: in the middle of the gap between its first two children.
+ * Null when the container has fewer than two laid-out children.
+ */
+export function gapHandle(board: Board, containerId: string): GapHandle | null {
+  const container = board.items.find(i => i.id === containerId);
+  if (!isContainer(container) || !container!.data) return null;
+  const map = new Map(board.items.map(i => [i.id, i])),
+    d = container!.data as AutoLayoutData,
+    { boxes, children } = layoutContainer(container!, map);
+  if (children.length < 2) return null;
+  const a = { ...map.get(children[0])!, ...boxes.get(children[0])! },
+    b = { ...map.get(children[1])!, ...boxes.get(children[1])! };
+  if (d.direction === 'column')
+    return { x: a.x + Math.min(a.w, b.w) / 2, y: a.y + a.h + d.gap / 2, axis: 'y', anchor: a.y + a.h, gap: d.gap };
+  if (Math.abs(a.y - b.y) < 1e-6)
+    return { x: a.x + a.w + d.gap / 2, y: a.y + Math.min(a.h, b.h) / 2, axis: 'x', anchor: a.x + a.w, gap: d.gap };
+  // The second child wrapped onto the next row: the handle sits between the rows.
+  return { x: b.x + b.w / 2, y: b.y - d.gap / 2, axis: 'y', anchor: b.y - d.gap, gap: d.gap };
+}
+/** Gap for a handle dragged to world position `at` on its axis; `step` snaps (for example 8 with Shift). */
+export function gapFromHandle(handle: Pick<GapHandle, 'anchor'>, at: number, step = 1): number {
+  const raw = Math.max(0, Math.min(GAP_MAX, 2 * (at - handle.anchor)));
+  return Math.max(0, Math.min(GAP_MAX, Math.round(raw / step) * step));
+}

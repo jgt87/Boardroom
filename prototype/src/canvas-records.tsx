@@ -6,6 +6,7 @@ import { CanvasField, canvasControl } from './canvas-fields';
 import { addChildRecord, deleteRecord, indentRecord, outdentRecord, recordTree, recordsError } from './records';
 import { RecordSavedViews } from './record-saved-views';
 import { recordColors, schemaOf, validateRecordValues } from './record-schema';
+import { applyRecordTemplate, isFreshDataset, recordTemplates } from './record-templates';
 import { RecordFields, RecordFieldInput } from './record-fields';
 import { createItem } from './model';
 import { syncedCard } from './record-canvas';
@@ -475,6 +476,29 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         <span>{item.text || 'Records'}</span>
         <StatusChip status={item.data?.status} />
         <div {...canvasControl} className="canvas-view-switch" role="group" aria-label="Record layout">
+          {(view === 'table' || view === 'kanban') && !item.locked && isFreshDataset(ctx.board, item.datasetId) && (
+            // Starter column sets (track L), offered until the new format holds real work.
+            <select
+              className="record-template-select"
+              aria-label="Start from a template"
+              value=""
+              onMouseDown={e => e.stopPropagation()}
+              onChange={e => {
+                const t = recordTemplates.find(x => x.id === e.target.value);
+                e.target.value = '';
+                if (!t) return;
+                ctx.update(b => applyRecordTemplate(b, item, t.id, () => crypto.randomUUID()));
+                ctx.display(`${t.label} columns applied. Undo restores the starter records.`);
+              }}
+            >
+              <option value="">Templates…</option>
+              {recordTemplates.map(t => (
+                <option key={t.id} value={t.id} title={t.about}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          )}
           {view === 'table' && <RecordImportControls item={item} ctx={ctx} />}
           <RecordFields item={item} ctx={ctx} />
           <RecordLayoutMenu item={item} ctx={ctx} />

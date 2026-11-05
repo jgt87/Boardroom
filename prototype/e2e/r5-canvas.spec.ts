@@ -126,7 +126,10 @@ test('typed list markers become a bullet list and the colour menu remembers colo
   );
 
   await item(page, 'n').click({ position: { x: 20, y: 20 } });
-  await page.locator('.selection-bar').getByRole('button', { name: 'More colours' }).click();
+  await page
+    .locator('.selection-bar')
+    .getByRole('button', { name: /^Object colour: / })
+    .click();
   const menu = page.getByRole('dialog', { name: 'Colours' });
   await menu.getByRole('button', { name: 'Save current' }).click();
   await expect(

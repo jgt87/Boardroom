@@ -2,9 +2,30 @@
 // Public libraries only: pdfjs-dist (lazy) for PDFs and marked (via markdown.ts) for docs.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog as WidgetDialog, saveAssetFile } from './widget-kit';
+import { useLatest } from './use-latest';
+import {
+  MAX_CUTS,
+  PLAYBACK_RATES,
+  SKIP_SECONDS,
+  atPlayableEnd,
+  clockLabel,
+  mediaKeyAction,
+  normalizeCuts,
+  parseClock,
+  playableLength,
+  rateLabel,
+  resolvePlayhead,
+  skipBy,
+  stepRate,
+  waveformPeaks,
+} from './media-playback';
+import type { PlaybackLimits, TimeRange } from './media-playback';
 import {
   X,
   Play,
+  Pause,
+  RotateCcw,
+  RotateCw,
   Square,
   ExternalLink,
   Monitor,
@@ -45,6 +66,7 @@ import { statusAction } from './status-chip';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import './widgets-media.css';
 import { BrandSwatches } from './brand-kit-panel';
+import { FocusView } from './focus-view';
 
 /** Fired by widget actions that need main.tsx to open the widget's Editor: detail { id }. */
 export const OPEN_EDITOR_EVENT = 'boardroom:open-widget-editor';
@@ -81,6 +103,7 @@ function Dialog({
   doneDisabled,
   children,
   wide,
+  focus,
 }: {
   title: string;
   hint?: string;
@@ -90,15 +113,45 @@ function Dialog({
   doneDisabled?: boolean;
   children: React.ReactNode;
   wide?: boolean;
+  /** Open as a full-viewport focus view that covers the canvas (Docs). */
+  focus?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    // The focus view shell handles focus itself.
+    if (focus) return;
     const prior = document.activeElement as HTMLElement;
     ref.current?.querySelector<HTMLElement>('[data-autofocus],input,textarea,select,button')?.focus();
     return () => {
       if (prior?.isConnected) prior.focus();
     };
-  }, []);
+  }, [focus]);
+  if (focus)
+    return (
+      <FocusView
+        title={title}
+        hint={hint}
+        className="media-dialog"
+        closeLabel={`Cancel ${title.toLowerCase()}`}
+        initialFocus="[data-autofocus],textarea,input,select"
+        onClose={onClose}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !doneDisabled) {
+            e.preventDefault();
+            onDone();
+          }
+        }}
+      >
+        <div className="media-dialog-body">{children}</div>
+        <footer>
+          <span>Ctrl+Enter applies · Esc cancels</span>
+          <button onClick={onClose}>Cancel</button>
+          <button className="primary" disabled={doneDisabled} onClick={onDone}>
+            {doneLabel}
+          </button>
+        </footer>
+      </FocusView>
+    );
   return (
     <div
       className="format-overlay"
@@ -331,35 +384,156 @@ async function loadPdf(file: File) {
 }
 
 // ---- Video (item 30) ---------------------------------------------------------------------------------
-const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-const parseClock = (v: string) => {
-  const m = /^\s*(?:(\d+):)?(\d+(?:\.\d+)?)\s*$/.exec(v);
-  return m ? Number(m[1] ?? 0) * 60 + Number(m[2]) : NaN;
-};
-/** Title, description and trim of a video or recording (gap G14). */
+type VideoData = { duration?: number; poster?: string; trim?: TimeRange; cuts?: TimeRange[] };
+const peaksCache = new Map<string, Promise<number[] | null>>();
+/**
+ * Waveform of a recording's sound (track G), decoded with the Web Audio API from the stored file. Resolves to null
+ * when the browser cannot decode it (no audio track, unsupported codec, or no Web Audio), so callers fall back.
+ */
+function recordingPeaks(key: string, data: string, buckets = 160): Promise<number[] | null> {
+  let peaks = peaksCache.get(key);
+  if (!peaks) {
+    peaks = (async () => {
+      try {
+        const Offline =
+          window.OfflineAudioContext ??
+          (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext }).webkitOfflineAudioContext;
+        if (!Offline) return null;
+        const bytes = dataUrlBytes(data),
+          audio = await new Offline(1, 1, 44100).decodeAudioData(bytes.buffer.slice(0) as ArrayBuffer);
+        if (!audio.length || !audio.numberOfChannels) return null;
+        return waveformPeaks(audio.getChannelData(0), buckets);
+      } catch {
+        return null;
+      }
+    })();
+    peaksCache.set(key, peaks);
+  }
+  return peaks;
+}
+/** Waveform with the parts that will not play shaded: before and after the trim, and every cut. */
+function Waveform({
+  assetKey,
+  data,
+  total,
+  start,
+  end,
+  cuts,
+}: {
+  assetKey: string;
+  data?: string;
+  total: number;
+  start: number;
+  end: number;
+  cuts: TimeRange[];
+}) {
+  const [peaks, setPeaks] = useState<{ key: string; value: number[] | null } | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    let live = true;
+    void recordingPeaks(assetKey, data).then(value => {
+      if (live) setPeaks({ key: assetKey, value });
+    });
+    return () => {
+      live = false;
+    };
+  }, [assetKey, data]);
+  const value = !data ? null : peaks?.key === assetKey ? peaks.value : undefined;
+  if (value === undefined)
+    return (
+      <div className="waveform waveform-note" role="status">
+        Reading the sound…
+      </div>
+    );
+  if (!value || !total)
+    return (
+      <div className="waveform waveform-note" role="status">
+        No waveform: the sound of this recording could not be read. Trim and cuts still work.
+      </div>
+    );
+  const W = value.length,
+    H = 40,
+    x = (s: number) => (Math.max(0, Math.min(total, s)) / total) * W,
+    bad = (s: number, e: number) => Number.isFinite(s) && Number.isFinite(e) && e > s;
+  return (
+    <svg
+      className="waveform"
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label={`Waveform, ${clockLabel(total)} long, ${cuts.length} ${cuts.length === 1 ? 'cut' : 'cuts'}`}
+    >
+      {value.map((p, k) => {
+        const h = Math.max(0.6, p * (H - 4));
+        return <rect key={k} className="waveform-bar" x={k + 0.15} y={(H - h) / 2} width={0.7} height={h} />;
+      })}
+      {bad(0, start) && <rect className="waveform-out" x={0} y={0} width={x(start)} height={H} />}
+      {bad(end, total) && <rect className="waveform-out" x={x(end)} y={0} width={W - x(end)} height={H} />}
+      {cuts
+        .filter(c => bad(c.start, c.end))
+        .map((c, k) => (
+          <rect
+            key={k}
+            className="waveform-cut"
+            x={x(c.start)}
+            y={0}
+            width={Math.max(0.5, x(c.end) - x(c.start))}
+            height={H}
+          />
+        ))}
+    </svg>
+  );
+}
+/** Title, description, trim and cut-out ranges of a video or Talktrack recording (gap G14, track G). */
 function VideoEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose: () => void }) {
-  const d = (item.data ?? {}) as { duration?: number; trim?: { start: number; end: number } },
-    total = d.duration ?? 0;
+  const d = (item.data ?? {}) as VideoData,
+    total = d.duration ?? 0,
+    asset = item.assetId ? ctx.assets[item.assetId] : undefined;
   const [title, setTitle] = useState(item.text),
     [alt, setAlt] = useState(item.alt ?? ''),
-    [start, setStart] = useState(clock(d.trim?.start ?? 0)),
-    [end, setEnd] = useState(clock(d.trim?.end ?? total));
+    [start, setStart] = useState(clockLabel(d.trim?.start ?? 0)),
+    [end, setEnd] = useState(clockLabel(d.trim?.end ?? total)),
+    [cutText, setCutText] = useState(() =>
+      (d.cuts ?? []).map(c => ({ start: clockLabel(c.start), end: clockLabel(c.end) })),
+    );
   const s = parseClock(start),
-    e = parseClock(end);
+    e = parseClock(end),
+    cuts = cutText.map(c => ({ start: parseClock(c.start), end: parseClock(c.end) }));
+  const cutError = cuts.some(c => Number.isNaN(c.start) || Number.isNaN(c.end))
+    ? 'Use times like 0:15 or 1:30 for every cut.'
+    : cuts.some(c => c.start >= c.end)
+      ? 'Each cut must end after it starts.'
+      : total && cuts.some(c => c.end > total + 0.5)
+        ? `Cuts must lie inside the ${clockLabel(total)} recording.`
+        : '';
   const error =
     Number.isNaN(s) || Number.isNaN(e)
       ? 'Use times like 0:15 or 1:30.'
       : s >= e
         ? 'The end must come after the start.'
         : total && e > total + 0.5
-          ? `The video is ${clock(total)} long.`
-          : '';
+          ? `The video is ${clockLabel(total)} long.`
+          : cutError
+            ? cutError
+            : playableLength({ trim: { start: s, end: e }, cuts: normalizeCuts(cuts, total) }) <= 0
+              ? 'The cuts remove everything between the start and the end.'
+              : '';
+  const addCut = () => {
+    const from = Number.isNaN(s) ? 0 : s,
+      to = Number.isNaN(e) ? total : e,
+      mid = (from + to) / 2,
+      half = Math.min(1, Math.max(0.1, (to - from) / 10));
+    setCutText(list => [...list, { start: clockLabel(mid - half / 2), end: clockLabel(mid + half / 2) }]);
+  };
   const apply = () => {
     if (error) return;
     const trimmed = s > 0 || (total ? e < total - 0.25 : true);
-    const next = { ...(item.data ?? {}) };
+    const next = { ...(item.data ?? {}) },
+      clean = normalizeCuts(cuts, total).filter(c => c.end > s && c.start < e);
     if (trimmed) next.trim = { start: s, end: e };
     else delete next.trim;
+    if (clean.length) next.cuts = clean;
+    else delete next.cuts;
     ctx.update(b => ({
       ...b,
       items: b.items.map(i =>
@@ -371,7 +545,7 @@ function VideoEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
   return (
     <WidgetDialog
       title="Video"
-      hint={total ? `Length ${clock(total)}` : undefined}
+      hint={total ? `Length ${clockLabel(total)}` : undefined}
       onClose={onClose}
       onApply={apply}
       applyDisabled={!!error}
@@ -382,6 +556,16 @@ function VideoEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
           Title
           <input aria-label="Video title" maxLength={200} value={title} onChange={ev => setTitle(ev.target.value)} />
         </label>
+        <div className="span2">
+          <Waveform
+            assetKey={item.assetId ?? ''}
+            data={asset?.data}
+            total={total}
+            start={Number.isNaN(s) ? 0 : s}
+            end={Number.isNaN(e) ? total : e}
+            cuts={cuts}
+          />
+        </div>
         <label>
           Play from
           <input aria-label="Trim start" value={start} onChange={ev => setStart(ev.target.value)} />
@@ -390,6 +574,48 @@ function VideoEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
           Stop at
           <input aria-label="Trim end" value={end} onChange={ev => setEnd(ev.target.value)} />
         </label>
+        <fieldset className="span2 video-cuts">
+          <legend>Cut out of the middle</legend>
+          {cutText.length === 0 && (
+            <p className="video-cuts-empty">Nothing is cut. Cut parts are skipped when played.</p>
+          )}
+          {cutText.map((c, k) => (
+            <div className="video-cut" key={k} role="group" aria-label={`Cut ${k + 1}`}>
+              <label>
+                From
+                <input
+                  aria-label={`Cut ${k + 1} start`}
+                  value={c.start}
+                  onChange={ev =>
+                    setCutText(list => list.map((x, j) => (j === k ? { ...x, start: ev.target.value } : x)))
+                  }
+                />
+              </label>
+              <label>
+                To
+                <input
+                  aria-label={`Cut ${k + 1} end`}
+                  value={c.end}
+                  onChange={ev =>
+                    setCutText(list => list.map((x, j) => (j === k ? { ...x, end: ev.target.value } : x)))
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`Remove cut ${k + 1}`}
+                title="Remove this cut"
+                onClick={() => setCutText(list => list.filter((_, j) => j !== k))}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+          <button type="button" onClick={addCut} disabled={cutText.length >= MAX_CUTS}>
+            <Plus size={14} /> Add a cut
+          </button>
+        </fieldset>
         <label className="span2">
           Description for screen readers
           <input aria-label="Video description" maxLength={500} value={alt} onChange={ev => setAlt(ev.target.value)} />
@@ -398,10 +624,161 @@ function VideoEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
     </WidgetDialog>
   );
 }
+/**
+ * The video while it plays (track G): native controls plus ±10 s skips, play/pause and a speed menu. Keys while the
+ * player has focus: J or ← back 10 s, L or → forward 10 s, K or space play/pause, < and > slower and faster.
+ * The trim window and the cut-out ranges are enforced whichever way the time changes.
+ */
+function VideoPlayer({ item, src, onStop }: { item: Item; src: string; onStop: () => void }) {
+  const d = (item.data ?? {}) as VideoData,
+    limits: PlaybackLimits = { trim: d.trim, cuts: d.cuts, duration: d.duration },
+    video = useRef<HTMLVideoElement>(null),
+    player = useRef<HTMLDivElement>(null),
+    [rate, setRate] = useState(1),
+    [paused, setPaused] = useState(false);
+  /** Keep playback inside the window and out of the cuts; stop at the end. */
+  const enforce = () => {
+    const v = video.current;
+    if (!v) return;
+    const t = v.currentTime;
+    if (atPlayableEnd(t, limits)) {
+      v.pause();
+      onStop();
+      return;
+    }
+    const at = resolvePlayhead(t, limits, 1);
+    if (Math.abs(at - t) > 0.05) v.currentTime = at;
+  };
+  const latestEnforce = useLatest(enforce);
+  useEffect(() => {
+    player.current?.focus({ preventScroll: true });
+    // Timeupdate fires only a few times a second; a frame loop keeps cuts tight while playing.
+    let frame = 0;
+    const loop = () => {
+      const v = video.current;
+      if (v && !v.paused) latestEnforce.current();
+      frame = requestAnimationFrame(loop);
+    };
+    frame = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frame);
+  }, [latestEnforce]);
+  useEffect(() => {
+    if (video.current) video.current.playbackRate = rate;
+  }, [rate]);
+  const seek = (delta: number) => {
+    const v = video.current;
+    if (!v) return;
+    v.currentTime = skipBy(v.currentTime, delta, limits);
+    if (atPlayableEnd(v.currentTime, limits)) {
+      v.pause();
+      onStop();
+    }
+  };
+  const toggle = () => {
+    const v = video.current;
+    if (!v) return;
+    if (v.paused) v.play().catch(() => setPaused(true));
+    else v.pause();
+  };
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
+    // Leave keys alone while the speed menu has focus.
+    if ((e.target as HTMLElement).tagName === 'SELECT' || e.ctrlKey || e.metaKey || e.altKey) return;
+    const action = mediaKeyAction(e.key);
+    if (!action) return;
+    e.preventDefault();
+    if (action === 'back') seek(-SKIP_SECONDS);
+    else if (action === 'forward') seek(SKIP_SECONDS);
+    else if (action === 'toggle') toggle();
+    else setRate(r => stepRate(r, action === 'faster' ? 1 : -1));
+  };
+  return (
+    <div
+      ref={player}
+      className="video-player"
+      tabIndex={0}
+      role="group"
+      aria-label={`${item.alt || item.text || 'Video'} player. J and L skip 10 seconds, K plays or pauses, < and > change the speed.`}
+      onKeyDown={onKeyDown}
+      onPointerDown={stop}
+      onDoubleClick={stop}
+    >
+      <div className="video-stage">
+        <video
+          ref={video}
+          src={src}
+          controls
+          autoPlay
+          playsInline
+          aria-label={item.alt || item.text || 'Video'}
+          onEnded={onStop}
+          onPlay={() => setPaused(false)}
+          onPause={() => setPaused(true)}
+          onLoadedMetadata={e => {
+            e.currentTarget.playbackRate = rate;
+            e.currentTarget.currentTime = resolvePlayhead(d.trim?.start ?? 0, limits, 1);
+          }}
+          onTimeUpdate={enforce}
+          onSeeked={enforce}
+        />
+      </div>
+      <div className="video-controls" role="toolbar" aria-label="Playback">
+        <button
+          type="button"
+          className="media-mini"
+          aria-label="Back 10 seconds"
+          title="Back 10 s (J)"
+          onClick={() => seek(-SKIP_SECONDS)}
+        >
+          <RotateCcw size={13} />
+          <span>10</span>
+        </button>
+        <button
+          type="button"
+          className="media-mini"
+          aria-label={paused ? 'Play' : 'Pause'}
+          title={paused ? 'Play (K)' : 'Pause (K)'}
+          onClick={toggle}
+        >
+          {paused ? <Play size={13} fill="currentColor" /> : <Pause size={13} fill="currentColor" />}
+        </button>
+        <button
+          type="button"
+          className="media-mini"
+          aria-label="Forward 10 seconds"
+          title="Forward 10 s (L)"
+          onClick={() => seek(SKIP_SECONDS)}
+        >
+          <RotateCw size={13} />
+          <span>10</span>
+        </button>
+        <select
+          aria-label="Playback speed"
+          title="Playback speed (< and >)"
+          value={rate}
+          onChange={e => setRate(Number(e.target.value))}
+        >
+          {PLAYBACK_RATES.map(r => (
+            <option key={r} value={r}>
+              {rateLabel(r)}
+            </option>
+          ))}
+        </select>
+        {(d.trim || d.cuts?.length) && d.duration ? (
+          <span className="video-playable" title="Length that plays, after trim and cuts">
+            {clockLabel(playableLength(limits))}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 function VideoView({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const [playing, setPlaying] = useState(false),
     asset = item.assetId ? ctx.assets[item.assetId] : undefined,
-    d = item.data ?? {};
+    d = (item.data ?? {}) as VideoData,
+    edited = !!(d.trim || d.cuts?.length),
+    shownLength = d.duration ? (edited ? playableLength({ ...d }) : d.duration) : 0;
   return (
     <div className="video-object">
       <div className="media-bar">
@@ -412,51 +789,29 @@ function VideoView({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
           </button>
         )}
       </div>
-      <div className="video-stage">
-        {!asset ? (
-          missing('Video unavailable')
-        ) : playing ? (
-          <video
-            src={asset.data}
-            controls
-            autoPlay
-            playsInline
-            aria-label={item.alt || item.text || 'Video'}
+      {!asset ? (
+        <div className="video-stage">{missing('Video unavailable')}</div>
+      ) : playing ? (
+        <VideoPlayer item={item} src={asset.data} onStop={() => setPlaying(false)} />
+      ) : (
+        <div className="video-stage">
+          {d.poster ? <img src={d.poster} alt={item.alt || ''} draggable={false} /> : <div className="video-blank" />}
+          <button
+            className="video-play"
+            aria-label={`Play ${item.text || 'video'}`}
             onPointerDown={stop}
-            onKeyDown={stop}
             onDoubleClick={stop}
-            onEnded={() => setPlaying(false)}
-            onLoadedMetadata={e => {
-              if (d.trim) e.currentTarget.currentTime = d.trim.start;
-            }}
-            onTimeUpdate={e => {
-              // Trimmed videos stop at the trim end (gap G14).
-              if (d.trim && e.currentTarget.currentTime >= d.trim.end) {
-                e.currentTarget.pause();
-                setPlaying(false);
-              }
-            }}
-          />
-        ) : (
-          <>
-            {d.poster ? <img src={d.poster} alt={item.alt || ''} draggable={false} /> : <div className="video-blank" />}
-            <button
-              className="video-play"
-              aria-label={`Play ${item.text || 'video'}`}
-              onPointerDown={stop}
-              onDoubleClick={stop}
-              onClick={() => setPlaying(true)}
-            >
-              <Play size={22} fill="currentColor" />
-            </button>
-            {d.duration ? (
-              <span className="video-duration">
-                {Math.floor(d.duration / 60)}:{String(Math.round(d.duration % 60)).padStart(2, '0')}
-              </span>
-            ) : null}
-          </>
-        )}
-      </div>
+            onClick={() => setPlaying(true)}
+          >
+            <Play size={22} fill="currentColor" />
+          </button>
+          {shownLength ? (
+            <span className="video-duration" title={edited ? 'Length after trim and cuts' : undefined}>
+              {clockLabel(shownLength)}
+            </span>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -701,7 +1056,12 @@ function EmbedView({ item }: { item: Item; ctx: WidgetCtx }) {
           <iframe
             src={src}
             title={item.alt || label}
-            sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+            sandbox={
+              // Office and Power BI embeds sign in and open documents through forms and pop-ups (track J).
+              d.provider === 'office' || d.provider === 'powerbi'
+                ? 'allow-scripts allow-same-origin allow-presentation allow-popups allow-forms allow-popups-to-escape-sandbox'
+                : 'allow-scripts allow-same-origin allow-presentation allow-popups'
+            }
             referrerPolicy="strict-origin-when-cross-origin"
             allow="fullscreen; picture-in-picture; encrypted-media"
             loading="lazy"
@@ -745,7 +1105,7 @@ function EmbedEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
   return (
     <Dialog
       title="Embed"
-      hint="Supported: YouTube, Vimeo, Loom, map embed links, Figma, CodePen and Google documents, spreadsheets and presentations."
+      hint="Supported: YouTube, Vimeo, Loom, map embed links, Figma, CodePen, Google documents, spreadsheets and presentations, OneDrive and SharePoint Office embed links and Power BI reports."
       onClose={onClose}
       onDone={done}
     >
@@ -840,7 +1200,7 @@ function DocEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose
       onClose={onClose}
       onDone={done}
       doneDisabled={md.length > 60000}
-      wide
+      focus
     >
       <div className="doc-toolbar" role="toolbar" aria-label="Formatting">
         {docTools.map(t => (

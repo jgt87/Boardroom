@@ -136,10 +136,11 @@ test('B2/B6/B7/B8: plain-text paste is classified and turned into valid objects'
 });
 
 test('B2/B6: paste limits are enforced and reported', () => {
-  const big = Array.from({ length: 40 }, (_, r) => Array.from({ length: 35 }, (_, c) => `${r}:${c}`));
+  // Grids hold up to 100 rows or columns and 2,500 cells (track J): every column that fits, then rows.
+  const big = Array.from({ length: 120 }, (_, r) => Array.from({ length: 60 }, (_, c) => `${r}:${c}`));
   const g = gridFromCells(big, { x: 0, y: 0 });
   assert.equal(g.truncated, true);
-  assert.deepEqual([g.item.data!.rows, g.item.data!.cols], [30, 30]);
+  assert.deepEqual([g.item.data!.rows, g.item.data!.cols], [41, 60]);
   const n = notesFromLines(Array.from({ length: 150 }, (_, i) => `line ${i}`).join('\n'), { x: 0, y: 0 });
   assert.deepEqual([n.items.length, n.truncated], [100, true]);
   assert.throws(() => linkItem('javascript:alert(1)', { x: 0, y: 0 }));
@@ -492,7 +493,9 @@ test('G12: estimate chips set and clear story points and T-shirt sizes on cards'
   const { estimatePatch, patchCards } = await import('../src/card-tools.ts');
   assert.deepEqual(estimatePatch('points:5'), { points: 5 });
   assert.deepEqual(estimatePatch('size:M'), { size: 'M' });
-  assert.equal(estimatePatch('size:XXL'), null);
+  // XXL joined the sizes with the estimate palette (track F).
+  assert.deepEqual(estimatePatch('size:XXL'), { size: 'XXL' });
+  assert.equal(estimatePatch('size:XXXL'), null);
   assert.equal(estimatePatch('points:-1'), null);
   assert.equal(estimatePatch('rm -rf'), null);
   const c = { ...createItem('card', 0, 0), id: 'c' };

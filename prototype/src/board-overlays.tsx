@@ -354,6 +354,7 @@ export function BoardOverlays() {
           onSpace={boardActions.space}
           onImport={libraryFiles.importFile}
           onBackupAll={libraryFiles.backupAll}
+          onBackup={ids => void libraryFiles.backupBoards(ids)}
           onRename={boardActions.rename}
           onDuplicate={boardActions.duplicate}
           onDuplicateMany={boardActions.duplicateMany}

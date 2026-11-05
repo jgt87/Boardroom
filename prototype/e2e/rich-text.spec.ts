@@ -225,3 +225,23 @@ test('doc: link, highlight, colour and mention round-trip through Markdown', asy
   await page.keyboard.press('Control+Enter');
   await waitForSave(page, b => !(b.items[0].data.markdown as string).includes('](https'), 'link removed');
 });
+
+test('double-clicking an empty sticky note puts the caret in the vertical middle', async ({ page }) => {
+  await seed(
+    page,
+    `return { version: 1, title: 'Empty', items: [{ ...m.createItem('note', 0, 0), id: 'n', text: '' }] };`,
+  );
+  await fit(page);
+  const box = (await item(page, 'n').boundingBox())!;
+  await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+  const editor = page.locator('.object-editor.rich-editor');
+  await expect(editor).toBeFocused();
+  // Padding and font size are in board units; the editor sits inside the zoomed canvas, so scale them to screen.
+  const caretMiddle = await editor.evaluate(el => {
+    const cs = getComputedStyle(el),
+      r = el.getBoundingClientRect(),
+      zoom = r.height / (el as HTMLElement).offsetHeight;
+    return r.top + (parseFloat(cs.paddingTop) + parseFloat(cs.fontSize) * 0.7) * zoom;
+  });
+  expect(Math.abs(caretMiddle - (box.y + box.height / 2))).toBeLessThan(box.height * 0.05);
+});

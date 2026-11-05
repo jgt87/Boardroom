@@ -26,7 +26,16 @@ import { TalktrackPanel, PhotoboothPanel, StickiesPanel } from './capture-panels
 import { placeNotes } from './sticky-detect';
 import { validateDiagram } from './diagram-validation';
 import { sortFramesByPosition } from './frame-workflow';
-import { editTemplate, loadTemplates, removeTemplate, storeTemplates, templatePayload } from './user-templates';
+import {
+  editTemplate,
+  loadTemplates,
+  rememberTemplateUse,
+  removeTemplate,
+  storeTemplates,
+  templatePayload,
+  userUseKey,
+} from './user-templates';
+import { starterUseKey } from './starter-templates';
 import { useLibraryFiles } from './use-library-files';
 import { pastePayload } from './clipboard';
 import { moveInPresentation, setFrameNotes, setHiddenSlide, replaceText } from './navigation';
@@ -76,6 +85,7 @@ import { viewFor } from './widgets';
 import type { WidgetCtx } from './widget-types';
 import { useApp } from './board-app';
 import { MermaidLinkPanel } from './mermaid-link-panel';
+import { PinnedComments } from './pinned-comments';
 
 export function FloatingPanels() {
   const {
@@ -256,6 +266,20 @@ export function FloatingPanels() {
               setSelected([text.id]);
               display('Voting results placed on the board.');
             }}
+            onTableResult={index => {
+              const c = toWorld(size.w / 2, size.h / 2);
+              // The Table import code loads on demand, as it does for CSV files.
+              void import('./facilitation-results').then(({ votingResultToTable }) => {
+                try {
+                  const made = votingResultToTable(boardRef.current, index, { x: c.x, y: c.y, w: 0, h: 0 });
+                  update(made.board);
+                  setSelected([made.item.id]);
+                  display('Voting results added as a Table beside the voted objects.');
+                } catch (err) {
+                  display((err as Error).message);
+                }
+              });
+            }}
             onEnd={() => {
               try {
                 const r = endVoting(boardRef.current, voteLabel);
@@ -305,6 +329,7 @@ export function FloatingPanels() {
             onInsertUser={t => {
               const payload = templatePayload(t);
               if (!payload) return display('This template can no longer be read.');
+              rememberTemplateUse(userUseKey(t.id));
               const c = toWorld(size.w / 2, size.h / 2),
                 result = pastePayload(boardRef.current, payload, {
                   x: c.x - payload.bounds.w / 2,
@@ -316,6 +341,7 @@ export function FloatingPanels() {
               fit(result.board.items.filter(i => result.ids.includes(i.id)));
             }}
             onChoose={(name: TemplateName) => {
+              rememberTemplateUse(starterUseKey(name));
               const at = toWorld(size.w / 2 - 300, size.h / 2 - 200),
                 items = templateItems(name, at, (t, x, y, f) => createItem(t, x, y, f));
               update({ ...boardRef.current, items: [...boardRef.current.items, ...items] });
@@ -423,6 +449,7 @@ export function FloatingPanels() {
       )}
       {timerOn && <BoardTimer onClose={() => setTimerOn(false)} />}
       <VotingClock />
+      <PinnedComments names={mentionNames} />
       {thread &&
         (() => {
           const existing = 'id' in thread ? (board.comments ?? []).find(t => t.id === thread.id) : undefined;

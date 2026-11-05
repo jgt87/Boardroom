@@ -28,11 +28,14 @@ import { RECORD_CARD_MIME } from './record-card-handle';
 import { mermaidItem } from './smart-paste';
 import { droppedImage } from './web-drop';
 import { TOOL_MIME } from './formats';
-import { ESTIMATE_MIME, estimatePatch, patchCards } from './card-tools';
+import { ESTIMATE_MIME } from './card-tools';
+import { CHIP_MIME, legacyEstimateChip, parseChip } from './chip-rules';
+import { applyChip, chipHint } from './chips';
 import { inHiddenLayer } from './layers';
 import { describeItem, stepInOrder } from './navigation';
 import { announce } from './announce';
 import { addConnectedCopy, canQuickConnect, quickConnectPoint } from './diagram-gaps';
+import { isCallout, tailTip } from './diagram-extras';
 
 /** True while a drag that started in this page is in progress (so canvas text drops ignore it). */
 let pageDrag = false;
@@ -44,6 +47,7 @@ if (typeof document !== 'undefined') {
 import { syncedCard } from './record-canvas';
 import { createItem } from './model';
 import { StickyPeel } from './sticky-peel';
+import { AutoLayoutGapHandle } from './autolayout-gap-handle';
 
 export function CanvasSurface() {
   const {
@@ -144,6 +148,7 @@ export function CanvasSurface() {
                 t === RECORD_CARD_MIME ||
                 t === TOOL_MIME ||
                 t === ESTIMATE_MIME ||
+                t === CHIP_MIME ||
                 (!pageDrag && (t === 'text/uri-list' || t === 'text/plain')),
             )
           )
@@ -171,16 +176,25 @@ export function CanvasSurface() {
             }
             return;
           }
-          // Estimate chip dropped on a card (gap G12).
-          const estimate = e.dataTransfer.getData(ESTIMATE_MIME);
-          if (estimate) {
+          // Chips dropped on an object: estimates (gap G12), voting dots and people avatars (track F). One undo
+          // step per drop; locked objects refuse the chip.
+          const chipData = e.dataTransfer.getData(CHIP_MIME),
+            legacyEstimate = chipData ? '' : e.dataTransfer.getData(ESTIMATE_MIME);
+          if (chipData || legacyEstimate) {
             e.preventDefault();
+            const chip = chipData ? parseChip(chipData) : legacyEstimateChip(legacyEstimate);
+            if (!chip) return;
             const id = (e.target as Element).closest?.('[data-item]')?.getAttribute('data-item'),
-              patch = estimatePatch(estimate),
               target = id ? boardRef.current.items.find(i => i.id === id) : undefined;
-            if (!patch || target?.type !== 'card') return display('Drop the estimate on a card.');
-            update(patchCards(boardRef.current, [target.id], patch));
-            setSelected([target.id]);
+            // Dropped back on a chip source (the palette, pile or People widget): nothing to do.
+            if (target && ['estimates', 'dotpile', 'people'].includes(target.type)) return;
+            if (!target) return display(chipHint(chip));
+            try {
+              update(applyChip(boardRef.current, [target.id], chip).board);
+              setSelected([target.id]);
+            } catch (error) {
+              display((error as Error).message);
+            }
             return;
           }
           const tool = e.dataTransfer.getData(TOOL_MIME);
@@ -216,14 +230,25 @@ export function CanvasSurface() {
           }
           e.preventDefault();
           const diagrams = files.filter(f => /\.(drawio|xml)$/i.test(f.name));
-          const documents = files.filter(f => /\.(md|markdown|pptx|docx|csv|tsv|xlsx)$/i.test(f.name));
+          const documents = files.filter(f => /\.(md|markdown|pptx|docx|odt|odp|rtf|csv|tsv|xlsx)$/i.test(f.name));
           const mermaid = files.filter(f => /\.(mmd|mermaid)$/i.test(f.name));
           const media = files.filter(
             f => /^(video\/|application\/pdf$)/.test(f.type) || /\.(pdf|mp4|webm|mov)$/i.test(f.name),
           );
-          const images = files.filter(
+          const rest = files.filter(
             f => !diagrams.includes(f) && !documents.includes(f) && !mermaid.includes(f) && !media.includes(f),
           );
+          const images = rest.filter(
+            f => f.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(f.name),
+          );
+          // Any other file (other Office formats, archives, text…) is kept as a File object (track J).
+          for (const [k, f] of rest
+            .filter(f => !images.includes(f))
+            .slice(0, 10)
+            .entries()) {
+            const p = toWorld(e.clientX, e.clientY);
+            void insertMedia(f, 'file', { x: p.x + k * 40, y: p.y + 100 + k * 40 });
+          }
           // Mermaid files and PDF or video files (gap list B8, B9).
           for (const [k, f] of mermaid.slice(0, 5).entries()) {
             const p = toWorld(e.clientX, e.clientY);
@@ -264,7 +289,7 @@ export function CanvasSurface() {
         onDoubleClick={e => {
           if (
             (e.target as Element).closest(
-              '[data-resize],[data-rotate],[data-connector-end],[data-bend],video,iframe,.mindmap-canvas-editor',
+              '[data-resize],[data-rotate],[data-connector-end],[data-bend],[data-callout-tail],video,iframe,.mindmap-canvas-editor',
             ) ||
             tool !== 'select' ||
             previewStart
@@ -557,6 +582,11 @@ export function CanvasSurface() {
                   })}
                 {!editing &&
                   !selectionLocked &&
+                  !previewStart &&
+                  selected.length === 1 &&
+                  selectedItem?.type === 'autolayout' && <AutoLayoutGapHandle item={selectedItem} />}
+                {!editing &&
+                  !selectionLocked &&
                   selected.length === 1 &&
                   selectedItem &&
                   canQuickConnect(selectedItem) &&
@@ -640,6 +670,36 @@ export function CanvasSurface() {
                     style={{ cursor: 'crosshair' }}
                   />
                 ))}
+              </g>
+            );
+          })()}
+        {selected.length === 1 &&
+          selectedItem &&
+          isCallout(selectedItem) &&
+          !editing &&
+          !selectedItem.locked &&
+          (() => {
+            // Callout tail handle (track R2-H): drag onto an object to point at it; Alt leaves it free.
+            const tip = tailTip(selectedItem, shown.items),
+              r = 6 / camera.z;
+            return (
+              <g
+                className="selection"
+                transform={`translate(${camera.x} ${camera.y}) scale(${camera.z})${rotateAbout(selectedItem)}`}
+              >
+                <circle
+                  data-callout-tail={selectedItem.id}
+                  aria-label="Callout tail"
+                  cx={selectedItem.x + tip.x}
+                  cy={selectedItem.y + tip.y}
+                  r={r}
+                  fill={selectedItem.tail?.target ? '#4262ff' : '#ffffff'}
+                  stroke="#4262ff"
+                  strokeWidth={1.5 / camera.z}
+                  style={{ cursor: 'crosshair' }}
+                >
+                  <title>Drag onto an object to point the tail at it</title>
+                </circle>
               </g>
             );
           })()}

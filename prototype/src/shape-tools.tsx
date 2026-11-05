@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import type { Item, ShapeStyle } from './model';
+import type { Board, Item, Point, ShapeStyle } from './model';
+import { calloutPaths, isCallout } from './diagram-extras';
+import { ColorMenu } from './color-menu';
 import {
   shapePacks,
   shapeLabels,
@@ -11,7 +13,24 @@ import {
   radiusKinds,
 } from './shapes';
 import type { ShapeKind } from './shapes';
-import { Minus, MoveUpRight, CornerUpRight, Network, Circle, Table2, Rows3, Shapes, X } from 'lucide-react';
+import {
+  Minus,
+  MoveUpRight,
+  CornerUpRight,
+  Network,
+  Circle,
+  Table2,
+  Rows3,
+  Shapes,
+  X,
+  SquareRoundCorner,
+  Triangle,
+  Hexagon,
+  Star,
+  Heart,
+} from 'lucide-react';
+import { imageMasks, maskLabels } from './image-masks';
+import type { ImageMask } from './image-masks';
 import { loadCustomShapes, removeCustomShape, storeCustomShapes } from './custom-shapes';
 import type { CustomShape } from './custom-shapes';
 import './r5-canvas.css';
@@ -54,7 +73,7 @@ export function ShapeGlyph({ kind, size = 20 }: { kind: ShapeKind; size?: number
 }
 
 /** Shape body on the canvas (fill + border, independent settings). */
-export function ShapeBody({ item }: { item: Item & { type: ShapeKind } }) {
+export function ShapeBody({ item, tip }: { item: Item & { type: ShapeKind }; tip?: Point | null }) {
   const b = borderOf(item),
     detail = shapeDetail(item.type, item.w, item.h),
     stroke = b.borderWidth > 0 ? b.borderColor : 'none';
@@ -65,6 +84,18 @@ export function ShapeBody({ item }: { item: Item & { type: ShapeKind } }) {
     strokeDasharray: dash(b.borderStyle, b.borderWidth),
     strokeLinecap: b.borderStyle === 'dotted' ? ('round' as const) : undefined,
   };
+  if (tip && isCallout(item)) {
+    // Custom callout tail (track R2-H): outline both parts at double width, then fill them on top so only the
+    // outer half of the stroke shows and the tail joins the bubble without a seam.
+    const p = calloutPaths(item.type, item.w, item.h, tip),
+      d = `${p.body} ${p.tail}`;
+    return (
+      <g data-callout-tail-shape={item.id}>
+        <path d={d} fill="none" {...common} strokeWidth={b.borderWidth * 2} strokeLinejoin="round" />
+        <path d={d} fill={item.fill} stroke="none" />
+      </g>
+    );
+  }
   // Original shapes keep their native SVG elements so existing exports stay identical.
   const body =
     item.type === 'rectangle' ? (
@@ -117,25 +148,30 @@ export function ShapeMenuItems({ onChoose }: { onChoose: (kind: ShapeKind) => vo
 export function BorderControls({
   item,
   mixed,
+  board,
   onChange,
+  maskImage,
+  onMask,
 }: {
   item: Item;
   mixed: boolean;
+  board?: Board;
   onChange: (style: ShapeStyle) => void;
+  /** First selected image: its crop mask is shown, and onMask applies a mask to every selected image (track G). */
+  maskImage?: Item;
+  onMask?: (mask: ImageMask | undefined) => void;
 }) {
   // Images start without a border (gap D11).
   const b = item.type === 'image' ? { ...DEFAULT_BORDER, borderWidth: 0, ...item.style } : borderOf(item);
   return (
     <div className="border-controls" aria-label="Shape border">
-      <label className="color-chip" title="Border color">
-        <input
-          type="color"
-          aria-label="Border color"
-          value={b.borderColor}
-          onChange={e => onChange({ borderColor: e.target.value })}
-        />
-        <span style={{ borderColor: b.borderColor }} />
-      </label>
+      <ColorMenu
+        label="Border colour"
+        variant="border"
+        value={b.borderColor}
+        board={board}
+        onPick={borderColor => onChange({ borderColor })}
+      />
       <select
         aria-label="Border thickness"
         title="Border thickness"
@@ -177,23 +213,77 @@ export function BorderControls({
       {(radiusKinds.includes(item.type) || item.type === 'image') && (
         <RadiusSlider item={item} onChange={radius => onChange({ radius })} />
       )}
-      {item.type === 'image' && (
-        <button
-          className={`icon-button ${item.style?.mask === 'circle' ? 'active' : ''}`}
-          aria-label="Circle crop"
-          aria-pressed={item.style?.mask === 'circle'}
-          title="Circle crop"
-          onClick={() => onChange({ mask: item.style?.mask === 'circle' ? undefined : 'circle' })}
-        >
-          <Circle size={16} />
-        </button>
-      )}
+      {maskImage && onMask && <MaskMenu mask={maskImage.style?.mask} onMask={onMask} />}
       {mixed && (
         <span className="mixed-hint" title="Selected shapes have different borders; changes apply to all">
           Mixed
         </span>
       )}
     </div>
+  );
+}
+
+const maskIcons: Record<ImageMask, React.ReactNode> = {
+  circle: <Circle size={16} />,
+  rounded: <SquareRoundCorner size={16} />,
+  triangle: <Triangle size={16} />,
+  hexagon: <Hexagon size={16} />,
+  star: <Star size={16} />,
+  heart: <Heart size={16} />,
+};
+/** Crop mask menu for images (gap D11, track G): one choice applies to every selected image as one undo step. */
+function MaskMenu({ mask, onMask }: { mask?: ImageMask; onMask: (mask: ImageMask | undefined) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="menu-anchor">
+      <button
+        className={`icon-button ${mask ? 'active' : ''}`}
+        aria-label="Crop shape"
+        title={mask ? `Crop shape: ${maskLabels[mask]}` : 'Crop shape'}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen(v => !v)}
+      >
+        {mask ? maskIcons[mask] : <Circle size={16} />}
+      </button>
+      {open && (
+        <div
+          className="dropdown floating mask-menu"
+          role="menu"
+          aria-label="Crop shape"
+          onKeyDown={e => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              setOpen(false);
+            }
+          }}
+        >
+          <button
+            role="menuitemradio"
+            aria-checked={!mask}
+            onClick={() => {
+              onMask(undefined);
+              setOpen(false);
+            }}
+          >
+            <X size={16} /> No crop shape
+          </button>
+          {imageMasks.map(m => (
+            <button
+              key={m}
+              role="menuitemradio"
+              aria-checked={mask === m}
+              onClick={() => {
+                onMask(m);
+                setOpen(false);
+              }}
+            >
+              {maskIcons[m]} {maskLabels[m]}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
   );
 }
 

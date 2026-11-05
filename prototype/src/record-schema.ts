@@ -274,6 +274,17 @@ export function renameRecordView(schema: RecordSchema, id: string, name: string)
   if (schema.views?.some(v => v.name === label && v.id !== id)) throw new Error('A view with that name exists.');
   return { ...schema, views: schema.views?.map(v => (v.id === id ? { ...v, name: label } : v)) };
 }
+/** Move a saved view to position `to` (clamped) in the list (track R2-I); unknown ids leave the schema unchanged. */
+export function moveRecordView(schema: RecordSchema, id: string, to: number): RecordSchema {
+  const views = schema.views ?? [],
+    from = views.findIndex(v => v.id === id);
+  if (from < 0 || !Number.isFinite(to)) return schema;
+  const at = Math.max(0, Math.min(views.length - 1, Math.round(to)));
+  if (at === from) return schema;
+  const next = views.filter(v => v.id !== id);
+  next.splice(at, 0, views[from]);
+  return { ...schema, views: next };
+}
 export function deleteRecordView(schema: RecordSchema, id: string): RecordSchema {
   const views = schema.views?.filter(v => v.id !== id) ?? [];
   const next: RecordSchema = { ...schema, views };

@@ -1,16 +1,21 @@
-import { useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { GripVertical } from 'lucide-react';
 import type { Item } from './model';
 import type { WidgetCtx } from './widget-types';
 import type { RecordViewConfig } from './record-query';
 import {
   applySavedView,
   deleteRecordView,
+  moveRecordView,
   renameRecordView,
   saveRecordView,
   schemaOf,
   setRecordSchema,
 } from './record-schema';
 import { CanvasField } from './canvas-fields';
+import './library-r2.css';
+
+const VIEW_MIME = 'application/x-boardroom-saved-view';
 
 /** Named views shared by every Table, Kanban and Timeline of a dataset: save, switch, rename and delete. */
 export function RecordSavedViews({
@@ -28,6 +33,14 @@ export function RecordSavedViews({
     views = schema.views ?? [],
     active = views.find(v => v.id === view.activeView),
     [name, setName] = useState('');
+  const scope = useId(),
+    order = useRef<HTMLOListElement>(null),
+    focusAfter = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (!focusAfter.current) return;
+    order.current?.querySelector<HTMLElement>(`[data-saved-view="${CSS.escape(focusAfter.current)}"]`)?.focus();
+    focusAfter.current = null;
+  });
   const write = (change: (s: typeof schema) => typeof schema) =>
     ctx.update(b =>
       b.items.find(i => i.id === item.id)?.locked
@@ -104,6 +117,59 @@ export function RecordSavedViews({
             Delete view
           </button>
         </>
+      )}
+      {views.length > 1 && (
+        <details className="record-view-order">
+          <summary>Order views</summary>
+          <ol ref={order} aria-label="Saved view order">
+            {views.map((v, k) => (
+              <li
+                key={v.id}
+                onDragOver={e => {
+                  if ([...e.dataTransfer.types].includes(VIEW_MIME)) e.preventDefault();
+                }}
+                onDrop={e => {
+                  try {
+                    const value = JSON.parse(e.dataTransfer.getData(VIEW_MIME));
+                    if (value?.scope !== scope || typeof value.id !== 'string') return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    focusAfter.current = value.id;
+                    write(s => moveRecordView(s, value.id, k));
+                  } catch {
+                    /* Foreign drag. */
+                  }
+                }}
+              >
+                <button
+                  type="button"
+                  draggable={!item.locked}
+                  disabled={!!item.locked}
+                  data-saved-view={v.id}
+                  aria-label={`Move view: ${v.name} (${k + 1} of ${views.length})`}
+                  title="Drag to reorder; Alt + up/down also moves views"
+                  onDragStart={e => {
+                    e.stopPropagation();
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData(VIEW_MIME, JSON.stringify({ scope, id: v.id }));
+                  }}
+                  onKeyDown={e => {
+                    if (!e.altKey || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const to = k + (e.key === 'ArrowUp' ? -1 : 1);
+                    if (to < 0 || to >= views.length) return;
+                    focusAfter.current = v.id;
+                    write(s => moveRecordView(s, v.id, to));
+                  }}
+                >
+                  <GripVertical size={12} aria-hidden="true" />
+                  {v.name}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </details>
       )}
       <input
         aria-label="New view name"

@@ -216,12 +216,12 @@ test('object info in the inspector, Details panel actions and the brand kit', as
   // Editing stamps the modified time; the old note has no created time.
   await item(page, 'a').click();
   await page
-    .locator('.selection-bar input[type="color"]')
-    .first()
-    .evaluate((el: HTMLInputElement) => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, '#a8cdff');
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    });
+    .locator('.selection-bar')
+    .getByRole('button', { name: /^Object colour: / })
+    .click();
+  await page.getByRole('dialog', { name: 'Colours' }).getByRole('textbox', { name: 'Hex colour' }).fill('#a8cdff');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
   await waitForSave(page, b => !!b.items[0].modifiedAt && !b.items[0].createdAt, 'modified time stamped');
   await item(page, 'a').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Properties' }).click();

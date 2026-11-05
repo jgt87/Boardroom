@@ -14,7 +14,7 @@ import {
   ORG_NODE_H,
 } from './orgchart';
 import type { OrgNode } from './orgchart';
-import { orgMeta, orgBranchColor } from './orgchart';
+import { orgMeta, orgBranchColor, ORG_DEFAULT_CARD_FIELDS } from './orgchart';
 import { storyCardMeta } from './storymap';
 import './r5-canvas.css';
 import { addActivity, addRelease, addCard, removeCard, renameCard, rename, cellCards, moveCard } from './storymap';
@@ -24,6 +24,7 @@ const PERSON = 'application/x-boardroom-person',
 
 export function CanvasOrg({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const nodes = (item.data?.nodes ?? []) as OrgNode[];
+  const shown = (item.data?.cardFields as string[] | undefined) ?? ORG_DEFAULT_CARD_FIELDS;
   const [active, setActive] = useState(nodes[0]?.id ?? '');
   const { positions, width, height } = layoutOrgChart(nodes);
   const run = (fn: (nodes: OrgNode[]) => OrgNode[]) => {
@@ -133,7 +134,7 @@ export function CanvasOrg({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                     <>
                       <strong>{n.name}</strong>
                       <span>{n.role}</span>
-                      {(n.team || n.location) && <small className="canvas-person-meta">{orgMeta(n)}</small>}
+                      {orgMeta(n, shown) && <small className="canvas-person-meta">{orgMeta(n, shown)}</small>}
                       {n.hiring && <small className="canvas-person-flag">Hiring</small>}
                     </>
                   ) : (
@@ -152,7 +153,7 @@ export function CanvasOrg({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                           run(v => v.map(p => (p.id === n.id ? { ...p, role: role.slice(0, 200) } : p)))
                         }
                       />
-                      {(n.team || n.location) && <small className="canvas-person-meta">{orgMeta(n)}</small>}
+                      {orgMeta(n, shown) && <small className="canvas-person-meta">{orgMeta(n, shown)}</small>}
                       {n.hiring && <small className="canvas-person-flag">Hiring</small>}
                     </>
                   )}

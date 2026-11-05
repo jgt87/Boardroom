@@ -22,6 +22,7 @@ import {
   clearStyles,
   fromRuns,
   linkAt,
+  pastedLink,
   replaceRange,
   runCss,
   runsOf,
@@ -525,7 +526,11 @@ export function CanvasTextEditor({
     el.style.height = '0px';
     el.style.paddingTop = '0px';
     el.style.paddingBottom = '0px';
-    if (auto) {
+    // An empty editable box has no line at all, so measuring it would grow the font to the maximum and push
+    // the (very tall) caret down to the bottom. Start an empty note at the size a short word gets instead.
+    const empty = !text.trim();
+    if (auto && empty) el.style.fontSize = `${textLayout({ ...item, text: 'Text' }).size}px`;
+    else if (auto) {
       let low = 1,
         high = Math.min(512, available / 1.4);
       for (let i = 0; i < 11; i++) {
@@ -536,11 +541,12 @@ export function CanvasTextEditor({
       }
       el.style.fontSize = `${Math.floor(low * 10) / 10}px`;
     }
-    const natural = el.scrollHeight;
+    // Always at least one line tall, so the caret of an empty note sits in the vertical middle.
+    const natural = Math.max(el.scrollHeight, parseFloat(getComputedStyle(el).fontSize) * 1.4);
     el.style.height = '100%';
     el.style.paddingTop = `${Math.max(0, Math.max(4, item.format?.valign === 'top' ? 4 : item.format?.valign === 'bottom' ? item.h - 20 - natural : (item.h - 16 - natural) / 2) + (item.format?.baselineOffsetY ?? 0))}px`;
     el.style.paddingBottom = '4px';
-  }, [text, item.w, item.h, item.format, sticky]);
+  }, [text, item, sticky]);
   const barButtons: { key: ToggleKey; label: string; icon: typeof Bold; shortcut: string }[] = [
     { key: 'bold', label: 'Bold', icon: Bold, shortcut: 'Ctrl+B' },
     { key: 'italic', label: 'Italic', icon: Italic, shortcut: 'Ctrl+I' },
@@ -576,7 +582,15 @@ export function CanvasTextEditor({
         onPaste={e => {
           e.preventDefault();
           e.stopPropagation();
-          insertPlain(e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n'));
+          const pasted = e.clipboardData.getData('text/plain'),
+            s = rich ? selection() : null,
+            href = s && s.end > s.start ? pastedLink(pasted) : null;
+          // A web address pasted over selected words links them, like Ctrl+K, instead of replacing them.
+          if (s && href) {
+            const m = model();
+            return show({ text: m.text, spans: applyStyle(m.text, m.spans, s.start, s.end, { href }) }, s.start, s.end);
+          }
+          insertPlain(pasted.replace(/\r\n?/g, '\n'));
         }}
         onDrop={e => e.preventDefault()}
         onBlur={e => {

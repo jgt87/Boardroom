@@ -23,6 +23,8 @@ import { SelectionBars } from './selection-bars';
 import { FloatingPanels } from './floating-panels';
 import { BoardChrome } from './board-chrome';
 import { BoardOverlays } from './board-overlays';
+import { ShortcutRunner } from './shortcut-runner';
+import { BrowserNotice } from './browser-notice';
 import './dashboard.css';
 
 function App() {
@@ -38,6 +40,8 @@ function App() {
         <FloatingPanels />
         <BoardChrome />
         <BoardOverlays />
+        <ShortcutRunner />
+        <BrowserNotice />
       </main>
     </AppContext.Provider>
   );

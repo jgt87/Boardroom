@@ -1,9 +1,20 @@
 // Named layer controls in the Layers panel (gap D9): add, rename, hide, lock, reorder, delete, choose the
-// active layer for new objects, and move the selection to a layer.
+// active layer for new objects, duplicate a layer with its objects, and move the selection to a layer.
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, Eye, EyeOff, Lock, LockOpen, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, CopyPlus, Eye, EyeOff, Lock, LockOpen, Plus, Trash2 } from 'lucide-react';
 import { useApp } from './board-app';
-import { BASE_LAYER, addLayer, deleteLayer, layerIdOf, layersOf, moveLayer, moveToLayer, patchLayer } from './layers';
+import {
+  BASE_LAYER,
+  MAX_LAYERS,
+  addLayer,
+  deleteLayer,
+  duplicateLayer,
+  layerIdOf,
+  layersOf,
+  moveLayer,
+  moveToLayer,
+  patchLayer,
+} from './layers';
 
 export function NamedLayers() {
   const { board, boardRef, run, selected, activeLayer, setActiveLayer, display } = useApp();
@@ -100,6 +111,29 @@ export function NamedLayers() {
                 onClick={() => run(b => moveLayer(b, l.id, -1))}
               >
                 <ArrowDown size={15} />
+              </button>
+              <button
+                className="icon-button"
+                aria-label={`Duplicate ${l.name}`}
+                title="Duplicate layer with its objects"
+                disabled={layers.length >= MAX_LAYERS}
+                onClick={() => {
+                  const id = crypto.randomUUID();
+                  let copied = 0;
+                  run(
+                    b => {
+                      const made = duplicateLayer(b, l.id, id);
+                      copied = made.ids.length;
+                      return made.board;
+                    },
+                    () => {
+                      setActiveLayer(id);
+                      display(`Duplicated ${l.name} with ${copied} ${copied === 1 ? 'object' : 'objects'}.`);
+                    },
+                  );
+                }}
+              >
+                <CopyPlus size={15} />
               </button>
               {l.id !== BASE_LAYER && (
                 <button

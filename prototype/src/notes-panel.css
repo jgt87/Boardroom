@@ -1,0 +1,78 @@
+/* Board notes panel, Doc block selection, and template pickers inside tools (track L). */
+.notes-panel {
+  width: 380px;
+  max-width: calc(100vw - 40px);
+  gap: 10px;
+}
+.notes-panel-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+.notes-panel .notes-doc {
+  flex: 1;
+  min-height: 0;
+  border-radius: 8px;
+}
+.notes-panel .notes-doc .canvas-widget-header {
+  cursor: default;
+  flex-wrap: wrap;
+}
+.notes-panel .notes-doc .canvas-doc-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.notes-doc-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.notes-panel .canvas-doc {
+  -webkit-mask-image: none;
+  font-size: 14px;
+}
+.canvas-doc[data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none;
+}
+/* Selected Doc blocks (Esc while typing). */
+.canvas-doc .doc-block-selected {
+  background: #edf0ff;
+  box-shadow: 0 0 0 2px #4262ff;
+  border-radius: 4px;
+}
+.canvas-doc .doc-block-selected::selection,
+.canvas-doc .doc-block-selected *::selection {
+  background: transparent;
+}
+.record-template-select,
+.note-set-select {
+  font-size: 11px;
+  max-width: 140px;
+}
+.note-options .note-set-select {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  padding: 6px 4px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.template-sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.template-sort select {
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .notes-panel {
+    left: 10px;
+    right: 10px;
+    width: auto;
+  }
+}

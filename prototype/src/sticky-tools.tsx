@@ -1,26 +1,36 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { Item } from './model';
-import { normalizeNoteLink, normalizeNoteTags } from './model';
+import type { NoteShape } from './model';
+import { normalizeNoteLink, normalizeNoteTags, noteSizeOf, noteSizePatch } from './model';
 import { X, ExternalLink, Link2 } from 'lucide-react';
 export function NoteSizeControl({ item, onChange }: { item: Item; onChange: (patch: Partial<Item>) => void }) {
-  const value = item.w === item.h && [140, 210, 300].includes(item.w) ? item.w : 'custom';
+  const value = noteSizeOf(item),
+    shape = item.noteShape ?? 'square';
   return (
-    <select
-      className="note-size-control"
-      aria-label="Sticky note size"
-      value={value}
-      onChange={e => {
-        const size = Number(e.target.value);
-        onChange({ x: item.x + (item.w - size) / 2, y: item.y + (item.h - size) / 2, w: size, h: size });
-      }}
-    >
-      <option value="custom" disabled>
-        Custom
-      </option>
-      <option value="140">Small</option>
-      <option value="210">Medium</option>
-      <option value="300">Large</option>
-    </select>
+    <>
+      <select
+        className="note-size-control"
+        aria-label="Sticky note shape"
+        value={shape}
+        onChange={e => onChange(noteSizePatch(item, value === 'custom' ? 'keep' : value, e.target.value as NoteShape))}
+      >
+        <option value="square">Square</option>
+        <option value="rectangle">Rectangle</option>
+      </select>
+      <select
+        className="note-size-control"
+        aria-label="Sticky note size"
+        value={value}
+        onChange={e => onChange(noteSizePatch(item, Number(e.target.value)))}
+      >
+        <option value="custom" disabled>
+          Custom
+        </option>
+        <option value="140">Small</option>
+        <option value="210">Medium</option>
+        <option value="300">Large</option>
+      </select>
+    </>
   );
 }
 export function NoteDetails({

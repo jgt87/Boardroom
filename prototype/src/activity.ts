@@ -97,6 +97,78 @@ export function catchUp(log: Activity[], since: number) {
   return summary;
 }
 
+/** Deleted entries that can still be restored: they hold a snapshot and no object with that id is on the board. */
+export const restorable = (board: Board, entry: Activity) =>
+  entry.action === 'deleted' && !!entry.item && !board.items.some(i => i.id === entry.itemId);
+
+/**
+ * Put several deleted objects back in one change (track R2-I). Each object is restored once (its newest
+ * snapshot). With the activity `log`, connectors that were deleted in the same change as a restored object and
+ * whose other end is restored too, or still on the board, come back with it. Connector ends that would point at
+ * a missing object are detached (the connector keeps its position), and missing groups are dropped.
+ * Returns null when nothing can be restored.
+ */
+export function restoreMany(
+  board: Board,
+  entries: Activity[],
+  log: Activity[] = [],
+): { board: Board; restored: string[]; reattached: number; detached: number } | null {
+  const onBoard = new Set(board.items.map(i => i.id)),
+    chosen = new Map<string, Activity>();
+  for (const e of entries) if (restorable(board, e) && !chosen.has(e.itemId)) chosen.set(e.itemId, e);
+  if (!chosen.size) return null;
+  const times = new Set([...chosen.values()].map(e => e.at));
+  let reattached = 0;
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const e of log) {
+      const it = e.item;
+      if (!it || it.type !== 'arrow' || chosen.has(e.itemId) || !restorable(board, e) || !times.has(e.at)) continue;
+      const ends = [it.from, it.to].filter((v): v is string => !!v);
+      const restoredEnd = ends.some(id => chosen.has(id)),
+        allThere = ends.every(id => chosen.has(id) || onBoard.has(id));
+      if (!restoredEnd || !allThere) continue;
+      chosen.set(e.itemId, e);
+      reattached++;
+      grew = true;
+    }
+  }
+  const alive = new Set([...onBoard, ...chosen.keys()]),
+    groups = new Set((board.groups ?? []).map(g => g.id));
+  let detached = 0;
+  const items = [...chosen.values()].map(e => {
+    const it: Item = { ...e.item! };
+    if (it.group && !groups.has(it.group)) delete it.group;
+    if (it.type === 'arrow')
+      for (const end of ['from', 'to'] as const)
+        if (it[end] && !alive.has(it[end]!)) {
+          delete it[end];
+          detached++;
+        }
+    return it;
+  });
+  // Shapes first, then connectors, so restored connectors paint above what they join.
+  const ordered = [...items.filter(i => i.type !== 'arrow'), ...items.filter(i => i.type === 'arrow')];
+  return {
+    board: { ...board, items: [...board.items, ...ordered] },
+    restored: ordered.map(i => i.id),
+    reattached,
+    detached,
+  };
+}
+
+/**
+ * Objects added or edited since `since` that are still on the board, oldest change first, for stepping through
+ * the catch-up one object at a time (track R2-I). Each object appears once, with its latest change.
+ */
+export function catchUpSteps(log: Activity[], since: number, existing: Set<string>): Activity[] {
+  const latest = new Map<string, Activity>();
+  for (const e of log)
+    if (Date.parse(e.at) >= since && e.action !== 'deleted' && existing.has(e.itemId) && !latest.has(e.itemId))
+      latest.set(e.itemId, e);
+  return [...latest.values()].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+}
+
 /** Put a deleted object back (unless an object with its id already exists). */
 export function restoreDeleted(board: Board, entry: Activity): Board | null {
   if (entry.action !== 'deleted' || !entry.item || board.items.some(i => i.id === entry.item!.id)) return null;

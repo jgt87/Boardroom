@@ -2,6 +2,8 @@
 // Links use the URL fragment (`#board=…&object=…&focus=1`), so they never reach a server. Boards live on this
 // device, so a link opens only in the browser that holds the board.
 import type { Board, Item } from './model.ts';
+import type { TemplateName } from './board-tools.ts';
+import { templateBySlug } from './starter-templates.ts';
 
 export type DeepLink = { board?: string; object?: string; focus?: boolean };
 const ID = /^[A-Za-z0-9_-]{1,100}$/;
@@ -22,6 +24,27 @@ export function parseDeepLink(hash: string): DeepLink | null {
     if (params.get('focus') === '1') link.focus = true;
   }
   return link;
+}
+
+/**
+ * Quick-create link (track L): `#new` makes a blank board, `#new=<template>` a board from a starter template
+ * (its slug such as `kanban-retro`, or its name) and `#new=doc|table|kanban|timeline` a single-format board.
+ * Null when the hash is not a quick-create link; `{ kind: 'unknown' }` when it names no template.
+ */
+export type QuickCreate =
+  | { kind: 'blank' }
+  | { kind: 'template'; name: TemplateName }
+  | { kind: 'format'; format: SingleFormat }
+  | { kind: 'unknown'; id: string };
+export function parseQuickCreate(hash: string): QuickCreate | null {
+  const raw = hash.replace(/^#/, '');
+  if (!/^new(=|&|$)/.test(raw)) return null;
+  const id = (new URLSearchParams(raw).get('new') ?? '').trim().slice(0, 100);
+  if (!id || id.toLowerCase() === 'blank') return { kind: 'blank' };
+  const format = singleFormats.find(f => f.kind === id.toLowerCase());
+  if (format) return { kind: 'format', format: format.kind };
+  const t = templateBySlug(id);
+  return t ? { kind: 'template', name: t.name as TemplateName } : { kind: 'unknown', id };
 }
 
 /** The hash for a deep link (with the leading "#"). */

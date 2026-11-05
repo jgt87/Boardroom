@@ -1,17 +1,33 @@
 // Main menu beside the board name (items 103–109), structured like the reference: Board, Edit, View,
 // Preferences, Accessibility and Assign status, each opening a submenu. Keyboard: arrows move, Right/Enter
 // opens a submenu, Left closes it, Escape or a click outside closes the menu.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { fitMenu } from './menu-fit';
 import { Check, ChevronRight, EllipsisVertical } from 'lucide-react';
 import { useApp } from './board-app';
 import { screenToWorld } from './camera';
-import { boardBackgrounds, boardStatuses, DEFAULT_BACKGROUND, withSetting } from './board-settings';
+import {
+  boardBackgrounds,
+  badgeInk,
+  boardStatuses,
+  customSensitivity,
+  DEFAULT_BACKGROUND,
+  DEFAULT_CUSTOM_SENSITIVITY_COLOR,
+  SENSITIVITY_LABEL_MAX,
+  sensitivityBadge,
+  sensitivityLevels,
+  startObjectChoices,
+  startObjectOf,
+  withSetting,
+} from './board-settings';
 import { CatchUpPanel, DetailsPanel, HistoryPanel } from './board-history';
-import { spacesOf } from './board-library';
+import { boardEmoji, boardsInSameSpace, spaceInfoOf, spacesOf } from './board-library';
 import { undo, redo, newBoard } from './model';
+import { withBoardMode } from './board-modes';
 import { TemplatePicker } from './template-picker';
 import { BrandKitPanel } from './brand-kit-panel';
 import { boardFromTemplate } from './user-templates';
+import './library-r2.css';
 
 export function BoardStatusChip() {
   const { board } = useApp();
@@ -23,6 +39,36 @@ export function BoardStatusChip() {
     </span>
   );
 }
+
+/** The board's emoji beside its name in the header (track R2-I). */
+export function BoardEmoji() {
+  const { library } = useApp();
+  const emoji = boardEmoji(library.boards.find(b => b.id === library.activeId));
+  if (!emoji) return null;
+  return (
+    <span className="board-emoji board-title-emoji" data-board-emoji title="Board emoji">
+      {emoji}
+    </span>
+  );
+}
+/** Sensitivity badge (track R2-K) beside the board name; the label is chosen in Main menu → Board → Sensitivity label. */
+export function SensitivityChip() {
+  const { board } = useApp();
+  const badge = sensitivityBadge(board.sensitivity);
+  if (!badge) return null;
+  return (
+    <span
+      className="board-status sensitivity-badge"
+      style={{ background: badge.color, color: badgeInk(badge.color) }}
+      title={`Sensitivity: ${badge.label}`}
+    >
+      {badge.label}
+    </span>
+  );
+}
+
+/** Suggested board emoji; any short emoji or symbol can be typed instead. */
+export const BOARD_EMOJI_CHOICES = ['📌', '🚀', '💡', '🎯', '📊', '🗂️', '🧭', '🛠️', '🎨', '✅'];
 
 type Entry =
   | {
@@ -74,6 +120,28 @@ function MenuList({
 }) {
   const [sub, setSub] = useState<number | null>(null);
   const list = useRef<HTMLDivElement>(null);
+  // Small or zoomed-in windows (track R2-K): a menu that would run off screen is moved and, if still too
+  // tall, scrolls. Measured before paint, so it never flashes in the wrong place.
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    const parent = el.parentElement?.closest<HTMLElement>('.main-menu-list');
+    const box = el.getBoundingClientRect();
+    const fit = fitMenu(
+      { x: box.left, y: box.top, w: box.width, h: el.scrollHeight },
+      parent ? parent.getBoundingClientRect() : null,
+      { w: innerWidth, h: innerHeight },
+      parent?.style.overflowY === 'auto',
+    );
+    if (!fit) return;
+    Object.assign(el.style, {
+      position: 'fixed',
+      left: `${fit.x}px`,
+      top: `${fit.y}px`,
+      maxHeight: `${fit.maxH}px`,
+      overflowY: fit.scroll ? 'auto' : '',
+    });
+  }, []);
   useEffect(() => {
     list.current?.querySelector<HTMLElement>('[role^="menuitem"]')?.focus();
   }, []);
@@ -183,12 +251,19 @@ export function BoardMenu() {
     setSnapping,
     setFacil,
     setDashboard,
+    notesOpen,
+    setNotesOpen,
+    outline,
+    setOutline,
   } = useApp();
   const [open, setOpen] = useState(false),
     [panel, setPanel] = useState<'history' | 'catchup' | 'details' | 'new' | 'brand' | null>(null),
     [confirmDelete, setConfirmDelete] = useState(false),
     [newSpace, setNewSpace] = useState(''),
-    [copyName, setCopyName] = useState<string | null>(null);
+    [copyName, setCopyName] = useState<string | null>(null),
+    [emojiDraft, setEmojiDraft] = useState<string | null>(null),
+    [customLabel, setCustomLabel] = useState<string | null>(null),
+    [customColor, setCustomColor] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const close = () => {
     setOpen(false);
@@ -200,7 +275,19 @@ export function BoardMenu() {
     background = board.background ?? DEFAULT_BACKGROUND;
   const toggle = (label: string, checked: boolean, run: () => void): Entry => ({ kind: 'item', label, checked, run });
   const item = (label: string, run: () => void, hint?: string): Entry => ({ kind: 'item', label, run, hint });
+  const startChoices = startObjectChoices(board),
+    startObject = startObjectOf(board);
   const fullscreen = typeof document !== 'undefined' && !!document.fullscreenElement;
+  const siblings = boardsInSameSpace(library, library.activeId),
+    siblingSpace = siblings.space
+      ? `${spaceInfoOf(library, siblings.space).emoji ? `${spaceInfoOf(library, siblings.space).emoji} ` : ''}${siblings.space}`
+      : 'No space';
+  const emoji = boardEmoji(meta);
+  const setEmoji = (value: string) => {
+    boardActions.setMeta(library.activeId, { emoji: value || null });
+    setEmojiDraft(null);
+    display(value ? `Board emoji set to ${value}.` : 'Board emoji removed.');
+  };
   const entries: Entry[] = [
     {
       kind: 'sub',
@@ -222,11 +309,19 @@ export function BoardMenu() {
           );
         }),
         toggle('View only', !!board.viewOnly, () => {
-          const next = { ...boardRef.current };
-          if (next.viewOnly) delete next.viewOnly;
-          else next.viewOnly = true;
+          const next = withBoardMode(boardRef.current, boardRef.current.viewOnly ? 'edit' : 'view');
           update(next);
           display(next.viewOnly ? 'View only: editing is off for this board.' : 'Editing is on again.');
+        }),
+        // Comment-only (track R2-K): comments can still be added, replied to and resolved.
+        toggle('Comment only', !!board.commentOnly, () => {
+          const next = withBoardMode(boardRef.current, boardRef.current.commentOnly ? 'edit' : 'comment');
+          update(next);
+          display(
+            next.commentOnly
+              ? 'Comment only: only comments can be added or changed on this board.'
+              : 'Editing is on again.',
+          );
         }),
         {
           kind: 'sub',
@@ -298,6 +393,70 @@ export function BoardMenu() {
             },
           ],
         },
+        {
+          kind: 'sub',
+          label: 'Boards in this space',
+          entries: [
+            { kind: 'field', node: <p className="main-menu-note">{siblingSpace}</p> },
+            ...(siblings.boards.length
+              ? siblings.boards.slice(0, 30).map((b): Entry => ({
+                  kind: 'item',
+                  label: `${boardEmoji(b) ? `${boardEmoji(b)} ` : ''}${b.title}`,
+                  run: () => boardActions.open(b.id),
+                }))
+              : [{ kind: 'field' as const, node: <p className="main-menu-note">No other boards here yet.</p> }]),
+            ...(siblings.boards.length > 30
+              ? [item(`All ${siblings.boards.length} boards…`, () => setDashboard(true))]
+              : []),
+          ],
+        },
+        {
+          kind: 'sub',
+          label: 'Board emoji',
+          entries: [
+            {
+              kind: 'field',
+              node: (
+                <form
+                  className="board-emoji-form"
+                  onSubmit={e => {
+                    e.preventDefault();
+                    setEmoji((emojiDraft ?? emoji).trim());
+                  }}
+                >
+                  <input
+                    aria-label="Board emoji"
+                    placeholder="Emoji"
+                    maxLength={16}
+                    value={emojiDraft ?? emoji}
+                    onKeyDown={e => e.stopPropagation()}
+                    onChange={e => setEmojiDraft(e.target.value)}
+                  />
+                  <button type="submit">Set</button>
+                </form>
+              ),
+            },
+            {
+              kind: 'field',
+              node: (
+                <div className="board-emoji-choices" role="group" aria-label="Suggested emoji">
+                  {BOARD_EMOJI_CHOICES.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      aria-label={`Use ${c} as the board emoji`}
+                      aria-pressed={emoji === c}
+                      onClick={() => setEmoji(c)}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              ),
+            },
+            ...(emoji ? [item('Remove emoji', () => setEmoji(''))] : []),
+          ],
+        },
         toggle('Star this board', !!meta?.starred, () =>
           boardActions.setMeta(library.activeId, { starred: !meta?.starred }),
         ),
@@ -326,6 +485,78 @@ export function BoardMenu() {
             ...(board.startView
               ? [item('Clear start view', () => update(withSetting(boardRef.current, 'startView', null)))]
               : []),
+            // Open the board straight into a format object's focus view (track D).
+            ...(startChoices.length
+              ? [
+                  { kind: 'sep' } as Entry,
+                  toggle('Open in: Canvas', !startObject, () =>
+                    update(withSetting(boardRef.current, 'startObject', null)),
+                  ),
+                  ...startChoices.map(c =>
+                    toggle(`Open in: ${c.label}`, startObject === c.id, () => {
+                      update(withSetting(boardRef.current, 'startObject', c.id));
+                      display(`This board now opens in ${c.label}.`);
+                    }),
+                  ),
+                ]
+              : []),
+          ],
+        },
+        {
+          kind: 'sub',
+          label: 'Sensitivity label',
+          entries: [
+            toggle('No label', !board.sensitivity, () => update(withSetting(boardRef.current, 'sensitivity', null))),
+            ...sensitivityLevels.map(l => ({
+              kind: 'item' as const,
+              label: l.label,
+              swatch: l.color,
+              checked: board.sensitivity?.level === l.id,
+              run: () => update(withSetting(boardRef.current, 'sensitivity', { level: l.id })),
+            })),
+            { kind: 'sep' },
+            {
+              kind: 'field',
+              node: (
+                <form
+                  className="sensitivity-form"
+                  onSubmit={e => {
+                    e.preventDefault();
+                    const label = customSensitivity(
+                      customLabel ?? (board.sensitivity?.level === 'custom' ? (board.sensitivity.label ?? '') : ''),
+                      customColor ?? board.sensitivity?.color ?? DEFAULT_CUSTOM_SENSITIVITY_COLOR,
+                    );
+                    if (!label) return display('Type a label first.');
+                    update(withSetting(boardRef.current, 'sensitivity', label));
+                    setCustomLabel(null);
+                    setCustomColor(null);
+                    close();
+                  }}
+                >
+                  <input
+                    aria-label="Custom sensitivity label"
+                    placeholder="Custom label"
+                    maxLength={SENSITIVITY_LABEL_MAX}
+                    value={
+                      customLabel ?? (board.sensitivity?.level === 'custom' ? (board.sensitivity.label ?? '') : '')
+                    }
+                    onKeyDown={e => e.stopPropagation()}
+                    onChange={e => setCustomLabel(e.target.value)}
+                  />
+                  <input
+                    type="color"
+                    aria-label="Custom label colour"
+                    value={
+                      customColor ??
+                      (board.sensitivity?.level === 'custom' ? board.sensitivity.color : undefined) ??
+                      DEFAULT_CUSTOM_SENSITIVITY_COLOR
+                    }
+                    onChange={e => setCustomColor(e.target.value)}
+                  />
+                  <button type="submit">Apply</button>
+                </form>
+              ),
+            },
           ],
         },
         item('History', () => setPanel('history')),
@@ -370,6 +601,16 @@ export function BoardMenu() {
           setViewPrefs({ undoControls: !viewPrefs.undoControls }),
         ),
         toggle('Minimap', minimap, () => setMinimap(!minimap)),
+        {
+          kind: 'item',
+          label: 'Board notes',
+          checked: notesOpen && !outline,
+          hint: 'Alt N',
+          run: () => {
+            setOutline(false);
+            setNotesOpen(!(notesOpen && !outline));
+          },
+        },
         ...(typeof document !== 'undefined' && document.fullscreenEnabled
           ? [
               item(fullscreen ? 'Exit full screen' : 'Enter full screen', () => {
@@ -411,6 +652,9 @@ export function BoardMenu() {
         toggle('Reduce motion', viewPrefs.reduceMotion, () => setViewPrefs({ reduceMotion: !viewPrefs.reduceMotion })),
         toggle('Single-character shortcuts', viewPrefs.singleKeys, () =>
           setViewPrefs({ singleKeys: !viewPrefs.singleKeys }),
+        ),
+        toggle('Select objects the box touches', viewPrefs.marqueeTouch, () =>
+          setViewPrefs({ marqueeTouch: !viewPrefs.marqueeTouch }),
         ),
         item('Accessibility Checker', () => setFacil('a11y')),
       ],

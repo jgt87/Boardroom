@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
-import type { Item } from './model';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { Board, Item } from './model';
 import type { WidgetCtx } from './widget-types';
 import { mentionMarkdown, renderMarkdown } from './markdown';
 import { cleanMentionName, isSafeHref } from './rich-text';
@@ -8,6 +8,8 @@ import { LinkPopover, MentionMenu, SwatchRow, mentionPeople, textColors } from '
 import { canvasControl } from './canvas-fields';
 import { useLatest } from './use-latest';
 import { filterSlash, docTemplates, calloutLabels, DOC_MAX, docShortcut, emojiQuery } from './doc-tools';
+import { blockSpan, joinBlocks, moveBlocks, removeBlocks, stepBlockRange, type BlockRange } from './doc-tools';
+import { announce } from './announce';
 import { loadEmojiGroups, searchEmojis } from './emoji-data';
 import type { EmojiEntry, EmojiGroup } from './emoji-data';
 import { StatusChip } from './status-chip';
@@ -126,7 +128,99 @@ export function markdownFrom(node: Node): string {
 /** Colour the browser's highlight command uses before the words become <mark> elements. */
 const HIGHLIGHT_MARKER = '#fff27b';
 
+/** Top-level elements that count as Doc blocks; loose text and inline elements are wrapped in paragraphs. */
+const BLOCK_TAGS = new Set([
+  'P',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
+  'UL',
+  'OL',
+  'BLOCKQUOTE',
+  'PRE',
+  'HR',
+  'DIV',
+  'TABLE',
+]);
+function normalizeBlocks(root: HTMLElement) {
+  let p: HTMLParagraphElement | null = null;
+  for (const n of Array.from(root.childNodes)) {
+    if (n instanceof HTMLElement && BLOCK_TAGS.has(n.tagName)) {
+      p = null;
+      continue;
+    }
+    if (!p && n.nodeType === Node.TEXT_NODE && !(n.textContent ?? '').trim()) {
+      n.remove();
+      continue;
+    }
+    if (!p) {
+      p = document.createElement('p');
+      root.insertBefore(p, n);
+    }
+    p.appendChild(n);
+  }
+}
+const SELECTED_BLOCK = 'doc-block-selected';
+
+export type DocTemplateOption = { id: string; label: string; markdown: string };
+/** The canvas Doc object: the rich document editor bound to the item's Markdown. */
 export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
+  return (
+    <RichDocEditor
+      markdown={String(item.data?.markdown ?? '')}
+      locked={!!item.locked}
+      zoom={ctx.zoom}
+      board={ctx.board}
+      display={ctx.display}
+      templates={docTemplates}
+      onSave={next =>
+        ctx.update(b => ({
+          ...b,
+          items: b.items.map(i => (i.id === item.id ? { ...i, data: { ...i.data, markdown: next } } : i)),
+        }))
+      }
+      title={
+        <>
+          <span>{item.text || 'Doc'}</span>
+          <StatusChip status={item.data?.status} />
+        </>
+      }
+    />
+  );
+}
+
+/**
+ * Rich Markdown document editor shared by Doc objects and the board notes panel (track L). Edits are saved
+ * on blur through `onSave` (one undo step). Esc selects the current block; see the block keys in keyDown.
+ */
+export function RichDocEditor({
+  markdown: md,
+  locked,
+  zoom,
+  board,
+  display,
+  onSave,
+  title,
+  templates,
+  label = 'Document content. Type / on an empty line for blocks, @ to mention someone. Esc selects the block.',
+  placeholder,
+  className = 'canvas-doc-object',
+}: {
+  markdown: string;
+  locked: boolean;
+  zoom: number;
+  board: Board;
+  display: (message: string) => void;
+  onSave: (markdown: string) => void;
+  title: React.ReactNode;
+  templates: DocTemplateOption[];
+  label?: string;
+  placeholder?: string;
+  className?: string;
+}) {
   const editor = useRef<HTMLDivElement>(null),
     [slash, setSlash] = useState<{ query: string; top: number; active: number } | null>(null),
     [emoji, setEmoji] = useState<{
@@ -141,18 +235,173 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     [mention, setMention] = useState<{ start: number; names: string[]; top: number; active: number } | null>(null),
     [palette, setPalette] = useState(false),
     savedRange = useRef<Range | null>(null),
-    popoverOpen = useRef(false);
-  const md = String(item.data?.markdown ?? '');
+    popoverOpen = useRef(false),
+    // Block selection (track L): the selected top-level blocks, and the selection to restore after a save.
+    blockSel = useRef<BlockRange | null>(null),
+    pendingBlocks = useRef<BlockRange | null>(null);
+  /** Save new Markdown; false when nothing changed (or the Doc is locked). */
   const save = (next: string) => {
-    if (item.locked || next === md.trim()) return;
-    ctx.update(b => ({
-      ...b,
-      items: b.items.map(i => (i.id === item.id ? { ...i, data: { ...i.data, markdown: next.slice(0, DOC_MAX) } } : i)),
-    }));
+    if (locked || next === md.trim()) return false;
+    onSave(next.slice(0, DOC_MAX));
+    return true;
   };
   const commit = () => {
-    if (!editor.current) return;
-    save(Array.from(editor.current.childNodes).map(markdownFrom).join('').trim().slice(0, DOC_MAX));
+    if (!editor.current) return false;
+    // Line breaks between rendered blocks are layout only; typing never makes such top-level text nodes.
+    const nodes = Array.from(editor.current.childNodes).filter(
+      n => !(n.nodeType === Node.TEXT_NODE && /^\s*\n\s*$/.test(n.textContent ?? '')),
+    );
+    return save(nodes.map(markdownFrom).join('').trim().slice(0, DOC_MAX));
+  };
+  const blockEls = () => Array.from(editor.current?.children ?? []) as HTMLElement[];
+  const clearBlocks = () => {
+    blockSel.current = null;
+    editor.current?.querySelectorAll(`.${SELECTED_BLOCK}`).forEach(el => el.classList.remove(SELECTED_BLOCK));
+  };
+  /** Mark blocks as selected and select their whole content, so the selection is visible and copyable. */
+  const showBlocks = (r: BlockRange, speak = true) => {
+    const els = blockEls();
+    if (!els.length) return clearBlocks();
+    const clamp = (n: number) => Math.max(0, Math.min(els.length - 1, n)),
+      range = { anchor: clamp(r.anchor), focus: clamp(r.focus) },
+      [start, end] = blockSpan(range);
+    clearBlocks();
+    blockSel.current = range;
+    els.slice(start, end + 1).forEach(el => el.classList.add(SELECTED_BLOCK));
+    const dom = document.createRange();
+    dom.setStartBefore(els[start]);
+    dom.setEndAfter(els[end]);
+    const sel = getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(dom);
+    els[range.focus].scrollIntoView?.({ block: 'nearest' });
+    if (speak) {
+      const count = end - start + 1;
+      announce(
+        `${count} block${count === 1 ? '' : 's'} selected. Shift+Up or Down extends, Alt+Up or Down moves, Delete removes, Enter edits.`,
+      );
+    }
+  };
+  /** Esc while typing: select the block holding the caret. False when the Doc has no blocks. */
+  const enterBlocks = () => {
+    const root = editor.current,
+      sel = getSelection();
+    if (!root || !sel?.rangeCount) return false;
+    const node =
+      sel.anchorNode === root
+        ? (root.childNodes[Math.min(sel.anchorOffset, root.childNodes.length - 1)] ?? null)
+        : sel.anchorNode;
+    normalizeBlocks(root);
+    const els = blockEls();
+    if (!els.length) return false;
+    let top: Node | null = node;
+    while (top && top.parentNode !== root) top = top.parentNode;
+    const index = Math.max(0, els.indexOf(top as HTMLElement));
+    showBlocks({ anchor: index, focus: index });
+    return true;
+  };
+  /** Save the (already updated) editor content, then select `next` again once the Doc re-renders. */
+  const persistBlocks = (next: BlockRange | null) => {
+    pendingBlocks.current = next;
+    if (!commit()) {
+      pendingBlocks.current = null;
+      if (next) showBlocks(next, false);
+    }
+  };
+  // A save re-renders the editor from the stored Markdown: restore the block selection in the new content.
+  useLayoutEffect(() => {
+    const next = pendingBlocks.current;
+    if (!next || !editor.current) return;
+    pendingBlocks.current = null;
+    editor.current.focus();
+    showBlocks(next, false);
+    // Only a new saved text re-renders the editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [md]);
+  const selectedMarkdown = () => {
+    const r = blockSel.current;
+    if (!r) return '';
+    const [start, end] = blockSpan(r);
+    return joinBlocks(
+      blockEls()
+        .slice(start, end + 1)
+        .map(markdownFrom),
+    );
+  };
+  const deleteBlocks = () => {
+    const r = blockSel.current;
+    if (!r || locked) return;
+    const els = blockEls(),
+      [start, end] = blockSpan(r),
+      { caret } = removeBlocks(els, r);
+    els.slice(start, end + 1).forEach(el => el.remove());
+    clearBlocks();
+    announce(`${end - start + 1} block${end === start ? '' : 's'} deleted.`);
+    persistBlocks(caret < 0 ? null : { anchor: caret, focus: caret });
+  };
+  const moveSelectedBlocks = (delta: -1 | 1) => {
+    const r = blockSel.current;
+    if (!r || locked) return;
+    const els = blockEls(),
+      moved = moveBlocks(els, r, delta);
+    if (!moved) return announce(delta < 0 ? 'Already at the top.' : 'Already at the bottom.');
+    // Reorder the editor's own elements too, so the content matches what is saved.
+    editor.current!.replaceChildren(...moved.blocks);
+    announce(delta < 0 ? 'Moved up.' : 'Moved down.');
+    persistBlocks(moved.range);
+  };
+  /** Keys while blocks are selected. Returns true when the key was handled here. */
+  const blockKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): boolean => {
+    const r = blockSel.current;
+    if (!r) return false;
+    const mod = e.ctrlKey || e.metaKey,
+      key = e.key;
+    if (key === 'Escape') {
+      e.preventDefault();
+      clearBlocks();
+      e.currentTarget.blur();
+      return true;
+    }
+    if (key === 'Enter' && !mod) {
+      // Back to typing, at the end of the focused block.
+      e.preventDefault();
+      const el = blockEls()[r.focus];
+      clearBlocks();
+      if (el) {
+        const caret = document.createRange();
+        caret.selectNodeContents(el);
+        caret.collapse(false);
+        getSelection()?.removeAllRanges();
+        getSelection()?.addRange(caret);
+      }
+      return true;
+    }
+    if ((key === 'ArrowUp' || key === 'ArrowDown') && !mod) {
+      e.preventDefault();
+      const delta = key === 'ArrowUp' ? -1 : 1;
+      if (e.altKey) moveSelectedBlocks(delta);
+      else showBlocks(stepBlockRange(r, delta, e.shiftKey, blockEls().length));
+      return true;
+    }
+    if ((key === 'Delete' || key === 'Backspace') && !mod) {
+      e.preventDefault();
+      deleteBlocks();
+      return true;
+    }
+    if (mod && !e.altKey && (key.toLowerCase() === 'a' || e.code === 'KeyA')) {
+      e.preventDefault();
+      showBlocks({ anchor: 0, focus: blockEls().length - 1 });
+      return true;
+    }
+    // Copy and cut run through the clipboard events below; modifier presses keep the selection.
+    if (mod || ['Shift', 'Control', 'Alt', 'Meta'].includes(key)) return true;
+    // Any other key returns to typing; printable keys are swallowed so they never replace whole blocks.
+    clearBlocks();
+    if (key.length === 1) {
+      e.preventDefault();
+      return true;
+    }
+    return false;
   };
   const command = (name: string, value?: string) => {
     editor.current?.focus();
@@ -161,7 +410,7 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   /** Show the slash menu when the caret's block starts with "/". */
   const watchSlash = () => {
     const root = editor.current;
-    if (!root || item.locked) return setSlash(null);
+    if (!root || locked) return setSlash(null);
     const sel = getSelection(),
       node = sel?.anchorNode,
       text = node?.nodeType === Node.TEXT_NODE ? (node.textContent ?? '') : '',
@@ -173,7 +422,7 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     const range = document.createRange();
     range.selectNodeContents(node);
     const wrap = root.parentElement!.getBoundingClientRect(),
-      top = (range.getBoundingClientRect().bottom - wrap.top) / (ctx.zoom || 1);
+      top = (range.getBoundingClientRect().bottom - wrap.top) / (zoom || 1);
     setSlash(s => ({ query: m[1], top, active: s && s.query === m[1] ? s.active : 0 }));
   };
   const insertList = (list: 'bullet' | 'number' | 'check') => {
@@ -223,7 +472,7 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     }
     const text = range.toString();
     if (!text.trim() || text.includes('\n') || !root.contains(range.commonAncestorContainer))
-      return ctx.display('Select text on one line to format it as code.');
+      return display('Select text on one line to format it as code.');
     // Inserted directly: the browser's insertHTML turns <code> into a styled span.
     const el = document.createElement('code');
     el.textContent = text.replace(/`/g, '');
@@ -249,7 +498,7 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   /** Local (unzoomed) offset below a rectangle, for menus positioned inside the Doc. */
   const below = (rect: DOMRect) => {
     const wrap = editor.current!.parentElement!.getBoundingClientRect();
-    return (rect.bottom - wrap.top) / (ctx.zoom || 1);
+    return (rect.bottom - wrap.top) / (zoom || 1);
   };
   const unwrap = (el: Element) => el.replaceWith(...Array.from(el.childNodes));
   const touching = (r: Range, selector: string) =>
@@ -264,9 +513,9 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   };
   /** Ctrl+K or the Link button: add, change or remove the link at the selection. */
   const openLink = () => {
-    if (item.locked) return;
+    if (locked) return;
     const r = currentRange();
-    if (!r) return ctx.display('Place the cursor in the document to add a link.');
+    if (!r) return display('Place the cursor in the document to add a link.');
     savedRange.current = r.cloneRange();
     const a = anchorOf(r);
     popoverOpen.current = true;
@@ -308,10 +557,10 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   /** Highlight the selection, or remove the highlight it touches. */
   const toggleHighlight = () => {
     const r = currentRange();
-    if (!r || item.locked) return;
+    if (!r || locked) return;
     const marks = touching(r, 'mark');
     if (marks.length) return marks.forEach(unwrap);
-    if (r.collapsed) return ctx.display('Select text to highlight it.');
+    if (r.collapsed) return display('Select text to highlight it.');
     document.execCommand('styleWithCSS', false, 'true');
     document.execCommand('hiliteColor', false, HIGHLIGHT_MARKER);
     document.execCommand('styleWithCSS', false, 'false');
@@ -326,9 +575,9 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   /** Clear formatting (Ctrl+\): inline marks leave the selection; links and mentions stay. */
   const clearFormatting = () => {
     const r = currentRange();
-    if (!r || item.locked || !editor.current) return;
+    if (!r || locked || !editor.current) return;
     setPalette(false);
-    if (r.collapsed) return ctx.display('Select text to clear its formatting.');
+    if (r.collapsed) return display('Select text to clear its formatting.');
     const cleared = clearInlineFormatting(editor.current, r);
     if (!cleared) return;
     const sel = getSelection();
@@ -339,7 +588,7 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const setColor = (color: string | undefined) => {
     setPalette(false);
     const r = currentRange();
-    if (!r || item.locked) return;
+    if (!r || locked) return;
     // Nested colours cannot be written as Markdown: clear the colours the selection touches first.
     touching(r, 'span.doc-color, font[color]').forEach(unwrap);
     if (!color || r.collapsed) return;
@@ -360,10 +609,10 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     const root = editor.current,
       sel = getSelection(),
       node = sel?.anchorNode;
-    if (!root || item.locked || !sel?.isCollapsed || !node || node.nodeType !== Node.TEXT_NODE || !root.contains(node))
+    if (!root || locked || !sel?.isCollapsed || !node || node.nodeType !== Node.TEXT_NODE || !root.contains(node))
       return setMention(null);
     const q = mentionQuery(node.textContent ?? '', sel.anchorOffset),
-      names = q ? mentionMatches(mentionPeople(ctx.board), q.query) : [];
+      names = q ? mentionMatches(mentionPeople(board), q.query) : [];
     if (!q || !names.length) return setMention(null);
     const range = document.createRange();
     range.setStart(node, sel.anchorOffset);
@@ -405,8 +654,7 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     const root = editor.current,
       sel = getSelection(),
       node = sel?.anchorNode;
-    if (!root || item.locked || !node || node.nodeType !== Node.TEXT_NODE || !root.contains(node))
-      return setEmoji(null);
+    if (!root || locked || !node || node.nodeType !== Node.TEXT_NODE || !root.contains(node)) return setEmoji(null);
     const q = emojiQuery((node.textContent ?? '').slice(0, sel!.anchorOffset));
     if (!q) return setEmoji(null);
     const range = document.createRange();
@@ -414,7 +662,7 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     range.collapse(true);
     const wrap = root.parentElement!.getBoundingClientRect(),
       rect = range.getBoundingClientRect(),
-      top = (rect.bottom - wrap.top) / (ctx.zoom || 1);
+      top = (rect.bottom - wrap.top) / (zoom || 1);
     const show = (groups: EmojiGroup[]) =>
       setEmoji(s => ({
         query: q.query,
@@ -449,6 +697,7 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const matches = slash ? filterSlash(slash.query) : [];
   const keyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     e.stopPropagation();
+    if (blockKeyDown(e)) return;
     if (mention && mention.names.length) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -513,7 +762,7 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         return;
       }
     }
-    const shortcut = item.locked ? null : docShortcut(e);
+    const shortcut = locked ? null : docShortcut(e);
     if (shortcut) {
       e.preventDefault();
       if (shortcut.kind === 'strike') document.execCommand('strikethrough');
@@ -523,9 +772,9 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       return;
     }
     if (e.key === 'Escape') {
+      // Esc selects the current block (track L); Esc again leaves the Doc. An empty Doc is left at once.
       e.preventDefault();
-      if (editor.current) editor.current.innerHTML = renderMarkdown(md);
-      e.currentTarget.blur();
+      if (!enterBlocks()) e.currentTarget.blur();
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       e.currentTarget.blur();
@@ -536,12 +785,22 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     watchEmoji,
     keyDown,
     watchMention,
+    clearBlocks,
     blur: () => {
       if (popoverOpen.current) return;
+      clearBlocks();
       setSlash(null);
       setEmoji(null);
       setMention(null);
       commit();
+    },
+    /** Copy or cut selected blocks as Markdown text. */
+    clipboard: (e: React.ClipboardEvent, cut: boolean) => {
+      if (!blockSel.current) return;
+      e.preventDefault();
+      e.clipboardData.setData('text/plain', selectedMarkdown());
+      if (cut) deleteBlocks();
+      else announce('Blocks copied.');
     },
     click: (e: React.MouseEvent) => {
       const a = (e.target as Element).closest?.('a[href]');
@@ -553,7 +812,6 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   });
   // The editable element only re-renders when its saved content or lock changes, so menu state
   // updates never reset what the person is typing.
-  const locked = !!item.locked;
   const editable = useMemo(
     () => (
       <div
@@ -561,10 +819,11 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         key={md}
         className="canvas-doc doc-content"
         role="textbox"
-        aria-label="Document content. Type / on an empty line for blocks, @ to mention someone."
+        aria-label={label}
+        data-placeholder={placeholder}
         aria-multiline="true"
         aria-haspopup="listbox"
-        contentEditable={!item.locked}
+        contentEditable={!locked}
         suppressContentEditableWarning
         {...canvasControl}
         dangerouslySetInnerHTML={{ __html: renderMarkdown(md) }}
@@ -575,6 +834,9 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
           live.current.watchMention();
         }}
         onClick={e => live.current.click(e)}
+        onMouseDown={() => live.current.clearBlocks()}
+        onCopy={e => live.current.clipboard(e, false)}
+        onCut={e => live.current.clipboard(e, true)}
         onPaste={e => {
           e.preventDefault();
           document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
@@ -586,19 +848,18 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     [md, locked],
   );
   return (
-    <div className="rich-object canvas-interactive canvas-doc-object" onDoubleClick={e => e.stopPropagation()}>
+    <div className={`rich-object canvas-interactive ${className}`} onDoubleClick={e => e.stopPropagation()}>
       <div className="rich-title canvas-widget-header">
-        <span>{item.text || 'Doc'}</span>
-        <StatusChip status={item.data?.status} />
+        {title}
         <div {...canvasControl} onMouseDown={e => e.preventDefault()} className="canvas-doc-tools">
-          <button disabled={!!item.locked} aria-label="Bold document text" onClick={() => command('bold')}>
+          <button disabled={locked} aria-label="Bold document text" onClick={() => command('bold')}>
             B
           </button>
-          <button disabled={!!item.locked} aria-label="Italic document text" onClick={() => command('italic')}>
+          <button disabled={locked} aria-label="Italic document text" onClick={() => command('italic')}>
             I
           </button>
           <button
-            disabled={!!item.locked}
+            disabled={locked}
             aria-label="Underline document text"
             title="Underline (Ctrl+U)"
             onClick={() => command('underline')}
@@ -606,24 +867,19 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
             <u>U</u>
           </button>
           <button
-            disabled={!!item.locked}
+            disabled={locked}
             aria-label="Strikethrough document text"
             title="Strikethrough (Ctrl+Shift+X)"
             onClick={() => command('strikethrough')}
           >
             <s>S</s>
           </button>
-          <button
-            disabled={!!item.locked}
-            aria-label="Highlight document text"
-            title="Highlight"
-            onClick={toggleHighlight}
-          >
+          <button disabled={locked} aria-label="Highlight document text" title="Highlight" onClick={toggleHighlight}>
             <mark>H</mark>
           </button>
           <span className="doc-palette-anchor">
             <button
-              disabled={!!item.locked}
+              disabled={locked}
               aria-label="Document text colour"
               aria-expanded={palette}
               title="Text colour"
@@ -637,38 +893,38 @@ export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
               </span>
             )}
           </span>
-          <button disabled={!!item.locked} aria-label="Insert link" title="Link (Ctrl+K)" onClick={openLink}>
+          <button disabled={locked} aria-label="Insert link" title="Link (Ctrl+K)" onClick={openLink}>
             Link
           </button>
           <button
-            disabled={!!item.locked}
+            disabled={locked}
             aria-label="Clear formatting"
             title="Clear formatting (Ctrl+\)"
             onClick={clearFormatting}
           >
             <RemoveFormatting size={14} aria-hidden="true" />
           </button>
-          <button disabled={!!item.locked} onClick={() => command('formatBlock', 'h1')}>
+          <button disabled={locked} onClick={() => command('formatBlock', 'h1')}>
             H1
           </button>
-          <button disabled={!!item.locked} onClick={() => command('insertUnorderedList')}>
+          <button disabled={locked} onClick={() => command('insertUnorderedList')}>
             List
           </button>
           <select
             aria-label="Apply a doc template"
             value=""
-            disabled={!!item.locked}
+            disabled={locked}
             onMouseDown={e => e.stopPropagation()}
             onChange={e => {
-              const t = docTemplates.find(t => t.id === e.target.value);
+              const t = templates.find(t => t.id === e.target.value);
               e.target.value = '';
               if (!t) return;
               save(t.markdown.trim());
-              ctx.display(`${t.label} template applied. Undo restores the previous content.`);
+              display(`${t.label} template applied. Undo restores the previous content.`);
             }}
           >
             <option value="">Templates…</option>
-            {docTemplates.map(t => (
+            {templates.map(t => (
               <option key={t.id} value={t.id}>
                 {t.label}
               </option>

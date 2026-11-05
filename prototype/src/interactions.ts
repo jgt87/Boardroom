@@ -75,8 +75,21 @@ export function translate(board: Board, ids: string[], delta: Point): Board {
     }),
   };
 }
-export function selectWithin(items: Item[], bounds: Bounds): string[] {
-  return items.filter(i => contains(bounds, itemBounds(i, items))).map(i => i.id);
+/** True when two boxes overlap or touch. */
+export const intersects = (a: Bounds, b: Bounds) =>
+  a.x <= b.x + b.w && b.x <= a.x + a.w && a.y <= b.y + b.h && b.y <= a.y + a.h;
+/**
+ * Objects picked by a selection box. By default an object must lie fully inside it; with `touch` any object
+ * the box overlaps is picked, except one that wholly encloses the box (a frame or large shape the box was
+ * drawn inside), so a box drawn over a frame's contents does not also pick the frame.
+ */
+export function selectWithin(items: Item[], bounds: Bounds, touch = false): string[] {
+  return items
+    .filter(i => {
+      const b = itemBounds(i, items);
+      return contains(bounds, b) || (touch && intersects(bounds, b) && !contains(b, bounds));
+    })
+    .map(i => i.id);
 }
 export function snapMove(
   board: Board,
@@ -218,7 +231,7 @@ export function resizeItems(board: Board, ids: string[], before: Bounds, after: 
           w = Math.max(1, i.w * lw),
           h = Math.max(1, i.h * lh);
         const turned = { ...i, x: cx - w / 2, y: cy - h / 2, w, h };
-        if (i.points) turned.points = i.points.map(p => ({ x: p.x * lw, y: p.y * lh }));
+        if (i.points) turned.points = i.points.map(p => ({ ...p, x: p.x * lw, y: p.y * lh }));
         return turned;
       }
       const resized = {
@@ -232,9 +245,37 @@ export function resizeItems(board: Board, ids: string[], before: Bounds, after: 
         resized.w = Math.max(1, resized.w);
         resized.h = Math.max(1, resized.h);
       }
-      if (i.points) resized.points = i.points.map(p => ({ x: p.x * sx, y: p.y * sy }));
+      if (i.points) resized.points = i.points.map(p => ({ ...p, x: p.x * sx, y: p.y * sy }));
       return resized;
     }),
+  };
+}
+/** Font sizes a text object can be scaled to (the range parseBoard accepts). */
+export const TEXT_FONT_MIN = 10;
+export const TEXT_FONT_MAX = 96;
+/**
+ * Dragging a corner handle of a single text object scales it like a picture: the box keeps its proportions and
+ * the font grows or shrinks with it. Side handles (and Shift at a corner) only change the box, so the text reflows.
+ */
+export function textCornerScales(item: Item | undefined, handle: Handle | undefined, shift: boolean): boolean {
+  return (
+    !!item && item.type === 'text' && !!handle && handle.length === 2 && !shift && item.format?.fontSize !== 'auto'
+  );
+}
+/**
+ * Scale text object `id` in `board` by the ratio between its width in `before` (the board when the drag began)
+ * and in `board`. The font size is rounded to a half point and kept in [TEXT_FONT_MIN, TEXT_FONT_MAX].
+ */
+export function scaleTextFont(board: Board, before: Board, id: string): Board {
+  const was = before.items.find(i => i.id === id),
+    now = board.items.find(i => i.id === id);
+  if (!was || !now || was.type !== 'text' || was.format?.fontSize === 'auto' || was.w <= 0) return board;
+  const base = typeof was.format?.fontSize === 'number' ? was.format.fontSize : 28,
+    size = Math.min(TEXT_FONT_MAX, Math.max(TEXT_FONT_MIN, Math.round(base * (now.w / was.w) * 2) / 2));
+  if (size === (now.format?.fontSize ?? 28)) return board;
+  return {
+    ...board,
+    items: board.items.map(i => (i.id === id ? { ...i, format: { ...i.format, fontSize: size } } : i)),
   };
 }
 /**

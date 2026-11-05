@@ -165,6 +165,34 @@ export function addCard(
   const card = { id: id(), title, activity, release };
   return { map: { ...m, cards: [...m.cards, card] }, id: card.id };
 }
+/**
+ * Keyboard card creation (track C), next to an existing card: 'above' / 'below' in the same cell, or 'right'
+ * as a sibling in the next activity of the same release (at the end of that cell). From the last activity,
+ * 'right' first adds a new activity so the sibling has a column to go to.
+ */
+export function addCardNear(
+  m: StoryMap,
+  cardId: string,
+  where: 'above' | 'below' | 'right',
+  title = 'New story',
+): { map: StoryMap; id: string } {
+  const card = m.cards.find(c => c.id === cardId);
+  if (!card) throw new Error('That story no longer exists.');
+  if (m.cards.length >= STORY_LIMITS.cards) throw new Error('A story map holds up to 500 cards.');
+  if (where === 'right') {
+    const i = m.activities.findIndex(a => a.id === card.activity);
+    let map = m,
+      target = m.activities[i + 1];
+    if (!target) {
+      map = addActivity(m);
+      target = map.activities[map.activities.length - 1];
+    }
+    return addCard(map, target.id, card.release, title);
+  }
+  const next = { id: id(), title, activity: card.activity, release: card.release },
+    at = m.cards.indexOf(card) + (where === 'below' ? 1 : 0);
+  return { map: { ...m, cards: [...m.cards.slice(0, at), next, ...m.cards.slice(at)] }, id: next.id };
+}
 export const removeCard = (m: StoryMap, cardId: string): StoryMap => ({
   ...m,
   cards: m.cards.filter(c => c.id !== cardId),

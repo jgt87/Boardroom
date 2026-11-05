@@ -4,7 +4,33 @@ import type { CardData } from './facilitation-widgets.ts';
 import { recordsError } from './records.ts';
 import { schemaOf } from './record-schema.ts';
 
-export type RecordDrop = { targetId: string; status?: RecordRow['status']; beforeId?: string };
+/** `start`/`end` are set when dropping onto a Timeline: the dates under the pointer (track R2-H). */
+export type RecordDrop = {
+  targetId: string;
+  status?: RecordRow['status'];
+  beforeId?: string;
+  start?: string;
+  end?: string;
+};
+const DAY = 86400000;
+const isoDay = (t: number) => new Date(t).toISOString().slice(0, 10);
+/**
+ * Dates for an object dropped at `fraction` (0 to 1) across a Timeline whose range runs from `min` to `max`
+ * (UTC day starts, `max` inclusive). The start is the day under the pointer; the end is the same day on a days
+ * scale and six days later (one week) on coarser scales.
+ */
+export function timelineDropDates(
+  min: number,
+  max: number,
+  scale: string,
+  fraction: number,
+): { start: string; end: string } | null {
+  if (![min, max, fraction].every(Number.isFinite) || max < min) return null;
+  const span = max - min + DAY,
+    f = Math.max(0, Math.min(1, fraction)),
+    day = Math.min(max, min + Math.floor((f * span) / DAY) * DAY);
+  return { start: isoDay(day), end: isoDay(scale === 'days' ? day : day + 6 * DAY) };
+}
 export function canCopyToRecords(board: Board, ids: string[], drop: RecordDrop): boolean {
   const target = board.items.find(i => i.id === drop.targetId);
   const rows = board.datasets?.[target?.datasetId ?? ''];
@@ -59,8 +85,13 @@ export function copyToRecords(
           ? { values: { [group.id]: drop.status } }
           : {}),
         assignee: card?.assignee ?? '',
-        start: '',
-        end: card?.due ?? '',
+        // Dropped on a Timeline: scheduled where it was dropped; a card's later due date is kept as the end.
+        start: drop.start ?? '',
+        end: drop.start
+          ? card?.due && card.due >= drop.start
+            ? card.due
+            : (drop.end ?? drop.start)
+          : (card?.due ?? ''),
         ...(card?.description ? { description: card.description } : {}),
         ...(card?.points !== undefined ? { points: card.points } : {}),
         ...(i.tags ? { tags: [...i.tags] } : {}),
@@ -76,16 +107,25 @@ export function copyToRecords(
 }
 
 /** Hit-test actual scrolled cells instead of assuming column geometry. */
-export function recordDropAt(elements: Element[]): RecordDrop | null {
+export function recordDropAt(elements: Element[], clientX?: number): RecordDrop | null {
   for (const el of elements) {
     const body = el.closest<HTMLElement>('[data-record-format]');
     if (!body) continue;
     const status = el.closest<HTMLElement>('[data-record-status]')?.dataset.recordStatus;
     const row = el.closest<HTMLElement>('[data-record], [data-card]');
+    // A Timeline marks its date axis; the pointer's position across it gives the dates.
+    const axis = body.querySelector<HTMLElement>('[data-timeline-axis]'),
+      rect = axis?.getBoundingClientRect(),
+      [min, max, scale] = (axis?.dataset.timelineAxis ?? '').split(':'),
+      dates =
+        rect && rect.width > 0 && clientX !== undefined && clientX >= rect.left && clientX <= rect.right
+          ? timelineDropDates(Number(min), Number(max), scale, (clientX - rect.left) / rect.width)
+          : null;
     return {
       targetId: body.dataset.recordFormat!,
       ...(status ? { status } : {}),
       beforeId: row?.dataset.record ?? row?.dataset.card,
+      ...(dates ?? {}),
     };
   }
   return null;

@@ -81,6 +81,23 @@ export function shiftRecord(
   return column < 0 || column >= columns.length ? rows : moveRecord(rows, id, columns[column], null, columns);
 }
 
+/**
+ * Keyboard card creation (track C): insert `card` just above or below record `id`, in its column. The card
+ * takes the record's status; columns keep their array order, so placing it next to the record in `rows`
+ * places it next to the record in the column. Returns `rows` unchanged when the record is gone.
+ */
+export function insertRecordNear(
+  rows: RecordRow[],
+  id: string,
+  where: 'above' | 'below',
+  card: RecordRow,
+): RecordRow[] {
+  const index = rows.findIndex(r => r.id === id);
+  if (index < 0) return rows;
+  const at = where === 'above' ? index : index + 1;
+  return [...rows.slice(0, at), { ...card, status: rows[index].status }, ...rows.slice(at)];
+}
+
 /** Why a dependency (id depends on dependency) cannot be added, or null when it is valid. */
 export function dependencyError(rows: RecordRow[], id: string, dependency: string): string | null {
   const map = new Map(rows.map(r => [r.id, r]));
@@ -268,6 +285,33 @@ export function setMilestone(rows: RecordRow[], id: string, milestone: boolean):
     if (!milestone) delete next.milestone;
     return next;
   });
+}
+
+/** A YYYY-MM-DD string that names a real calendar day (not, say, February 31). */
+const isRealDate = (s: string) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(s)) && new Date(s).toISOString().slice(0, 10) === s;
+/**
+ * Why a record's Timeline bar cannot be trusted as shown (track R2-I), or null: a date that is not a real day,
+ * an end before the start, a milestone with an end date, or a start before a record it depends on ends.
+ * `rows` (the whole dataset) resolves dependency names.
+ */
+export function timelineBarIssue(row: RecordRow, rows: RecordRow[] = []): string | null {
+  for (const [name, value] of [
+    ['start', row.start],
+    ['end', row.end],
+  ] as const)
+    if (value && !isRealDate(value)) return `The ${name} date ${value} is not a real calendar day.`;
+  if (row.start && row.end && row.end < row.start) return 'Ends before it starts.';
+  if (row.milestone && row.end && row.end !== row.start) return 'A milestone must be a single date.';
+  const start = row.start || row.end;
+  if (start)
+    for (const id of row.dependsOn ?? []) {
+      const dep = rows.find(r => r.id === id),
+        depEnd = dep && (dep.milestone ? dep.start : dep.end || dep.start);
+      // Same rule as the dashed "late" dependency line: the bar must start after the day the other one ends.
+      if (depEnd && depEnd >= start) return `Starts before “${dep!.title || 'Untitled record'}” ends.`;
+    }
+  return null;
 }
 
 /** First validation problem in a record set, or null. Used by the editor and by import. */

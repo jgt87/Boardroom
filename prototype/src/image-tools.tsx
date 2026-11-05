@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, RotateCcw, FlipHorizontal2, FlipVertical2, SunMedium, Download, Play, Pause } from 'lucide-react';
-import { useGifStill } from './gif-still';
+import { X, RotateCcw, FlipHorizontal2, FlipVertical2, SunMedium, Download, Play, Pause, Repeat1 } from 'lucide-react';
+import { useGifPlayback } from './gif-still';
+import { maskPath } from './image-masks';
 import type { Crop, ImageAdjust, ImageAsset, Item } from './model';
 import {
   ADJUST_MAX,
@@ -16,12 +17,13 @@ import {
 import { saveAssetFile } from './widget-kit';
 
 /**
- * Canvas rendering of an image object, showing only its crop region. With reduce motion on, an animated GIF
- * shows a still first frame and a play/pause button (gap F8 / Q2); the state lives here, inside the item,
- * so the render cache in use-render-item never has to change.
+ * Canvas rendering of an image object, showing only its crop region. An animated GIF has a play/pause button
+ * (shown while paused, otherwise on hover or selection); with reduce motion on, or when set to start paused, it
+ * shows a still first frame (gap F8 / Q2, track G). The viewing state lives here, inside the item, so the render
+ * cache in use-render-item never has to change.
  */
 export function ImageBody({ item, asset }: { item: Item; asset?: ImageAsset }) {
-  const gif = useGifStill(item.assetId, asset);
+  const gif = useGifPlayback(item, asset);
   // SVG and BMP originals are only ever downloaded, never drawn.
   if (!asset || !drawableAsset(asset)) return <ImagePicture item={item} />;
   return (
@@ -29,10 +31,17 @@ export function ImageBody({ item, asset }: { item: Item; asset?: ImageAsset }) {
       {gif.still === undefined ? (
         <rect width={item.w} height={item.h} fill="#f4f4f6" className="gif-pending" />
       ) : (
-        <ImagePicture item={item} asset={asset} href={gif.still ?? asset.data} />
+        <ImagePicture item={item} asset={asset} href={gif.still ?? gif.href ?? asset.data} />
       )}
       {gif.paused !== undefined && (
-        <foreignObject className="gif-toggle" x={6} y={6} width={30} height={30} pointerEvents="all">
+        <foreignObject
+          className={`gif-toggle ${gif.paused ? 'paused' : 'playing'}`}
+          x={6}
+          y={6}
+          width={30}
+          height={30}
+          pointerEvents="all"
+        >
           <button
             type="button"
             className="gif-toggle-button"
@@ -108,26 +117,26 @@ function ImagePicture({ item, asset, href }: { item: Item; asset?: ImageAsset; h
     );
   const s = item.style;
   if (!s) return body;
-  // Border, corner radius and circle crop (gap D11). The clip path lives inside the object's own group,
+  // Border, corner radius and crop masks (gap D11, track G). The clip path lives inside the object's own group,
   // so exports that clone the canvas carry it along.
-  const circle = s.mask === 'circle',
-    r = circle ? 0 : Math.min(s.radius ?? 0, item.w / 2, item.h / 2),
+  const mask = s.mask,
+    r = mask ? 0 : Math.min(s.radius ?? 0, item.w / 2, item.h / 2),
     width = s.borderWidth ?? 0,
     clipId = `image-clip-${item.id}`,
-    outline = (props: React.SVGProps<SVGRectElement> & React.SVGProps<SVGEllipseElement>) =>
-      circle ? (
-        <ellipse cx={item.w / 2} cy={item.h / 2} rx={item.w / 2} ry={item.h / 2} {...props} />
+    outline = (props: React.SVGProps<SVGRectElement> & React.SVGProps<SVGPathElement>) =>
+      mask ? (
+        <path d={maskPath(mask, item.w, item.h)} data-mask={mask} {...props} />
       ) : (
         <rect width={item.w} height={item.h} rx={r} {...props} />
       );
   return (
     <>
-      {(circle || r > 0) && (
+      {(mask || r > 0) && (
         <defs>
           <clipPath id={clipId}>{outline({})}</clipPath>
         </defs>
       )}
-      <g clipPath={circle || r > 0 ? `url(#${clipId})` : undefined}>{body}</g>
+      <g clipPath={mask || r > 0 ? `url(#${clipId})` : undefined}>{body}</g>
       {width > 0 &&
         outline({
           fill: 'none',
@@ -232,6 +241,42 @@ export function ImageAdjustControls({
         onClick={() => asset && saveAssetFile(asset, item.text || 'image')}
       >
         <Download size={17} />
+      </button>
+    </>
+  );
+}
+/**
+ * Selection-bar settings for animated GIFs (track G): start paused and play once. They are stored on the image,
+ * apply to every selected image and are one undo step each. Shown only when an animated GIF is selected.
+ */
+export function GifControls({
+  item,
+  onChange,
+}: {
+  item: Item;
+  onChange: (patch: { paused?: boolean; once?: boolean }) => void;
+}) {
+  const paused = !!item.gif?.paused,
+    once = !!item.gif?.once;
+  return (
+    <>
+      <button
+        className={`icon-button ${paused ? 'active' : ''}`}
+        aria-label="Start animation paused"
+        title="Start animation paused"
+        aria-pressed={paused}
+        onClick={() => onChange({ paused: !paused })}
+      >
+        <Pause size={17} />
+      </button>
+      <button
+        className={`icon-button ${once ? 'active' : ''}`}
+        aria-label="Play animation once"
+        title="Play animation once instead of looping"
+        aria-pressed={once}
+        onClick={() => onChange({ once: !once })}
+      >
+        <Repeat1 size={17} />
       </button>
     </>
   );

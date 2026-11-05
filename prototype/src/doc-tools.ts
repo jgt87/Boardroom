@@ -150,6 +150,10 @@ export const docShortcutHelp = [
   ['Ctrl+Alt+4', 'Bulleted list'],
   ['Ctrl+Alt+5', 'Numbered list'],
   ['Ctrl+Alt+6', 'Checklist'],
+  ['Esc', 'Select the current block'],
+  ['Shift+Up/Down', 'Extend the block selection'],
+  ['Alt+Up/Down', 'Move the selected blocks'],
+  ['Delete', 'Delete the selected blocks'],
 ] as const;
 
 /** The ":name" being typed right before the caret (at least two characters), or null. */
@@ -157,3 +161,38 @@ export function emojiQuery(textBefore: string): { query: string; length: number 
   const m = /(?:^|\s):([a-z0-9_+-]{2,30})$/i.exec(textBefore);
   return m ? { query: m[1].replace(/_/g, ' '), length: m[1].length + 1 } : null;
 }
+
+// ---- Block selection in Docs (track L) ------------------------------------------------------------------
+/** Selected top-level blocks of a Doc, from the block where selection started (anchor) to its other end. */
+export type BlockRange = { anchor: number; focus: number };
+/** First and last selected block. */
+export const blockSpan = (r: BlockRange): [number, number] => [
+  Math.min(r.anchor, r.focus),
+  Math.max(r.anchor, r.focus),
+];
+/** Arrow Up/Down in block mode: move the selection one block, or with Shift extend it; clamped to the Doc. */
+export function stepBlockRange(r: BlockRange, delta: -1 | 1, extend: boolean, count: number): BlockRange {
+  const focus = Math.max(0, Math.min(count - 1, r.focus + delta));
+  return extend ? { anchor: r.anchor, focus } : { anchor: focus, focus };
+}
+/** Alt+Up/Down: move the selected blocks past their neighbour. Null at the top or bottom of the Doc. */
+export function moveBlocks<T>(blocks: T[], r: BlockRange, delta: -1 | 1): { blocks: T[]; range: BlockRange } | null {
+  const [start, end] = blockSpan(r);
+  if (start < 0 || end >= blocks.length || (delta < 0 ? start === 0 : end === blocks.length - 1)) return null;
+  const next = [...blocks],
+    moved = next.splice(start, end - start + 1);
+  next.splice(start + delta, 0, ...moved);
+  return { blocks: next, range: { anchor: r.anchor + delta, focus: r.focus + delta } };
+}
+/** Delete the selected blocks; `caret` is the block that takes their place (or -1 when none is left). */
+export function removeBlocks<T>(blocks: T[], r: BlockRange): { blocks: T[]; caret: number } {
+  const [start, end] = blockSpan(r),
+    next = blocks.filter((_, k) => k < start || k > end);
+  return { blocks: next, caret: next.length ? Math.min(start, next.length - 1) : -1 };
+}
+/** Join per-block Markdown (each ends with its own blank line) into a Doc's stored text. */
+export const joinBlocks = (parts: string[]) =>
+  parts
+    .map(p => p.trim())
+    .filter(Boolean)
+    .join('\n\n');

@@ -14,7 +14,8 @@ import {
   MoveVertical,
   Ellipsis,
 } from 'lucide-react';
-import type { Item, TextFormat } from './model';
+import type { Board, Item, TextFormat } from './model';
+import { ColorMenu } from './color-menu';
 import { fontStack } from './model';
 import { useBrandKit } from './brand-kit-panel';
 import { fontsBrandFirst } from './brand-kit';
@@ -82,11 +83,14 @@ export function TextControls({
   item,
   onChange,
   compact = false,
+  board,
 }: {
   item: Item;
   onChange: (f: TextFormat) => void;
   /** One-row toolbar (item 114): font, size and bold, with the rest behind "More text options". */
   compact?: boolean;
+  /** For the "On this board" row of the colour menus. */
+  board?: Board;
 }) {
   const f = item.format ?? {},
     set = (change: TextFormat) => onChange({ ...f, ...change });
@@ -230,6 +234,7 @@ export function TextControls({
             icon={<Highlighter size={16} />}
             value={f.highlight}
             fallback="#fff27a"
+            board={board}
             onChange={highlight => onChange(withOptional(f, 'highlight', highlight))}
           />
           {item.type === 'text' && (
@@ -238,6 +243,7 @@ export function TextControls({
               icon={<PaintBucket size={16} />}
               value={f.background}
               fallback="#edf0ff"
+              board={board}
               onChange={background => onChange(withOptional(f, 'background', background))}
             />
           )}
@@ -281,12 +287,14 @@ function ColorToggle({
   icon,
   value,
   fallback,
+  board,
   onChange,
 }: {
   label: string;
   icon: React.ReactNode;
   value?: string;
   fallback: string;
+  board?: Board;
   onChange: (v: string | undefined) => void;
 }) {
   return (
@@ -300,9 +308,7 @@ function ColorToggle({
       >
         {icon}
       </button>
-      {value && (
-        <input type="color" aria-label={`${label} colour`} value={value} onChange={e => onChange(e.target.value)} />
-      )}
+      {value && <ColorMenu label={`${label} colour`} value={value} board={board} onPick={onChange} />}
     </span>
   );
 }

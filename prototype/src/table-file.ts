@@ -34,7 +34,9 @@ export async function readTableFile(file: File, choose?: SheetChooser): Promise<
 /** Message for a grid import; mentions the grid limit when rows or columns were cut. */
 export const gridImportNote = (data: GridData, truncated: boolean) =>
   `Imported ${data.rows} ${data.rows === 1 ? 'row' : 'rows'} and ${data.cols} ${data.cols === 1 ? 'column' : 'columns'} into the grid.` +
-  (truncated ? ` Only the first ${GRID_MAX} rows and columns fit in a grid; use a Table for more.` : '');
+  (truncated
+    ? ` Only the first ${data.rows} rows and ${data.cols} columns fit (a grid holds up to ${GRID_MAX} rows or columns and 2,500 cells); use a Table for more.`
+    : '');
 
 /** Replace the cells of grid `id` with `rows`, keeping its position. Returns null for a missing or locked grid. */
 export function importIntoGrid(

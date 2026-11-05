@@ -1,0 +1,190 @@
+/* Track R2-I: board emoji, single and selected board backups, catch-up walkthrough, batch restore, saved view
+   order, Timeline flags and bar warnings. */
+
+.board-emoji {
+  flex-shrink: 0;
+  font-size: 15px;
+  line-height: 1;
+}
+.board-title-emoji {
+  margin-right: -4px;
+  font-size: 18px;
+}
+.main-menu-note {
+  margin: 0;
+  padding: 4px 10px;
+  color: #696973;
+  font-size: 12px;
+}
+.board-emoji-choices {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  padding: 4px;
+}
+.main-menu-field .board-emoji-choices button {
+  padding: 4px 0;
+  border-color: transparent;
+  background: none;
+  font-size: 16px;
+  cursor: pointer;
+}
+.main-menu-field .board-emoji-choices button:hover,
+.main-menu-field .board-emoji-choices button[aria-pressed='true'] {
+  background: #edf0ff;
+}
+.main-menu-field .board-emoji-form input {
+  width: 80px;
+}
+.board-emoji-field input {
+  width: 80px;
+}
+
+/* History: restore several deleted objects at once. */
+.history-batch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: #f4f4f6;
+  font-size: 12px;
+}
+.history-batch label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.history-pick {
+  flex-shrink: 0;
+}
+
+/* Catch up: step through the changed objects. */
+.catchup-walk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.catchup-step {
+  flex: 1;
+  color: #52525b;
+  font-size: 12px;
+  text-align: center;
+}
+.catchup-current {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+.catchup-current small {
+  display: block;
+  color: #696973;
+}
+
+/* Saved views: drag or Alt+arrow reordering. */
+.record-view-order {
+  position: relative;
+}
+.record-view-order > summary {
+  cursor: pointer;
+}
+.record-view-order ol {
+  position: absolute;
+  z-index: 6;
+  min-width: 160px;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid #e5e5eb;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+}
+.record-view-order li button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: grab;
+}
+.record-view-order li button:hover,
+.record-view-order li button:focus-visible {
+  background: #f1f1f5;
+}
+
+/* Timeline: free flags and bar warnings. */
+.timeline-flag-controls {
+  position: relative;
+}
+.timeline-flag-controls > div {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 300px;
+  padding: 6px;
+  border: 1px solid #e5e5eb;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+}
+.timeline-flag-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin: 0 3px;
+  border-radius: 50%;
+}
+.timeline-flags-area {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 150px;
+  z-index: 2;
+  pointer-events: none;
+}
+.timeline-flag {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 2px dashed var(--flag-color, #4262ff);
+}
+.timeline-flag-label {
+  position: absolute;
+  top: 1px;
+  left: -1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 140px;
+  padding: 1px 6px 1px 4px;
+  overflow: hidden;
+  border-radius: 0 4px 4px 0;
+  background: var(--flag-color, #4262ff);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+}
+.timeline-bar-warning {
+  position: absolute;
+  top: 2px;
+  z-index: 3;
+  display: inline-flex;
+  margin-left: -6px;
+  padding: 1px;
+  border-radius: 50%;
+  background: #fff7ed;
+  color: #c2410c;
+}

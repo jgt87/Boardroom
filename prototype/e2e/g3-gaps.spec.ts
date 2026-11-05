@@ -160,7 +160,7 @@ test('brand colours appear in the inspector, the colour menu and widget editors'
   await fit(page);
   await item(page, 'a').click();
   // Colour menu: a Brand row first.
-  await page.getByRole('button', { name: 'More colours' }).click();
+  await page.getByRole('button', { name: /^Object colour: / }).click();
   const colours = page.getByRole('dialog', { name: 'Colours' });
   await colours.getByRole('group', { name: 'Brand colours' }).getByRole('button').nth(1).click();
   await waitForSave(page, b => b.items[0].fill === '#abcdef', 'brand colour from the menu');
@@ -168,10 +168,24 @@ test('brand colours appear in the inspector, the colour menu and widget editors'
   // Inspector: fill and border.
   await page.getByRole('button', { name: 'Properties', exact: true }).click();
   const inspector = page.getByRole('complementary', { name: 'Properties' });
-  await inspector.getByRole('group', { name: 'Brand colours for fill' }).getByRole('button').first().click();
+  await inspector.getByRole('button', { name: /^Fill colour: / }).click();
+  await page
+    .getByRole('dialog', { name: 'Colours for fill colour' })
+    .getByRole('group', { name: 'Brand colours' })
+    .getByRole('button')
+    .first()
+    .click();
   await waitForSave(page, b => b.items[0].fill === '#123456', 'inspector fill');
-  await inspector.getByRole('group', { name: 'Brand colours for border' }).getByRole('button').nth(1).click();
+  await page.keyboard.press('Escape');
+  await inspector.getByRole('button', { name: /^Border colour: / }).click();
+  await page
+    .getByRole('dialog', { name: 'Colours for border colour' })
+    .getByRole('group', { name: 'Brand colours' })
+    .getByRole('button')
+    .nth(1)
+    .click();
   await waitForSave(page, b => b.items[0].style?.borderColor === '#abcdef', 'inspector border');
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Properties', exact: true }).click();
   // Widget editor.
   await item(page, 's').dblclick({ position: { x: 3, y: 3 } });

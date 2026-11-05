@@ -3,6 +3,8 @@
 import { isValidAuthor } from './authors.ts';
 import { validItemTimes } from './item-times.ts';
 import { validateBoardSettings, validateItemStatus } from './board-settings.ts';
+import { validateBoardModes } from './board-modes.ts';
+import { validateNotes } from './board-notes.ts';
 import { validateCodeData } from './code-lines.ts';
 import type { Board, ImageAsset, Item, RecordRow } from './model.ts';
 import { normalizeNoteLink } from './model.ts';
@@ -22,6 +24,9 @@ import { validateReactions } from './notes.ts';
 import { canRotate, isValidRotation } from './rotation.ts';
 import { validateSpans } from './rich-text.ts';
 import { validateMermaidLink, validateMermaidNode } from './mermaid-link-rules.ts';
+import { validateChipFields } from './chip-rules.ts';
+import { validateCalloutTail, LABEL_SIZE_MIN, LABEL_SIZE_MAX } from './diagram-extras.ts';
+import { isImageMask } from './image-masks.ts';
 
 export const imageMimes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 export const mediaMimes = ['video/mp4', 'video/webm', 'application/pdf'];
@@ -32,15 +37,21 @@ export const MAX_MEDIA_BYTES = 25_000_000;
  * never draws them or places their markup in the page.
  */
 export const originalImageMimes = ['image/svg+xml', 'image/bmp'];
+/** Kept files of File objects (track J): opaque bytes, only ever downloaded (FILE_ASSET_MIME in specs-file.ts). */
+export const fileAssetMime = 'application/octet-stream';
 /** Largest SVG accepted (also the limit for adding one). */
 export const MAX_SVG_BYTES = 5_000_000;
-/** Largest stored file of each kind: images 4 MB, SVG originals 5 MB, BMP originals, video and PDF 25 MB. */
+/** Largest stored file of each kind: images 4 MB, SVG originals 5 MB, BMP originals, video, PDF and kept files 25 MB. */
 export const assetByteLimit = (mime: string) =>
   imageMimes.includes(mime) ? MAX_IMAGE_BYTES : mime === 'image/svg+xml' ? MAX_SVG_BYTES : MAX_MEDIA_BYTES;
 /** Every type an asset may hold. */
-export const assetMimes = [...imageMimes, ...mediaMimes, ...originalImageMimes];
+export const assetMimes = [...imageMimes, ...mediaMimes, ...originalImageMimes, fileAssetMime];
 const finite = (v: unknown, min: number, max: number) =>
   typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
+/** Optional connector label colour (`#rrggbb`) and font size (track R2-H). */
+const labelStyleOk = (color: unknown, size: unknown) =>
+  (color === undefined || (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color))) &&
+  (size === undefined || finite(size, LABEL_SIZE_MIN, LABEL_SIZE_MAX));
 /**
  * One stored image or media file: an allowed type, a base64 data URL of that type within its size limit,
  * sane dimensions and a short name. Used for backups and for pasted objects, which can come from anywhere.
@@ -152,12 +163,13 @@ export function validateExtensions(b: Board): void {
     throw new Error('Invalid private mode.');
   if (b.showAuthors !== undefined && typeof b.showAuthors !== 'boolean') throw new Error('Invalid author setting.');
   validateBoardSettings(b);
+  validateNotes(b);
   validateTagColors(b);
   validateLayers(b);
   validateReactions(b);
   if (b.thumbnailFrame !== undefined && (typeof b.thumbnailFrame !== 'string' || b.thumbnailFrame.length > 64))
     throw new Error('Invalid thumbnail setting.');
-  if (b.viewOnly !== undefined && typeof b.viewOnly !== 'boolean') throw new Error('Invalid view-only setting.');
+  validateBoardModes(b);
   const groups = new Set(b.groups?.map(g => g.id));
   for (const i of b.items) validateItem(i, groups);
   if (
@@ -226,11 +238,14 @@ function validateItem(i: Item, groups: Set<string>): void {
           l.id.length > 100 ||
           typeof l.text !== 'string' ||
           l.text.length > 200 ||
-          !finite(l.at, 0, 1),
+          !finite(l.at, 0, 1) ||
+          !labelStyleOk(l.color, l.size),
       ) ||
       new Set(c.labels.map(l => l.id)).size !== c.labels.length)
   )
     throw new Error('Invalid connector labels.');
+  if (c && !labelStyleOk(c.labelColor, c.labelSize)) throw new Error('Invalid connector label style.');
+  if (i.tail !== undefined) validateCalloutTail(i);
   const s = i.style;
   if (
     s !== undefined &&
@@ -242,7 +257,7 @@ function validateItem(i: Item, groups: Set<string>): void {
       (s.borderStyle !== undefined && !['solid', 'dashed', 'dotted'].includes(s.borderStyle)) ||
       (s.borderOpacity !== undefined && !finite(s.borderOpacity, 0, 1)) ||
       (s.radius !== undefined && !finite(s.radius, 0, MAX_RADIUS)) ||
-      (s.mask !== undefined && s.mask !== 'circle'))
+      (s.mask !== undefined && !isImageMask(s.mask)))
   )
     throw new Error('Invalid shape border.');
   if (i.rotation !== undefined && (!isValidRotation(i.rotation) || !canRotate(i))) throw new Error('Invalid rotation.');
@@ -283,6 +298,17 @@ function validateItem(i: Item, groups: Set<string>): void {
       [adj.brightness, adj.contrast].some(v => v !== undefined && !finite(v, 0, 200)))
   )
     throw new Error('Invalid image adjustment.');
+  const gif = i.gif;
+  if (
+    gif !== undefined &&
+    (i.type !== 'image' ||
+      !gif ||
+      typeof gif !== 'object' ||
+      Array.isArray(gif) ||
+      Object.keys(gif).some(k => k !== 'paused' && k !== 'once') ||
+      [gif.paused, gif.once].some(v => v !== undefined && typeof v !== 'boolean'))
+  )
+    throw new Error('Invalid animation settings.');
   if (
     i.emoji !== undefined &&
     (typeof i.emoji !== 'string' ||
@@ -295,6 +321,7 @@ function validateItem(i: Item, groups: Set<string>): void {
   if (i.author !== undefined && !isValidAuthor(i.author)) throw new Error('Invalid author name.');
   if (i.showAuthor !== undefined && typeof i.showAuthor !== 'boolean') throw new Error('Invalid author setting.');
   if (!validItemTimes(i)) throw new Error('Invalid object times.');
+  validateChipFields(i);
   if (
     i.frame !== undefined &&
     (!i.frame ||
@@ -332,6 +359,10 @@ function validateItem(i: Item, groups: Set<string>): void {
   if (i.type === 'frame' && i.data?.mermaid !== undefined) validateMermaidLink(i.data.mermaid);
   if (i.mermaidNode !== undefined) validateMermaidNode(i.mermaidNode);
   if (i.type === 'mindmap') validateMindStyle(i);
+  // Mermaid and mind-map objects may carry a status chip (track R2-I); mind-map data is checked above.
+  if (i.type === 'mermaid' && i.data !== undefined && (!i.data || typeof i.data !== 'object' || Array.isArray(i.data)))
+    throw new Error('Invalid Mermaid data.');
+  if (['mermaid', 'mindmap'].includes(i.type) && i.data !== undefined) validateItemStatus(i.data);
   if (i.type === 'code') validateCodeData(i.data);
   if (['table', 'kanban', 'timeline'].includes(i.type) && i.data !== undefined) {
     if (!i.data || typeof i.data !== 'object' || Array.isArray(i.data)) throw new Error('Invalid records data.');

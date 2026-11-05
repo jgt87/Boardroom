@@ -3,7 +3,15 @@
 // Image bytes live in IndexedDB (see assets-store.ts); JSON backups embed them under `assets`.
 import type { Board, Crop, ImageAdjust, ImageAsset, Item } from './model.ts';
 import { createItem } from './model.ts';
-import { assetByteLimit, imageMimes, MAX_IMAGE_BYTES, MAX_SVG_BYTES, originalImageMimes } from './model-ext.ts';
+import { editableIds } from './arrange.ts';
+import {
+  assetByteLimit,
+  imageMimes,
+  MAX_IMAGE_BYTES,
+  MAX_SVG_BYTES,
+  mediaMimes,
+  originalImageMimes,
+} from './model-ext.ts';
 
 export { MAX_SVG_BYTES };
 /**
@@ -16,9 +24,12 @@ export const IMAGE_ACCEPT = [...imageMimes, ...convertibleImageMimes, '.svg', '.
 /** Whether a file of `mime` and `size` bytes is kept as the original of its PNG conversion. */
 export const keepsOriginal = (mime: string, size: number) =>
   originalImageMimes.includes(mime) && size > 0 && size <= assetByteLimit(mime);
-/** Whether an asset may be drawn on the board. Kept SVG and BMP originals never are; they are only downloaded. */
+/**
+ * Whether an asset may be drawn on the board as a picture. Kept SVG and BMP originals and the files of File
+ * objects never are; they are only downloaded.
+ */
 export const drawableAsset = (asset: Pick<ImageAsset, 'mime'> | undefined) =>
-  !!asset && !originalImageMimes.includes(asset.mime);
+  !!asset && (imageMimes.includes(asset.mime) || mediaMimes.includes(asset.mime));
 /**
  * The file "Download original" saves for an image: the SVG or BMP it was converted from when that is kept
  * (gap R2-Q3), otherwise its stored picture.
@@ -312,4 +323,26 @@ export function splitAssets(
   const shown = new Set(next.items.filter(i => i.assetId).map(i => i.assetId!)),
     missing = [...shown].filter(id => !assets[id] && !known[id]).length;
   return { board: next, assets, missing };
+}
+/**
+ * Animated GIF settings on images (track G): `paused` starts the animation paused, `once` plays it once instead of
+ * looping. Only unlocked images change; false values are dropped, so a cleared setting leaves no trace.
+ */
+export function setGifOptions(board: Board, ids: string[], patch: { paused?: boolean; once?: boolean }): Board {
+  const set = new Set(editableIds(board, ids));
+  let changed = false;
+  const items = board.items.map(i => {
+    if (!set.has(i.id) || i.type !== 'image') return i;
+    const merged = { ...i.gif, ...patch },
+      gif: { paused?: boolean; once?: boolean } = {};
+    if (merged.paused) gif.paused = true;
+    if (merged.once) gif.once = true;
+    if (!!i.gif?.paused === !!gif.paused && !!i.gif?.once === !!gif.once) return i;
+    changed = true;
+    const next = { ...i };
+    if (Object.keys(gif).length) next.gif = gif;
+    else delete next.gif;
+    return next;
+  });
+  return changed ? { ...board, items } : board;
 }

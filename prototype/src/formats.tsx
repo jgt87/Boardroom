@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { mindViewport, type MindViewport } from './mindmap-bounds';
+import { FocusView } from './focus-view';
 import {
   X,
   Plus,
@@ -17,6 +18,7 @@ import {
   Minus,
   Stamp,
   Smile,
+  File as FileIcon,
   QrCode,
   Video,
   FileText,
@@ -29,6 +31,8 @@ import {
   LayoutPanelTop,
   Grid2x2,
   Vote,
+  Gauge,
+  CircleDot,
   Disc3,
   SlidersHorizontal,
   Route,
@@ -103,8 +107,14 @@ export const kindIcons: Record<string, typeof Layers3> = {
   'import:pptx': Presentation,
   'import:table': FileSpreadsheet,
   'import:grid': Grid3x3,
+  'import:drawio': Workflow,
   'import:docx': FileText,
+  'import:odt': FileText,
+  'import:odp': Presentation,
+  file: FileIcon,
   chart: BarChart3,
+  estimates: Gauge,
+  dotpile: CircleDot,
 };
 import { catalog, toolCategories } from './tool-catalog';
 import type { CatalogEntry } from './tool-catalog';
@@ -401,6 +411,11 @@ export function ToolGallery({
       { label: 'Shapes and lines', kind: 'rectangle', description: 'Build a diagram on the canvas' },
       { label: 'Build with Mermaid code', kind: 'mermaid', description: 'Create a diagram from code' },
       { label: 'Draw.io Diagrams', kind: 'drawio', description: 'Create or import an editable technical diagram' },
+      {
+        label: 'Draw.io as shapes',
+        kind: 'import:drawio',
+        description: 'A .drawio file becomes native shapes and lines',
+      },
       { label: 'Mind map', kind: 'mindmap', description: 'Organize connected ideas' },
     ],
     engage: catalog['Engage activities'],
@@ -417,11 +432,27 @@ export function ToolGallery({
       { label: 'PowerPoint as Slides', kind: 'import:pptx', description: 'Slide titles and text from a .pptx file' },
       { label: 'Word as Doc', kind: 'import:docx', description: 'Headings, lists and text from a .docx file' },
       {
+        label: 'OpenDocument or RTF as Doc',
+        kind: 'import:odt',
+        description: 'Headings, lists and text from an .odt or .rtf file',
+      },
+      {
+        label: 'OpenDocument slides as Slides',
+        kind: 'import:odp',
+        description: 'Slide titles and text from an .odp file',
+      },
+      { label: 'Any file', kind: 'file', description: 'Keep the file on the board to download later' },
+      {
         label: 'Spreadsheet as Table',
         kind: 'import:table',
         description: 'A .csv or .xlsx file becomes Table records',
       },
       { label: 'Spreadsheet as Grid', kind: 'import:grid', description: 'A .csv or .xlsx file fills a Grid' },
+      {
+        label: 'Draw.io as shapes',
+        kind: 'import:drawio',
+        description: 'A .drawio file becomes native shapes and lines',
+      },
     ],
     wireframes: wireframeComponents.map(c => ({
       label: c.label,
@@ -592,13 +623,6 @@ export function FormatEditor({
     [search, setSearch] = useState(''),
     [status, setStatus] = useState('All'),
     [sort, setSort] = useState(false);
-  const dialog = useRef<HTMLDivElement>(null),
-    close = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const prior = document.activeElement as HTMLElement;
-    close.current?.focus();
-    return () => prior?.focus();
-  }, []);
   const nodes = draft.nodes ?? [],
     chosen = nodes.find(n => n.id === active),
     records = ['table', 'kanban', 'timeline'].includes(draft.type);
@@ -638,45 +662,24 @@ export function FormatEditor({
     }
   };
   return (
-    <div
-      className="format-overlay"
-      onKeyDown={e => {
-        e.stopPropagation();
-        if (e.key === 'Escape') onClose();
-        if (e.key === 'Tab') {
-          const focusable = dialog.current?.querySelectorAll<HTMLElement>(
-            'button:not(:disabled),input,textarea,select,[tabindex="0"]',
-          );
-          if (focusable?.length) {
-            const first = focusable[0],
-              last = focusable[focusable.length - 1];
-            if (e.shiftKey && document.activeElement === first) {
-              e.preventDefault();
-              last.focus();
-            } else if (!e.shiftKey && document.activeElement === last) {
-              e.preventDefault();
-              first.focus();
-            }
-          }
-        }
-      }}
+    <FocusView
+      title={
+        item.type === 'mermaid'
+          ? 'Diagram · Build with code'
+          : item.type === 'mindmap'
+            ? 'Mind map'
+            : `Records${item.text?.trim() ? ` · ${item.text.trim()}` : ''}`
+      }
+      label={`Edit ${item.type}`}
+      hint={
+        records
+          ? 'Table, Kanban and Timeline share these records.'
+          : 'Changes are applied to the canvas when you choose Done.'
+      }
+      closeLabel="Cancel editing"
+      onClose={onClose}
     >
-      <div ref={dialog} className="format-editor" role="dialog" aria-modal="true" aria-label={`Edit ${item.type}`}>
-        <header>
-          <div>
-            <h2>
-              {item.type === 'mermaid' ? 'Diagram · Build with code' : item.type === 'mindmap' ? 'Mind map' : 'Records'}
-            </h2>
-            <p>
-              {records
-                ? 'Table, Kanban and Timeline share these records.'
-                : 'Changes are applied to the canvas when you choose Done.'}
-            </p>
-          </div>
-          <button ref={close} className="icon-button" aria-label="Cancel editing" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </header>
+      <>
         {draft.type === 'mermaid' && (
           <div className="diagram-workspace">
             <section>
@@ -1099,8 +1102,8 @@ export function FormatEditor({
             Done
           </button>
         </footer>
-      </div>
-    </div>
+      </>
+    </FocusView>
   );
 }
 export function BulkPanel({ onDone, onClose }: { onDone: (text: string) => void; onClose: () => void }) {

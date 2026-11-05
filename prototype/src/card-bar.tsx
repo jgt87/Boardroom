@@ -25,8 +25,8 @@ import { canSwitch, switchLabel, switchType } from './switch-type';
 import type { SwitchTarget } from './switch-type';
 import { basicKinds } from './shapes';
 import { CardTag } from './widgets-cards';
+import { CHIP_MIME, encodeChip } from './chip-rules';
 import {
-  ESTIMATE_MIME,
   pointChips,
   MAX_TAG_LENGTH,
   boardPeople,
@@ -292,7 +292,9 @@ export function CardBar() {
                 <button
                   key={n}
                   draggable
-                  onDragStart={e => e.dataTransfer.setData(ESTIMATE_MIME, `points:${n}`)}
+                  onDragStart={e =>
+                    e.dataTransfer.setData(CHIP_MIME, encodeChip({ kind: 'estimate', value: String(n) }))
+                  }
                   className={same('points') === n ? 'active' : ''}
                   onClick={() => apply({ points: n }, false)}
                 >
@@ -305,7 +307,7 @@ export function CardBar() {
                 <button
                   key={z}
                   draggable
-                  onDragStart={e => e.dataTransfer.setData(ESTIMATE_MIME, `size:${z}`)}
+                  onDragStart={e => e.dataTransfer.setData(CHIP_MIME, encodeChip({ kind: 'estimate', value: z }))}
                   className={same('size') === z ? 'active' : ''}
                   onClick={() => apply({ size: z }, false)}
                 >

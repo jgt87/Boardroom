@@ -7,7 +7,8 @@ import { editableIds, setLocked } from './arrange';
 import { setRotation } from './interactions';
 import { canRotate } from './rotation';
 import { isShapeKind, shapeLabels } from './shapes';
-import { BrandSwatches } from './brand-kit-panel';
+import { ColorMenu } from './color-menu';
+import { rememberKindColors } from './last-color';
 import { specFor } from './widget-specs';
 import { layerLabel } from './board-tools';
 import { timeLabel } from './item-times';
@@ -329,23 +330,20 @@ export function PropertiesInspector({ board, selected, onChange, onClose, onEdit
             />
           </>
         )}
-        <label className="inspector-field">
+        <div className="inspector-field">
           <span>{allText ? 'Text colour' : 'Fill'}</span>
-          <input
-            type="color"
-            aria-label={allText ? 'Text colour' : 'Fill colour'}
+          <ColorMenu
+            label={allText ? 'Text colour' : 'Fill colour'}
             disabled={locked}
+            mixed={fill === MIXED}
             value={show(fill, v => v) || '#ffffff'}
-            onChange={e => onChange(b => setFill(b, selected, e.target.value))}
+            board={board}
+            onPick={c => {
+              rememberKindColors(items, c);
+              onChange(b => setFill(b, selected, c));
+            }}
           />
-          {fill === MIXED && <small>Mixed</small>}
-        </label>
-        <BrandSwatches
-          label={allText ? 'Brand colours for text colour' : 'Brand colours for fill'}
-          disabled={locked}
-          value={show(fill, v => v)}
-          onPick={c => onChange(b => setFill(b, selected, c))}
-        />
+        </div>
         {allTextBearing && (
           <label className="inspector-field">
             <span>Font size</span>
@@ -373,22 +371,18 @@ export function PropertiesInspector({ board, selected, onChange, onClose, onEdit
         )}
         {allShapes && (
           <>
-            <label className="inspector-field">
+            <div className="inspector-field">
               <span>Border</span>
-              <input
-                type="color"
-                aria-label="Border colour"
+              <ColorMenu
+                label="Border colour"
+                variant="border"
                 disabled={locked}
+                mixed={border('borderColor') === MIXED}
                 value={show(border('borderColor'), v => String(v)) || DEFAULT_BORDER.borderColor}
-                onChange={e => onChange(b => setStyleField(b, selected, 'borderColor', e.target.value))}
+                board={board}
+                onPick={c => onChange(b => setStyleField(b, selected, 'borderColor', c))}
               />
-            </label>
-            <BrandSwatches
-              label="Brand colours for border"
-              disabled={locked}
-              value={show(border('borderColor'), v => String(v))}
-              onPick={c => onChange(b => setStyleField(b, selected, 'borderColor', c))}
-            />
+            </div>
             <CommitField
               label="Border width"
               value={show(border('borderWidth'), v => String(v))}

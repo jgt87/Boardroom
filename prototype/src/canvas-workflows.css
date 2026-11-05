@@ -521,6 +521,16 @@ textarea.canvas-field {
   margin: 24px 8px 0;
   display: block;
 }
+/* Large grids (track J): cells other than the current one are plain text in the same place as a field. */
+.canvas-grid-table .grid-cell-text {
+  display: block;
+  min-height: 28px;
+  margin: 24px 8px 0;
+  padding: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
 .grid-axis-handle {
   position: absolute;
   z-index: 1;

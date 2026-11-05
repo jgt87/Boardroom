@@ -22,10 +22,14 @@ import {
   ArrowLeftRight,
   FileDown,
   Code2,
+  Undo2,
 } from 'lucide-react';
 import { InsertShapeOnLine } from './insert-shape-menu';
-import { ImageAdjustControls } from './image-tools';
-import { adjustImages, downloadableAsset } from './images';
+import { isCallout, resetCalloutTail } from './diagram-extras';
+import { GifControls, ImageAdjustControls } from './image-tools';
+import { adjustImages, downloadableAsset, setGifOptions } from './images';
+import { isAnimatedAsset } from './gif-still';
+import { setStyleField } from './inspector-model';
 import { mindLayoutKinds, mindOutlineMarkdown } from './mindmap-style';
 import type { MindLayoutKind } from './mindmap-style';
 import { saveText } from './widget-kit';
@@ -47,7 +51,6 @@ import { statusAction } from './status-chip';
 import type { WidgetAction, WidgetCtx } from './widget-types';
 import { useApp } from './board-app';
 import { useRovingToolbar } from './use-roving-toolbar';
-import { spokenColor } from './access-tools';
 import { manualMindNodes, mindStyleOf } from './mindmap-style';
 const mindLayoutLabels: Record<MindLayoutKind, string> = {
   right: 'Grow right',
@@ -57,13 +60,12 @@ const mindLayoutLabels: Record<MindLayoutKind, string> = {
 import { BrandSwatches } from './brand-kit-panel';
 import { CardBar, NoteReactButton, SwitchToCard, SwitchTypeMenu } from './card-bar';
 import { ColorMenu } from './color-menu';
-import { rememberColor } from './color-store';
 import { linkOf } from './mermaid-link';
 
 /** Selection-bar actions for core kinds that are not registry widgets: code blocks and record views. */
 function coreActions(item: Item, ctx: WidgetCtx): WidgetAction[] {
   if (item.type === 'code') return codeActions(item, ctx);
-  if (['table', 'kanban', 'timeline'].includes(item.type)) return [statusAction(item, ctx)];
+  if (['table', 'kanban', 'timeline', 'mermaid', 'mindmap'].includes(item.type)) return [statusAction(item, ctx)];
   return [];
 }
 
@@ -102,6 +104,11 @@ export function SelectionBars() {
   } = useApp();
   const lockedBar = useRovingToolbar<HTMLDivElement>(),
     bar = useRovingToolbar<HTMLDivElement>();
+  // Images in the selection: crop masks apply to all of them at once, and GIF settings to the animated ones (track G).
+  const selectedImages = selected
+      .map(id => board.items.find(i => i.id === id))
+      .filter((i): i is Item => i?.type === 'image'),
+    firstGif = selectedImages.find(i => isAnimatedAsset(i.assetId, i.assetId ? assets[i.assetId] : undefined));
   return (
     <>
       {selected.length > 0 && selectionLocked && (
@@ -146,27 +153,50 @@ export function SelectionBars() {
           {selectedItem && selectedItem.type !== 'drawio' && (
             <>
               <BrandSwatches value={selectedItem.fill} onPick={c => patch({ fill: c })} />
-              <input
-                type="color"
-                aria-label={`${selectedItem.type === 'arrow' ? 'Line color' : 'Object color'}: ${spokenColor(selectedItem.fill)}`}
-                title={spokenColor(selectedItem.fill)}
+              <ColorMenu
+                label={
+                  selectedItem.type === 'arrow'
+                    ? 'Line colour'
+                    : selectedItem.type === 'text'
+                      ? 'Text colour'
+                      : 'Object colour'
+                }
                 value={selectedItem.fill}
-                onChange={e => patch({ fill: e.target.value })}
-                onBlur={e => rememberColor(e.target.value)}
+                board={board}
+                onPick={fill => patch({ fill })}
               />
-              <ColorMenu value={selectedItem.fill} board={board} onPick={fill => patch({ fill })} />
             </>
           )}
-          {allShapes && firstShape && <BorderControls item={firstShape} mixed={mixedBorders} onChange={patchStyle} />}
+          {allShapes && firstShape && (
+            <BorderControls
+              item={firstShape}
+              mixed={mixedBorders}
+              board={board}
+              onChange={patchStyle}
+              maskImage={selectedImages[0]}
+              onMask={mask => run(b => setStyleField(b, selected, 'mask', mask))}
+            />
+          )}
           {selectedItem &&
             selected.length === 1 &&
             (['note', 'text'].includes(selectedItem.type) || isShapeKind(selectedItem.type)) && (
               <TextControls
                 item={selectedItem}
                 compact={selectedItem.type === 'note'}
+                board={board}
                 onChange={format => patch({ format })}
               />
             )}
+          {selectedItem && selected.length === 1 && isCallout(selectedItem) && selectedItem.tail && (
+            <button
+              className="icon-button"
+              aria-label="Reset callout tail"
+              title="Reset callout tail"
+              onClick={() => run(b => resetCalloutTail(b, selectedItem.id))}
+            >
+              <Undo2 size={17} />
+            </button>
+          )}
           {selectedItem?.type === 'frame' && selected.length === 1 && (
             <FrameControls
               key={selectedItem.id}
@@ -203,6 +233,20 @@ export function SelectionBars() {
                 onAdjust={change => run(b => adjustImages(b, [selectedItem.id], change))}
               />
             </>
+          )}
+          {firstGif && selectedImages.length === selected.length && (
+            <GifControls
+              item={firstGif}
+              onChange={change =>
+                run(b =>
+                  setGifOptions(
+                    b,
+                    selectedImages.filter(i => isAnimatedAsset(i.assetId, assets[i.assetId!])).map(i => i.id),
+                    change,
+                  ),
+                )
+              }
+            />
           )}
           {selectedItem?.type === 'note' && selected.length === 1 && (
             <>

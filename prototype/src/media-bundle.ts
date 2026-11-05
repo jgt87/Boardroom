@@ -21,9 +21,11 @@ export const extByMime: Record<string, string> = {
   // Download-only originals of converted images (gap R2-Q3).
   'image/svg+xml': 'svg',
   'image/bmp': 'bmp',
+  // Files kept by File objects (track J).
+  'application/octet-stream': 'bin',
 };
 export const ID = /^[A-Za-z0-9_-]{1,100}$/;
-export const MEDIA_ENTRY = /^media\/([A-Za-z0-9_-]{1,100})\.(png|jpg|gif|webp|mp4|webm|pdf|svg|bmp)$/;
+export const MEDIA_ENTRY = /^media\/([A-Za-z0-9_-]{1,100})\.(png|jpg|gif|webp|mp4|webm|pdf|svg|bmp|bin)$/;
 
 export type ManifestAsset = { mime: string; width: number; height: number; name: string; file: string };
 type Manifest = { format: string; version: number; assets: Record<string, ManifestAsset> };

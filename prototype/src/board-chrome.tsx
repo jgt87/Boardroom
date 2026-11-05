@@ -12,6 +12,7 @@ import { NamedLayers } from './layers-panel';
 import { PassphraseHost } from './passphrase-dialog';
 import { SheetPickerHost } from './sheet-picker';
 import { BoardOutline } from './board-outline';
+import { NotesPanel } from './notes-panel';
 import { useApp } from './board-app';
 import { tools } from './board-app';
 
@@ -28,6 +29,7 @@ export function BoardChrome() {
     help,
     minimap,
     notice,
+    noticeAction,
     outline,
     presenting,
     presentPanel,
@@ -299,6 +301,7 @@ export function BoardChrome() {
       <PassphraseHost />
       <SheetPickerHost />
       <BoardOutline />
+      <NotesPanel />
       <div id="sr-announcer" className="sr-only" aria-live="polite" aria-atomic="true" />
       {backView && (
         <div className="notice floating go-back-toast" role="status">
@@ -311,6 +314,17 @@ export function BoardChrome() {
       {notice && (
         <div className={`notice floating ${saveError ? 'error' : ''}`} role="status">
           {notice}
+          {noticeAction?.message === notice && (
+            <button
+              className="text-button"
+              onClick={() => {
+                setNotice('');
+                noticeAction.run();
+              }}
+            >
+              {noticeAction.label}
+            </button>
+          )}
           <button className="icon-button" aria-label="Dismiss notification" onClick={() => setNotice('')}>
             <X size={15} />
           </button>

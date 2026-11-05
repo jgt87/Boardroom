@@ -45,6 +45,8 @@ export type WidgetCtx = {
   preview?: PreviewState;
   /** Open this item's focus editor (the card panel for cards). */
   openEditor?: () => void;
+  /** The current selection, read when called (chip widgets apply a clicked chip to it). */
+  selection?: () => string[];
 };
 
 export type WidgetAction = {

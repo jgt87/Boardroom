@@ -22,6 +22,7 @@ import {
   Activity as ActivityIcon,
 } from 'lucide-react';
 import {
+  boardEmoji,
   cleanSpace,
   daysLeftInTrash,
   liveBoards,
@@ -32,12 +33,12 @@ import {
   TRASH_DAYS,
   SPACE_DESCRIPTION_MAX,
 } from './board-library';
-import type { BoardMeta, ContentCache, Library, OpenTarget, SpaceInfo } from './board-library';
+import type { BoardMeta, BoardMetaPatch, ContentCache, Library, OpenTarget, SpaceInfo } from './board-library';
 import { templateNames } from './board-tools';
 import { singleFormats } from './deep-link';
 import type { SingleFormat } from './deep-link';
 import type { TemplateName } from './board-tools';
-import { boardStatuses } from './board-settings';
+import { badgeInk, boardStatuses } from './board-settings';
 import { loadTemplates, templatePreview } from './user-templates';
 import type { UserTemplate } from './user-templates';
 import { useLatest } from './use-latest';
@@ -55,6 +56,7 @@ import {
 } from './blueprints';
 import { parseBoard } from './model';
 import './library-r3.css';
+import './library-r2.css';
 
 const relative = (iso: string) => {
   const ms = Date.now() - Date.parse(iso);
@@ -73,6 +75,20 @@ function StatusChip({ status }: { status?: string }) {
   return (
     <span className="board-status card-status" style={{ background: s.color }}>
       {s.label}
+    </span>
+  );
+}
+
+/** Sensitivity badge on a board card (track R2-K). Index entries are not validated, so the colour is checked. */
+function SensitivityTag({ value }: { value?: BoardMeta['sensitivity'] }) {
+  if (!value || typeof value.label !== 'string' || !/^#[0-9a-f]{6}$/i.test(value.color ?? '')) return null;
+  return (
+    <span
+      className="board-status card-status sensitivity-badge"
+      style={{ background: value.color, color: badgeInk(value.color) }}
+      title={`Sensitivity: ${value.label}`}
+    >
+      {value.label.slice(0, 40)}
     </span>
   );
 }
@@ -202,6 +218,7 @@ export function BoardsDashboard({
   onFlush,
   onImport,
   onBackupAll,
+  onBackup,
   onClose,
   onMeta,
 }: {
@@ -227,8 +244,10 @@ export function BoardsDashboard({
   /** Import a backup; a library backup may add blueprints, so the list is reloaded when it settles. */
   onImport?: (file: File) => void | Promise<unknown>;
   onBackupAll?: () => void;
+  /** Back up one or the selected boards in the library backup format (track R2-I). */
+  onBackup?: (ids: string[]) => void;
   onClose: () => void;
-  onMeta?: (id: string | string[], patch: { starred?: boolean; space?: string | null }) => void;
+  onMeta?: (id: string | string[], patch: BoardMetaPatch) => void;
 }) {
   const [query, setQuery] = useState(''),
     [renaming, setRenaming] = useState<string | null>(null),
@@ -728,6 +747,11 @@ export function BoardsDashboard({
                     <Copy size={15} /> Duplicate
                   </button>
                 )}
+                {onBackup && (
+                  <button title="Save the selected boards in one backup file" onClick={() => onBackup(visiblePicked)}>
+                    <Download size={15} /> Back up
+                  </button>
+                )}
                 <button
                   className="danger"
                   onClick={() => {
@@ -851,8 +875,14 @@ export function BoardsDashboard({
                       />
                     ) : (
                       <span className="board-card-title">
+                        {boardEmoji(b) && (
+                          <span className="board-emoji" data-board-emoji aria-hidden="true">
+                            {boardEmoji(b)}
+                          </span>
+                        )}
                         <strong title={b.title}>{b.title}</strong>
                         <StatusChip status={b.status} />
+                        <SensitivityTag value={b.sensitivity} />
                       </span>
                     )}
                     {b.description && <p className="board-description">{b.description}</p>}
@@ -937,6 +967,16 @@ export function BoardsDashboard({
                         >
                           <Copy size={15} />
                         </button>
+                        {onBackup && (
+                          <button
+                            className="icon-button"
+                            aria-label={`Back up ${b.title}`}
+                            title="Back up this board"
+                            onClick={() => onBackup([b.id])}
+                          >
+                            <Download size={15} />
+                          </button>
+                        )}
                         <button
                           className="icon-button danger"
                           aria-label={`Delete ${b.title}`}

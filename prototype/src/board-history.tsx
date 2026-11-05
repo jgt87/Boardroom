@@ -13,11 +13,15 @@ import {
   dayLabel,
   describeType,
   parseActivity,
-  restoreDeleted,
+  restorable,
+  restoreMany,
+  catchUpSteps,
   type Activity,
 } from './activity';
 import { BOARD_DESCRIPTION_MAX, boardStatuses, cleanDescription, withSetting } from './board-settings';
-import { spacesOf } from './board-library';
+import { boardEmoji, cleanEmoji, spacesOf } from './board-library';
+import { useLibraryFiles } from './use-library-files';
+import './library-r2.css';
 
 const readLog = (boardId: string): Activity[] => {
   try {
@@ -52,11 +56,52 @@ function Shell({ title, onClose, children }: { title: string; onClose: () => voi
 export function HistoryPanel({ onClose }: { onClose: () => void }) {
   const { library, boardRef, update, setSelected, fit, display } = useApp();
   const [log, setLog] = useState(() => readLog(library.activeId));
+  const [picked, setPicked] = useState<string[]>([]);
   const now = new Date();
   let lastDay = '';
+  const canRestore = log.filter(e => restorable(boardRef.current, e)),
+    pickedEntries = canRestore.filter(e => picked.includes(e.id));
+  /** Restore entries in one change (one undo step), bringing back connectors deleted with them. */
+  const restore = (entries: Activity[]) => {
+    const made = restoreMany(boardRef.current, entries, log);
+    if (!made) return display('These objects are already on the board.');
+    update(made.board);
+    setSelected(made.restored);
+    fit(made.board.items.filter(i => made.restored.includes(i.id)));
+    setLog(readLog(library.activeId));
+    setPicked([]);
+    const objects = made.restored.length - made.reattached;
+    display(
+      (objects === 1 && entries.length === 1
+        ? `Restored ${describeType(entries[0].type)}.`
+        : `Restored ${objects} ${objects === 1 ? 'object' : 'objects'}.`) +
+        (made.reattached
+          ? ` ${made.reattached} ${made.reattached === 1 ? 'connector was' : 'connectors were'} re-attached.`
+          : '') +
+        (made.detached
+          ? ` ${made.detached} connector ${made.detached === 1 ? 'end was' : 'ends were'} left loose.`
+          : ''),
+    );
+  };
   return (
     <Shell title="History" onClose={onClose}>
       <p>Changes made on this board in this browser, newest first. Deleted objects can be restored.</p>
+      {canRestore.length > 1 && (
+        <div className="history-batch" role="group" aria-label="Restore several">
+          <label>
+            <input
+              type="checkbox"
+              aria-label="Select all deleted objects"
+              checked={pickedEntries.length === canRestore.length}
+              onChange={e => setPicked(e.target.checked ? canRestore.map(x => x.id) : [])}
+            />
+            {pickedEntries.length ? `${pickedEntries.length} selected` : 'Select deleted objects'}
+          </label>
+          <button disabled={!pickedEntries.length} onClick={() => restore(pickedEntries)}>
+            Restore selected
+          </button>
+        </div>
+      )}
       {log.length ? (
         <ol className="history-list" aria-label="Activity">
           {log.map(e => {
@@ -68,6 +113,15 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
               <li key={e.id}>
                 {heading && <h3>{heading}</h3>}
                 <div className="history-row">
+                  {canRestore.length > 1 && restorable(boardRef.current, e) && (
+                    <input
+                      type="checkbox"
+                      className="history-pick"
+                      aria-label={`Select deleted ${describeType(e.type)}${e.label ? `: ${e.label}` : ''}`}
+                      checked={picked.includes(e.id)}
+                      onChange={() => setPicked(p => (p.includes(e.id) ? p.filter(x => x !== e.id) : [...p, e.id]))}
+                    />
+                  )}
                   <button
                     className="history-entry"
                     disabled={!exists}
@@ -85,21 +139,7 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
                     </span>
                     <small>{time(e.at)}</small>
                   </button>
-                  {e.action === 'deleted' && e.item && !exists && (
-                    <button
-                      onClick={() => {
-                        const restored = restoreDeleted(boardRef.current, e);
-                        if (!restored) return;
-                        update(restored);
-                        setSelected([e.itemId]);
-                        fit([e.item!]);
-                        setLog(readLog(library.activeId));
-                        display(`Restored ${describeType(e.type)}.`);
-                      }}
-                    >
-                      Restore
-                    </button>
-                  )}
+                  {e.action === 'deleted' && e.item && !exists && <button onClick={() => restore([e])}>Restore</button>}
                 </div>
               </li>
             );
@@ -158,17 +198,40 @@ export function CatchUpPanel({ onClose }: { onClose: () => void }) {
   const { library, boardRef, setSelected, fit, display } = useApp();
   const lastVisit = previousVisit(localStorage, library.activeId);
   const [period, setPeriod] = useState<(typeof catchUpPeriods)[number]['id'] | 'visit'>(lastVisit ? 'visit' : 'week');
+  // Walkthrough (track R2-I): the changed objects, oldest change first, and the one shown now.
+  const [walk, setWalk] = useState<{ steps: Activity[]; at: number } | null>(null);
   const log = readLog(library.activeId),
     since =
       period === 'visit' && lastVisit
         ? Date.parse(lastVisit)
         : Date.now() - catchUpPeriods.find(p => p.id === period)!.ms,
     s = catchUp(log, since);
+  const goTo = (steps: Activity[], at: number) => {
+    const target = steps[at],
+      found = target && boardRef.current.items.find(i => i.id === target.itemId);
+    setWalk({ steps, at });
+    if (!found) return display('This object is no longer on the board.');
+    setSelected([found.id]);
+    fit([found]);
+  };
+  const startWalk = () => {
+    const steps = catchUpSteps(log, since, new Set(boardRef.current.items.map(i => i.id)));
+    if (!steps.length) return display('The changed objects are no longer on the board.');
+    goTo(steps, 0);
+  };
+  const step = walk?.steps[walk.at];
   return (
     <Shell title="Catch up" onClose={onClose}>
       <label className="field">
         Time period
-        <select aria-label="Time period" value={period} onChange={e => setPeriod(e.target.value as typeof period)}>
+        <select
+          aria-label="Time period"
+          value={period}
+          onChange={e => {
+            setPeriod(e.target.value as typeof period);
+            setWalk(null);
+          }}
+        >
           {lastVisit && <option value="visit">Since my last visit ({new Date(lastVisit).toLocaleString()})</option>}
           {catchUpPeriods.map(p => (
             <option key={p.id} value={p.id}>
@@ -194,6 +257,31 @@ export function CatchUpPanel({ onClose }: { onClose: () => void }) {
           >
             Show these on the board
           </button>
+          <div className="catchup-walk" role="group" aria-label="Step through changes">
+            <button
+              aria-label="Previous change"
+              disabled={!walk || walk.at === 0}
+              onClick={() => walk && goTo(walk.steps, walk.at - 1)}
+            >
+              ‹ Previous
+            </button>
+            <span className="catchup-step" aria-live="polite">
+              {walk ? `${walk.at + 1} of ${walk.steps.length}` : 'Step through'}
+            </span>
+            <button
+              aria-label={walk ? 'Next change' : 'Step through the changes'}
+              disabled={!!walk && walk.at >= walk.steps.length - 1}
+              onClick={() => (walk ? goTo(walk.steps, walk.at + 1) : startWalk())}
+            >
+              {walk ? 'Next ›' : 'Start ›'}
+            </button>
+          </div>
+          {step && (
+            <p className="catchup-current">
+              {step.action} {describeType(step.type)}
+              {step.label && <em> · {step.label}</em>} <small>{new Date(step.at).toLocaleString()}</small>
+            </p>
+          )}
           <ul className="catchup-types" aria-label="Changes by type">
             {Object.entries(s.byType)
               .sort((a, b) => b[1] - a[1])
@@ -216,6 +304,13 @@ export function DetailsPanel({ onClose }: { onClose: () => void }) {
   const { board, boardRef, library, update, boardActions, display } = useApp();
   const meta = library.boards.find(b => b.id === library.activeId);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const libraryFiles = useLibraryFiles();
+  const emoji = boardEmoji(meta);
+  const saveEmoji = (value: string) => {
+    const clean = cleanEmoji(value);
+    if (value.trim() && !clean) return display('Use one short emoji or symbol.');
+    if (clean !== emoji) boardActions.setMeta(library.activeId, { emoji: clean || null });
+  };
   const saveDescription = (text: string) => {
     const clean = cleanDescription(text);
     if (clean !== (boardRef.current.description ?? ''))
@@ -238,6 +333,20 @@ export function DetailsPanel({ onClose }: { onClose: () => void }) {
           maxLength={BOARD_DESCRIPTION_MAX}
           defaultValue={board.description ?? ''}
           onBlur={e => saveDescription(e.target.value)}
+        />
+      </label>
+      <label className="field board-emoji-field">
+        Emoji
+        <input
+          key={emoji}
+          aria-label="Board emoji"
+          placeholder="None"
+          maxLength={16}
+          defaultValue={emoji}
+          onKeyDown={e => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+          }}
+          onBlur={e => saveEmoji(e.target.value)}
         />
       </label>
       <dl className="details-list">
@@ -294,6 +403,7 @@ export function DetailsPanel({ onClose }: { onClose: () => void }) {
         >
           Duplicate board
         </button>
+        <button onClick={() => void libraryFiles.backupBoards([library.activeId])}>Back up this board</button>
         {confirmDelete ? (
           <span className="board-confirm" role="alert">
             <span>Move this board to the trash?</span>

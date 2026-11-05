@@ -6,7 +6,7 @@
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import type { Zippable } from 'fflate';
 import type { Board, ImageAsset } from './model.ts';
-import { assetRefsAcrossBoards, boardKey, cleanSpace, spaceInfoOf } from './board-library.ts';
+import { assetRefsAcrossBoards, boardEmoji, boardKey, cleanSpace, spaceInfoOf } from './board-library.ts';
 import type { BoardMeta, KeyValueStore, Library, SpaceInfo } from './board-library.ts';
 import { validTemplates, type UserTemplate } from './user-templates.ts';
 import { BLUEPRINT_LIMIT, BLUEPRINT_MAX_BYTES, validBlueprints, type Blueprint } from './blueprints.ts';
@@ -29,7 +29,10 @@ export const LIBRARY_MANIFEST = 'library.json';
 export const MAX_LIBRARY_ENTRIES = 5000;
 const BOARD_ENTRY = /^boards\/([A-Za-z0-9_-]{1,100})\.json$/;
 
-type SavedMeta = Pick<BoardMeta, 'id' | 'title' | 'createdAt' | 'updatedAt' | 'space' | 'starred' | 'deletedAt'>;
+type SavedMeta = Pick<
+  BoardMeta,
+  'id' | 'title' | 'createdAt' | 'updatedAt' | 'space' | 'starred' | 'deletedAt' | 'emoji'
+>;
 type LibraryManifest = {
   format: string;
   version: number;
@@ -59,27 +62,32 @@ export type BackupContents =
 
 /**
  * Bundle every stored board (trash included), the index details, saved templates, saved blueprints and all
- * referenced media.
+ * referenced media. With `only` (track R2-I: back up one or selected boards), just those boards, the spaces they
+ * are filed under and the media they use are bundled, in the same format.
  */
 export function encodeLibrary(
   kv: KeyValueStore,
-  lib: Library,
+  library: Library,
   assets: Record<string, ImageAsset>,
   now = new Date().toISOString(),
   templates: UserTemplate[] = [],
   blueprints: Blueprint[] = [],
+  only?: string[],
 ): { bytes: Uint8Array; boards: number; media: number; templates: number; blueprints: number } {
   const files: Zippable = {};
+  const wanted = only ? new Set(only) : null;
+  const lib: Library = wanted ? { ...library, boards: library.boards.filter(b => wanted.has(b.id)) } : library;
+  const used = new Set(lib.boards.map(b => b.space).filter(Boolean));
   const manifest: LibraryManifest = {
     format: LIBRARY_FORMAT,
     version: LIBRARY_VERSION,
     exportedAt: now,
-    spaces: lib.spaces ?? [],
+    spaces: (lib.spaces ?? []).filter(s => !wanted || used.has(s)),
     boards: [],
     assets: {},
   };
   const info: Record<string, SpaceInfo> = {};
-  for (const name of Object.keys(lib.spaceInfo ?? {})) {
+  for (const name of Object.keys(lib.spaceInfo ?? {}).filter(s => !wanted || used.has(s))) {
     const i = spaceInfoOf(lib, name);
     if (i.emoji || i.description) info[name] = i;
   }
@@ -94,6 +102,7 @@ export function encodeLibrary(
     const saved: SavedMeta = { id: b.id, title: b.title, createdAt: b.createdAt, updatedAt: b.updatedAt };
     if (b.space) saved.space = b.space;
     if (b.starred) saved.starred = true;
+    if (boardEmoji(b)) saved.emoji = boardEmoji(b);
     if (b.deletedAt) saved.deletedAt = b.deletedAt;
     manifest.boards.push(saved);
   }
@@ -198,6 +207,7 @@ export function decodeLibrary(
           space: str(m.space),
           starred: m.starred === true,
           deletedAt: str(m.deletedAt),
+          ...(boardEmoji(m) ? { emoji: boardEmoji(m) } : {}),
         },
       });
     } catch {

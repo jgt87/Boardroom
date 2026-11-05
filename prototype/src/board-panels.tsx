@@ -1,7 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MentionSuggestions, MentionText } from './mention-field';
 import { issueLabels, type DiagramIssue } from './diagram-validation';
-import { TEMPLATE_DESCRIPTION_MAX, templatePreview, type UserTemplate } from './user-templates';
+import {
+  TEMPLATE_DESCRIPTION_MAX,
+  loadTemplateSort,
+  loadTemplateUse,
+  sortUserTemplates,
+  storeTemplateSort,
+  templatePreview,
+  type UserTemplate,
+} from './user-templates';
 import { PreviewThumb, StarterThumb } from './board-thumb';
 import { doNotDisturb } from './view-prefs';
 import {
@@ -28,10 +36,12 @@ import {
   Download,
   ClipboardList,
   Palette,
+  Table2,
 } from 'lucide-react';
 import type { Board, Item, CommentThread } from './model';
 import { layerGroups, layerLabel, formatClock, timerRemaining, votesUsed } from './board-tools';
-import { filterTemplates, templateCategories } from './starter-templates';
+import { filterTemplates, sortTemplates, templateCategories, templateSorts } from './starter-templates';
+import type { TemplateSort } from './starter-templates';
 import { a11yKindLabels, groupA11yIssues } from './access-tools';
 import type { TemplateCategory } from './starter-templates';
 import type { TimerState, A11yIssue, TemplateName, PenStyle, VotingOptions } from './board-tools';
@@ -188,6 +198,7 @@ export function VotingPanel({
   onRenameResult,
   onDeleteResult,
   onPlaceResult,
+  onTableResult,
 }: {
   board: Board;
   selectedCount: number;
@@ -198,6 +209,8 @@ export function VotingPanel({
   onDeleteResult?: (index: number) => void;
   /** Put a result on the board as a text object. */
   onPlaceResult?: (index: number) => void;
+  /** Put a result on the board as a ranked Table beside the voted objects. */
+  onTableResult?: (index: number) => void;
 }) {
   const [budget, setBudget] = useState(3),
     [minutes, setMinutes] = useState(0),
@@ -329,6 +342,17 @@ export function VotingPanel({
                         onClick={() => onPlaceResult(index)}
                       >
                         <ClipboardList size={13} />
+                      </button>
+                    )}
+                    {onTableResult && (
+                      <button
+                        className="icon-button"
+                        aria-label={`Add result ${title} to the board as a table`}
+                        title="Add results to board"
+                        disabled={!r.totals.length}
+                        onClick={() => onTableResult(index)}
+                      >
+                        <Table2 size={13} />
                       </button>
                     )}
                     {onDeleteResult && (
@@ -657,7 +681,7 @@ export function CommentThreadView({
             className={`icon-button ${thread.pinned ? 'active' : ''}`}
             aria-label={thread.pinned ? 'Unpin thread' : 'Pin thread'}
             aria-pressed={!!thread.pinned}
-            title={thread.pinned ? 'Unpin' : 'Pin to the top of the comments list'}
+            title={thread.pinned ? 'Unpin' : 'Pin: keep it open on the canvas and first in the list'}
             onClick={() => onPin(!thread.pinned)}
           >
             {thread.pinned ? <PinOff size={14} /> : <Pin size={14} />}
@@ -1308,10 +1332,15 @@ export function TemplatesPanel({
   const [query, setQuery] = useState(''),
     [category, setCategory] = useState<TemplateCategory | null>(null),
     [editing, setEditing] = useState<string | null>(null),
+    // Gallery order (track L): featured, name, category or recently used (remembered in this browser).
+    [sort, setSort] = useState<TemplateSort>(loadTemplateSort),
+    [use] = useState(loadTemplateUse),
     importInput = useRef<HTMLInputElement>(null),
-    shown = filterTemplates(query, category),
+    shown = sortTemplates(filterTemplates(query, category), sort, use),
     q = query.trim().toLowerCase(),
-    mine = userTemplates.filter(t => !q || `${t.name} ${t.description ?? ''}`.toLowerCase().includes(q));
+    mine = sortUserTemplates(userTemplates, sort, use).filter(
+      t => !q || `${t.name} ${t.description ?? ''}`.toLowerCase().includes(q),
+    );
   const previews = useMemo(() => new Map(userTemplates.map(t => [t.id, templatePreview(t)])), [userTemplates]);
   return (
     <aside className="facilitate-panel floating" aria-label="Templates" onKeyDown={stopKeys(onClose)}>
@@ -1332,6 +1361,24 @@ export function TemplatesPanel({
             </button>
           ))}
         </div>
+        <label className="template-sort">
+          Sort by
+          <select
+            aria-label="Sort templates"
+            value={sort}
+            onChange={e => {
+              const next = e.target.value as TemplateSort;
+              setSort(next);
+              storeTemplateSort(next);
+            }}
+          >
+            {templateSorts.map(s => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <div className="template-list-scroll">
         {shown.length ? (

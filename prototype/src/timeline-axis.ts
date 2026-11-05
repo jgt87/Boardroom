@@ -1,8 +1,58 @@
 import type { RecordRow } from './model.ts';
 import { isIsoDate } from './facilitation-widgets.ts';
 export type TimelineScale = 'days' | 'weeks' | 'months' | 'quarters' | 'years';
-export type TimelineSettings = { scale?: TimelineScale; start?: string; end?: string; fit?: boolean };
+/** A free milestone flag on a Timeline (track R2-I): a dated, coloured label not tied to a record. */
+export type TimelineFlag = { id: string; date: string; label: string; color: string };
+export type TimelineSettings = {
+  scale?: TimelineScale;
+  start?: string;
+  end?: string;
+  fit?: boolean;
+  flags?: TimelineFlag[];
+};
+export const TIMELINE_FLAG_LIMIT = 50;
+export const TIMELINE_FLAG_LABEL_MAX = 80;
+/** Flag colours offered in the Timeline controls; any #rrggbb colour is accepted when loading. */
+export const timelineFlagColors = [
+  { name: 'Red', value: '#e5484d' },
+  { name: 'Orange', value: '#f76b15' },
+  { name: 'Yellow', value: '#e2b100' },
+  { name: 'Green', value: '#30a46c' },
+  { name: 'Blue', value: '#4262ff' },
+  { name: 'Purple', value: '#8e4ec6' },
+  { name: 'Gray', value: '#696973' },
+] as const;
 const DAY = 86400000;
+/** A flag label without markup or control characters. */
+export const cleanFlagLabel = (v: string) =>
+  [...v].filter(ch => ch.charCodeAt(0) >= 32 && ch !== '<' && ch !== '>').join('');
+/** Throw when the optional free flags are not valid (unique ids, real dates, short labels, #rrggbb colours). */
+export function validateTimelineFlags(flags: unknown): void {
+  if (flags === undefined) return;
+  const ids = new Set<string>();
+  if (
+    !Array.isArray(flags) ||
+    flags.length > TIMELINE_FLAG_LIMIT ||
+    flags.some(f => {
+      const bad =
+        !f ||
+        typeof f !== 'object' ||
+        typeof f.id !== 'string' ||
+        !/^[A-Za-z0-9_-]{1,100}$/.test(f.id) ||
+        ids.has(f.id) ||
+        typeof f.date !== 'string' ||
+        !isIsoDate(f.date) ||
+        typeof f.label !== 'string' ||
+        f.label.length > TIMELINE_FLAG_LABEL_MAX ||
+        cleanFlagLabel(f.label) !== f.label ||
+        typeof f.color !== 'string' ||
+        !/^#[0-9a-f]{6}$/i.test(f.color);
+      if (!bad) ids.add(f.id);
+      return bad;
+    })
+  )
+    throw new Error('Invalid Timeline flags.');
+}
 export function validateTimelineSettings(value: TimelineSettings): void {
   if (
     !value ||
@@ -14,6 +64,34 @@ export function validateTimelineSettings(value: TimelineSettings): void {
     (value.fit !== undefined && typeof value.fit !== 'boolean')
   )
     throw new Error('Choose a valid Timeline range, with the end on or after the start.');
+  validateTimelineFlags(value.flags);
+}
+/** Add a free flag; throws when the date is not real, the label is too long or the limit is reached. */
+export function addTimelineFlag(
+  settings: TimelineSettings,
+  flag: Omit<TimelineFlag, 'id'>,
+  makeId: () => string = () => crypto.randomUUID(),
+): TimelineSettings {
+  const flags = settings.flags ?? [];
+  if (flags.length >= TIMELINE_FLAG_LIMIT) throw new Error(`Use up to ${TIMELINE_FLAG_LIMIT} flags per Timeline.`);
+  if (!isIsoDate(flag.date)) throw new Error('Choose a date for the flag.');
+  const label = cleanFlagLabel(flag.label).trim().slice(0, TIMELINE_FLAG_LABEL_MAX);
+  const next = [...flags, { id: makeId(), date: flag.date, label, color: flag.color }];
+  validateTimelineFlags(next);
+  return { ...settings, flags: next };
+}
+/** Remove a free flag (the `flags` list is dropped when it becomes empty). */
+export function removeTimelineFlag(settings: TimelineSettings, id: string): TimelineSettings {
+  const flags = (settings.flags ?? []).filter(f => f.id !== id);
+  const next: TimelineSettings = { ...settings, flags };
+  if (!flags.length) delete next.flags;
+  return next;
+}
+/** Horizontal position (0..1 of the axis width) of the middle of a flag's day, or null when it is out of range. */
+export function flagLeft(date: string, axis: { min: number; max: number }): number | null {
+  const t = Date.parse(date);
+  if (!Number.isFinite(t) || t < axis.min || t > axis.max) return null;
+  return (t - axis.min + DAY / 2) / (axis.max - axis.min + DAY);
 }
 function floor(time: number, scale: TimelineScale): number {
   const date = new Date(time);
@@ -40,6 +118,7 @@ export function timelineAxis(
   const scale = settings.scale ?? 'weeks',
     dates = rows
       .flatMap(r => [r.start, r.end])
+      .concat((settings.flags ?? []).map(f => f.date))
       .filter(Boolean)
       .map(Date.parse)
       .filter(Number.isFinite);

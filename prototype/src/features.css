@@ -1113,3 +1113,33 @@
   outline: 2px solid var(--accent, #4262ff);
   outline-offset: 1px;
 }
+
+/* Animated GIFs (track G): the play/pause button stays visible while paused, otherwise it shows on hover or focus. */
+.gif-toggle.playing {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+#objects [data-item]:hover .gif-toggle.playing,
+.gif-toggle.playing:focus-within {
+  opacity: 1;
+}
+@media (hover: none) {
+  .gif-toggle.playing {
+    opacity: 1;
+  }
+}
+
+/* Image crop shapes (track G). */
+.mask-menu {
+  width: 210px;
+}
+.mask-menu button {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.mask-menu button[aria-checked='true'] {
+  background: #edf0ff;
+  color: var(--blue);
+}

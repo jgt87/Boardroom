@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Download, FileUp, RefreshCw, Workflow, X } from 'lucide-react';
+import { Download, FileUp, RefreshCw, Shapes, Workflow, X } from 'lucide-react';
 import type { Item } from './model';
+import { createItem } from './model';
+import { convertDrawioWidget, drawioImportNote } from './drawio-shapes';
 import type { WidgetCtx, WidgetView } from './widget-types';
 import { DRAWIO_URL, DRAWIO_ORIGIN, assertDrawioXml, isDrawioSender, parseDrawioMessage } from './drawio';
 import { readDrawioFile, downloadDrawio, drawioPreview } from './drawio-files';
 import { useLatest } from './use-latest';
+import { statusAction } from './status-chip';
 import './drawio.css';
 
 function DrawioRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
@@ -333,11 +336,32 @@ export const drawioView: WidgetView = {
   mode: 'svg',
   Render: DrawioRender,
   Editor: DrawioEditor,
-  actions: item => [
+  actions: (item, ctx) => [
     {
       label: 'Export .drawio',
       icon: <Download size={16} />,
       run: () => downloadDrawio(String(item.data?.xml ?? ''), item.text),
+    },
+    statusAction(item, ctx),
+    {
+      // Native shapes and connectors in place of the widget (track R2-H); one undo step.
+      label: 'Convert to shapes',
+      icon: <Shapes size={16} />,
+      disabled: !!item.locked,
+      run: () => {
+        try {
+          let note = '';
+          ctx.update(b => {
+            const made = convertDrawioWidget(b, item.id, (t, x, y, f) => createItem(t, x, y, f));
+            if (!made) return b;
+            note = drawioImportNote(made.result);
+            return made.board;
+          });
+          if (note) ctx.display(note);
+        } catch (error) {
+          ctx.display((error as Error).message);
+        }
+      },
     },
   ],
 };

@@ -1,7 +1,7 @@
 // Pure specs for structured diagram widgets: org charts (35), story maps (36), auto-layout containers (39).
 import type { WidgetSpec } from './widget-types.ts';
 import type { Item } from './model.ts';
-import { validateOrgNodes, starterOrg } from './orgchart.ts';
+import { validateOrgNodes, validateOrgCardFields, starterOrg } from './orgchart.ts';
 import type { OrgNode } from './orgchart.ts';
 import { validateStoryMap, starterStoryMap } from './storymap.ts';
 import type { StoryMap } from './storymap.ts';
@@ -15,8 +15,14 @@ export const diagramSpecs: WidgetSpec[] = [
     category: 'Diagramming',
     size: [640, 380],
     init: (item: Item) => ({ ...item, fill: '#ffffff', text: item.text || 'Org chart', data: { nodes: starterOrg() } }),
-    validate: (item: Item) => validateOrgNodes(item.data?.nodes),
-    searchText: (item: Item) => ((item.data?.nodes ?? []) as OrgNode[]).map(n => `${n.name} ${n.role}`).join('\n'),
+    validate: (item: Item) => {
+      validateOrgNodes(item.data?.nodes);
+      validateOrgCardFields(item.data?.cardFields);
+    },
+    searchText: (item: Item) =>
+      ((item.data?.nodes ?? []) as OrgNode[])
+        .map(n => [n.name, n.role, ...(n.fields ?? []).map(f => f.value)].join(' '))
+        .join('\n'),
   },
   {
     kind: 'storymap',

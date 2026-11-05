@@ -3,6 +3,8 @@
 import type { Item, Point } from './model.ts';
 import { SWIM_LANE_HEADER, SWIM_PHASE_HEADER, SWIM_TITLE } from './specs-swimlane.ts';
 import type { SwimlaneData } from './specs-swimlane.ts';
+import { diagramTemplateInfo, diagramTemplateItems, diagramTemplateNames } from './diagram-templates.ts';
+import type { DiagramTemplateName } from './diagram-templates.ts';
 
 export type Make = (type: Item['type'], x: number, y: number, fill?: string) => Item;
 export const templateCategories = [
@@ -30,7 +32,8 @@ export type StarterName =
   | 'Icebreaker'
   | 'Brainwriting'
   | 'User story map'
-  | 'Cross-functional flowchart';
+  | 'Cross-functional flowchart'
+  | DiagramTemplateName;
 export const starterNames: StarterName[] = [
   'Brainstorm',
   'Kanban retro',
@@ -47,6 +50,7 @@ export const starterNames: StarterName[] = [
   'Brainwriting',
   'User story map',
   'Cross-functional flowchart',
+  ...diagramTemplateNames,
 ];
 export type TemplateInfo = { name: string; category: TemplateCategory; about: string; keywords?: string };
 /** Every gallery template (the original four first), with its category and description. */
@@ -150,6 +154,7 @@ export const templateCatalog: TemplateInfo[] = [
     about: 'A process in swimlanes, one lane per team, with phases',
     keywords: 'swimlane swim lane process flow bpmn responsibilities',
   },
+  ...diagramTemplateInfo.map(t => ({ ...t, category: 'Diagramming' as const })),
 ];
 /** Templates matching a search text (name, category, description, keywords) and an optional category. */
 export function filterTemplates(query: string, category: TemplateCategory | null = null): TemplateInfo[] {
@@ -159,6 +164,49 @@ export function filterTemplates(query: string, category: TemplateCategory | null
     const hay = `${t.name} ${t.category} ${t.about} ${t.keywords ?? ''}`.toLowerCase();
     return words.every(w => hay.includes(w));
   });
+}
+
+// ---- Gallery sort and quick-create ids (track L) ----------------------------------------------------------
+export const templateSorts = [
+  { id: 'default', label: 'Featured' },
+  { id: 'name', label: 'Name' },
+  { id: 'category', label: 'Category' },
+  { id: 'recent', label: 'Recently used' },
+] as const;
+export type TemplateSort = (typeof templateSorts)[number]['id'];
+export const isTemplateSort = (v: unknown): v is TemplateSort => templateSorts.some(s => s.id === v);
+/** Last use of each template by key (`starter:<name>` or `user:<id>`), as ISO times. */
+export type TemplateUse = Record<string, string>;
+export const starterUseKey = (name: string) => `starter:${name}`;
+const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' });
+/**
+ * Gallery order: featured (catalog order), by name, by category (gallery category order, then name), or
+ * recently used first (newest use first; never-used templates keep catalog order after them).
+ */
+export function sortTemplates(list: TemplateInfo[], sort: TemplateSort, used: TemplateUse = {}): TemplateInfo[] {
+  const out = [...list];
+  if (sort === 'name') return out.sort((a, b) => byName(a.name, b.name));
+  if (sort === 'category')
+    return out.sort(
+      (a, b) =>
+        templateCategories.indexOf(a.category) - templateCategories.indexOf(b.category) || byName(a.name, b.name),
+    );
+  if (sort === 'recent') {
+    const at = (t: TemplateInfo) => used[starterUseKey(t.name)] ?? '';
+    return out.sort((a, b) => (at(a) === at(b) ? 0 : at(a) > at(b) ? -1 : 1));
+  }
+  return out;
+}
+/** URL-friendly template id: "Kanban retro" → "kanban-retro". */
+export const templateSlug = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+/** The gallery template a quick-create id names (its slug or its name, ignoring case), if any. */
+export function templateBySlug(id: string): TemplateInfo | undefined {
+  const key = templateSlug(id);
+  return key ? templateCatalog.find(t => templateSlug(t.name) === key) : undefined;
 }
 
 const colors = {
@@ -438,4 +486,5 @@ export function starterItems(name: StarterName, at: Point, make: Make): Item[] {
       ];
     }
   }
+  return diagramTemplateItems(name as DiagramTemplateName, at, make);
 }

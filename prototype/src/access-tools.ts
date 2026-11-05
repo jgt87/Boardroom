@@ -3,6 +3,7 @@
 // frame, colour names, accessibility-report grouping and object deep links. Pure: no React, no DOM.
 import type { Board, Item } from './model.ts';
 import { colorNames, createItem } from './model.ts';
+import { paletteName } from './color-palette.ts';
 import { editableIds, groupMembers, rootGroupOf } from './arrange.ts';
 import { frameAroundItem, nearestInDirection, readingOrder, type Direction } from './navigation.ts';
 import { kindLabel } from './switch-type.ts';
@@ -34,7 +35,7 @@ export function laneDescription(board: Board, id: string): string {
 
 /** Spoken colour name: the palette name when there is one, otherwise an approximate hue name. */
 export function spokenColor(hex: string): string {
-  const known = colorNames[hex.toLowerCase()];
+  const known = colorNames[hex.toLowerCase()] ?? paletteName(hex);
   if (known) return known;
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
   if (!m) return hex;
@@ -81,9 +82,14 @@ const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(i
 
 /**
  * Enter a container (Ctrl+Shift+Down): a selected group selects its first member alone; a selected
- * frame selects the first object inside it. Returns the new selection, or undefined.
+ * frame selects the first object inside it. With nothing selected, the board itself is the container: its
+ * first object in reading order is selected (track C). Returns the new selection, or undefined.
  */
 export function enterContainer(board: Board, selected: string[]): string[] | undefined {
+  if (!selected.length) {
+    const id = readingOrder(board)[0];
+    return id ? [id] : undefined;
+  }
   const first = board.items.find(i => i.id === selected[0]);
   if (!first) return undefined;
   const root = rootGroupOf(board, first);

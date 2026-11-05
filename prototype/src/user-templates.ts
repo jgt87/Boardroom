@@ -7,6 +7,7 @@ import type { Board } from './model.ts';
 import { clipboardFormats, copySelection, pastePayload, readClipboardHtml, type ClipPayload } from './clipboard.ts';
 import { frameMoveIds } from './interactions.ts';
 import { cleanPreview, previewOf, type PreviewShape } from './board-library.ts';
+import { isTemplateSort, type TemplateSort, type TemplateUse } from './starter-templates.ts';
 
 export const TEMPLATES_KEY = 'boardroom.templates.v1';
 export const TEMPLATE_LIMIT = 20;
@@ -245,4 +246,71 @@ export function storeTemplates(list: UserTemplate[]): boolean {
   } catch {
     return false;
   }
+}
+
+// ---- Last use and gallery sort (track L) -------------------------------------------------------------------
+/** When each template was last used (starter and saved templates), next to the saved templates. */
+export const TEMPLATE_USE_KEY = 'boardroom.templates.used.v1';
+export const TEMPLATE_SORT_KEY = 'boardroom.templates.sort.v1';
+const USE_LIMIT = 100;
+export const userUseKey = (id: string) => `user:${id}`;
+/** Parse stored use times, keeping only well-formed entries (newest first, at most 100). */
+export function parseTemplateUse(raw: string | null): TemplateUse {
+  try {
+    const value = raw ? JSON.parse(raw) : {};
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const entries = Object.entries(value as Record<string, unknown>).filter(
+      (e): e is [string, string] =>
+        e[0].length <= 120 && typeof e[1] === 'string' && e[1].length <= 40 && Number.isFinite(Date.parse(e[1])),
+    );
+    return Object.fromEntries(entries.sort((a, b) => (a[1] > b[1] ? -1 : 1)).slice(0, USE_LIMIT));
+  } catch {
+    return {};
+  }
+}
+/** Record a use of the template `key` at `now`; the oldest entries drop off beyond the limit. */
+export function noteTemplateUse(use: TemplateUse, key: string, now: Date): TemplateUse {
+  return parseTemplateUse(JSON.stringify({ ...use, [key]: now.toISOString() }));
+}
+export function loadTemplateUse(): TemplateUse {
+  try {
+    return parseTemplateUse(localStorage.getItem(TEMPLATE_USE_KEY));
+  } catch {
+    return {};
+  }
+}
+/** Record a use in this browser's storage (best effort) and return the updated times. */
+export function rememberTemplateUse(key: string, now = new Date()): TemplateUse {
+  const next = noteTemplateUse(loadTemplateUse(), key, now);
+  try {
+    localStorage.setItem(TEMPLATE_USE_KEY, JSON.stringify(next));
+  } catch {
+    /* Storage full or unavailable: the order is a convenience. */
+  }
+  return next;
+}
+export function loadTemplateSort(): TemplateSort {
+  try {
+    const v = localStorage.getItem(TEMPLATE_SORT_KEY);
+    return isTemplateSort(v) ? v : 'default';
+  } catch {
+    return 'default';
+  }
+}
+export function storeTemplateSort(sort: TemplateSort) {
+  try {
+    localStorage.setItem(TEMPLATE_SORT_KEY, sort);
+  } catch {
+    /* Not remembered. */
+  }
+}
+/** Saved templates in gallery order: newest first (default and category), by name, or recently used first. */
+export function sortUserTemplates(list: UserTemplate[], sort: TemplateSort, use: TemplateUse = {}): UserTemplate[] {
+  const out = [...list];
+  if (sort === 'name') return out.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  if (sort === 'recent') {
+    const at = (t: UserTemplate) => use[userUseKey(t.id)] ?? '';
+    return out.sort((a, b) => (at(a) === at(b) ? 0 : at(a) > at(b) ? -1 : 1));
+  }
+  return out;
 }

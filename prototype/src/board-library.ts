@@ -3,6 +3,7 @@
 // preview for the dashboard. The legacy single-board key always mirrors the active board so older
 // copies and external tools keep working, and a newer legacy copy is adopted on load.
 import type { Board, Item } from './model.ts';
+import { sensitivityBadge } from './board-settings.ts';
 
 export interface KeyValueStore {
   getItem(key: string): string | null;
@@ -27,9 +28,13 @@ export type BoardMeta = {
   /** Optional space (folder) the board is filed under, and whether it is starred (item 107). */
   space?: string;
   starred?: boolean;
+  /** Optional board emoji or symbol shown on dashboard cards and beside the board name (track R2-I). */
+  emoji?: string;
   /** Board status and description copied from the board, for dashboard chips, filters and search. */
   status?: string;
   description?: string;
+  /** Sensitivity badge copied from the board (track R2-K), shown on dashboard cards. */
+  sensitivity?: { label: string; color: string };
   /** Set while the board is in the trash; its stored data is kept until it is purged. */
   deletedAt?: string;
   /** 2 once status and description have been copied from the stored board (older indexes lack them). */
@@ -108,13 +113,19 @@ export function cleanPreview(v: unknown): PreviewShape[] | undefined {
 }
 export const DESCRIPTION_MAX = 1000;
 /** Copy the board's status and description onto its index entry (removing them when absent). */
-function withBoardFacts(meta: BoardMeta, board: { status?: unknown; description?: unknown }): BoardMeta {
+function withBoardFacts(
+  meta: BoardMeta,
+  board: { status?: unknown; description?: unknown; sensitivity?: unknown },
+): BoardMeta {
   const m: BoardMeta = { ...meta, v: 2 };
   if (typeof board.status === 'string' && board.status) m.status = board.status;
   else delete m.status;
   if (typeof board.description === 'string' && board.description.trim())
     m.description = board.description.slice(0, DESCRIPTION_MAX);
   else delete m.description;
+  const badge = sensitivityBadge(board.sensitivity);
+  if (badge) m.sensitivity = badge;
+  else delete m.sensitivity;
   return m;
 }
 const metaFor = (id: string, board: Board, now: string, createdAt = now): BoardMeta =>
@@ -262,13 +273,25 @@ export function deleteSpace(kv: KeyValueStore, lib: Library, name: string): Libr
   writeIndex(kv, cleaned);
   return cleaned;
 }
-/** File boards under a space ('' or null removes it) and/or star them. Index-only; board data is untouched. */
-export function setBoardMeta(
-  kv: KeyValueStore,
-  lib: Library,
-  id: string | string[],
-  patch: { space?: string | null; starred?: boolean },
-): Library {
+/** Index-only details of a board: its space, star and emoji ('' or null removes the space or emoji). */
+export type BoardMetaPatch = { space?: string | null; starred?: boolean; emoji?: string | null };
+/** A board's emoji from the (untrusted) index, cleaned, or ''. */
+export const boardEmoji = (meta: Pick<BoardMeta, 'emoji'> | undefined) =>
+  meta && typeof meta.emoji === 'string' ? cleanEmoji(meta.emoji) : '';
+/**
+ * The other boards (outside the trash) filed under the same space as board `id`, or with no space when it has
+ * none, most recently edited first.
+ */
+export function boardsInSameSpace(lib: Library, id: string): { space?: string; boards: BoardMeta[] } {
+  const own = lib.boards.find(b => b.id === id),
+    space = own?.space || undefined;
+  const boards = liveBoards(lib)
+    .filter(b => b.id !== id && (b.space || undefined) === space)
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  return space ? { space, boards } : { boards };
+}
+/** File boards under a space ('' or null removes it), star them or set their emoji. Index-only; board data is untouched. */
+export function setBoardMeta(kv: KeyValueStore, lib: Library, id: string | string[], patch: BoardMetaPatch): Library {
   const ids = new Set(Array.isArray(id) ? id : [id]);
   const next: Library = {
     ...lib,
@@ -283,6 +306,11 @@ export function setBoardMeta(
       if (patch.starred !== undefined) {
         if (patch.starred) m.starred = true;
         else delete m.starred;
+      }
+      if (patch.emoji !== undefined) {
+        const e = patch.emoji ? cleanEmoji(patch.emoji) : '';
+        if (e) m.emoji = e;
+        else delete m.emoji;
       }
       return m;
     }),
@@ -350,6 +378,7 @@ export function saveActive(kv: KeyValueStore, lib: Library, board: Board, now = 
   const meta = metaFor(lib.activeId, board, now, old?.createdAt);
   if (old?.space) meta.space = old.space;
   if (old?.starred) meta.starred = true;
+  if (boardEmoji(old)) meta.emoji = boardEmoji(old);
   if (old?.deletedAt) meta.deletedAt = old.deletedAt;
   const next: Library = { ...lib, boards: [meta, ...lib.boards.filter(b => b.id !== lib.activeId)] };
   writeIndex(kv, next);
@@ -425,6 +454,8 @@ export function duplicateBoard(
   const meta = metaFor(copyId, board, now),
     space = lib.boards[index]?.space;
   if (space) meta.space = space;
+  const emoji = boardEmoji(lib.boards[index]);
+  if (emoji) meta.emoji = emoji;
   boards.splice(index + 1, 0, meta);
   const next: Library = { ...lib, boards };
   writeIndex(kv, next);
@@ -582,6 +613,8 @@ export function addBoards(
     const space = typeof m?.space === 'string' ? cleanSpace(m.space) : '';
     if (space) meta.space = space;
     if (m?.starred === true) meta.starred = true;
+    const emoji = boardEmoji(m);
+    if (emoji) meta.emoji = emoji;
     const deleted = iso(m?.deletedAt);
     if (deleted) meta.deletedAt = deleted;
     added.push(meta);
@@ -606,6 +639,7 @@ export function boardContentParts(board: {
   description?: unknown;
   items?: unknown;
   comments?: unknown;
+  notes?: unknown;
 }): ContentPart[] {
   const parts: ContentPart[] = [];
   const add = (v: unknown, where: Omit<ContentPart, 'text'> = {}) => {
@@ -618,6 +652,8 @@ export function boardContentParts(board: {
   };
   add(board.title);
   add(board.description);
+  // Board notes (track L) match as the board itself.
+  if (typeof board.notes === 'string') add(board.notes.slice(0, 20000));
   for (const raw of Array.isArray(board.items) ? board.items : []) {
     const i = raw as { id?: unknown; text?: unknown; data?: unknown } | null;
     const where = typeof i?.id === 'string' ? { itemId: i.id } : {};

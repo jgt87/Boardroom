@@ -3,7 +3,7 @@ import type { TimelineCanvasProps } from './timeline-canvas';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { RecordRow } from './model';
 import type { RecordColumnSettings } from './record-schema';
-import { statuses, moveRecord, shiftRecord, deleteRecord, columnLoad } from './records';
+import { statuses, moveRecord, shiftRecord, deleteRecord, columnLoad, insertRecordNear } from './records';
 import { CanvasField, canvasControl } from './canvas-fields';
 import { EyeOff } from 'lucide-react';
 import './record-gaps.css';
@@ -52,6 +52,8 @@ export function KanbanView({
   const [dragging, setDragging] = useState<string | null>(null),
     [over, setOver] = useState<string | null>(null),
     focusAfter = useRef<string | null>(null),
+    // A card created from the keyboard: focus its title so it can be typed straight away (track C).
+    editAfter = useRef<string | null>(null),
     root = useRef<HTMLDivElement>(null);
   const full = allRows ?? rows,
     visible = new Set(rows.map(r => r.id)),
@@ -62,7 +64,36 @@ export function KanbanView({
       root.current?.querySelector<HTMLElement>(`[data-card="${focusAfter.current}"]`)?.focus();
       focusAfter.current = null;
     }
+    if (editAfter.current) {
+      const field = root.current?.querySelector<HTMLInputElement>(`[data-card="${editAfter.current}"] .canvas-field`);
+      if (field) {
+        field.focus();
+        field.select();
+        editAfter.current = null;
+      }
+    }
   });
+  /** A new card next to `id` in its column (and lane), as one undo step; its title is focused for typing. */
+  const addNear = (id: string, where: 'above' | 'below', lane?: string) => {
+    const blank: RecordRow = {
+        id: crypto.randomUUID(),
+        title: 'New task',
+        status: '',
+        assignee: '',
+        start: '',
+        end: '',
+      },
+      card = lane !== undefined && withLane ? withLane(blank, lane) : blank;
+    editAfter.current = card.id;
+    onRows!(insertRecordNear(full, id, where, card));
+  };
+  /** Tab / Shift+Tab between cards in reading order; false at either end so focus leaves the board normally. */
+  const stepFocus = (from: HTMLElement, back: boolean) => {
+    const cards = [...(root.current?.querySelectorAll<HTMLElement>('[data-card]') ?? [])],
+      next = cards[cards.indexOf(from) + (back ? -1 : 1)];
+    next?.focus();
+    return !!next;
+  };
   const drop = (status: RecordRow['status'], before: string | null, lane?: string) => {
     if (!dragging || !onRows) return;
     try {
@@ -181,7 +212,9 @@ export function KanbanView({
               onDoubleClick={live ? e => e.stopPropagation() : undefined}
               tabIndex={live ? 0 : undefined}
               aria-label={
-                live ? `${r.title || 'Untitled record'}, ${s}. Alt plus arrow keys move this card.` : undefined
+                live
+                  ? `${r.title || 'Untitled record'}, ${s}. Alt plus arrow keys move this card; Enter adds a card below it.`
+                  : undefined
               }
               onDragStart={
                 live
@@ -226,6 +259,25 @@ export function KanbanView({
                         e.preventDefault();
                         e.stopPropagation();
                         onRows!(deleteRecord(full, r.id));
+                        return;
+                      }
+                      // Keyboard creation and travel (track C): Enter adds a card below, Ctrl+Up/Down adds one
+                      // above or below, Tab and Shift+Tab move to the next or previous card.
+                      const modKey = e.ctrlKey || e.metaKey;
+                      if (
+                        (e.key === 'Enter' && !modKey && !e.altKey && !e.shiftKey) ||
+                        (modKey && !e.altKey && !e.shiftKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp'))
+                      ) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        addNear(r.id, e.key === 'ArrowUp' ? 'above' : 'below', lane);
+                        return;
+                      }
+                      if (e.key === 'Tab' && !modKey && !e.altKey) {
+                        if (stepFocus(e.currentTarget, e.shiftKey)) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }
                         return;
                       }
                       const dir = (

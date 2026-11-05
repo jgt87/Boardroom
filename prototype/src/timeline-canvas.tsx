@@ -1,10 +1,22 @@
 import React, { useId, useLayoutEffect, useRef, useState } from 'react';
-import { GripVertical, Link2, Trash2 } from 'lucide-react';
+import { AlertTriangle, Flag, GripVertical, Link2, Trash2 } from 'lucide-react';
 import type { RecordRow } from './model';
 import { CanvasField, canvasControl } from './canvas-fields';
-import { timelineGeometry, shiftTimelineRecord, addDependency, removeDependency } from './records';
-import { timelineAxis, validateTimelineSettings, reorderTimelineRow, barSide, jumpToRecord } from './timeline-axis';
+import { timelineGeometry, shiftTimelineRecord, addDependency, removeDependency, timelineBarIssue } from './records';
+import {
+  timelineAxis,
+  validateTimelineSettings,
+  reorderTimelineRow,
+  barSide,
+  jumpToRecord,
+  addTimelineFlag,
+  removeTimelineFlag,
+  flagLeft,
+  timelineFlagColors,
+  TIMELINE_FLAG_LABEL_MAX,
+} from './timeline-axis';
 import type { TimelineSettings } from './timeline-axis';
+import './library-r2.css';
 
 export type TimelineCanvasProps = {
   rows: RecordRow[];
@@ -50,6 +62,9 @@ export function TimelineCanvas({
     [notice, setNotice] = useState('');
   const [from, setFrom] = useState(''),
     [to, setTo] = useState('');
+  const [flagDate, setFlagDate] = useState(''),
+    [flagLabel, setFlagLabel] = useState(''),
+    [flagColor, setFlagColor] = useState<string>(timelineFlagColors[0].value);
   const focusAfter = useRef<string | null>(null);
   const full = allRows ?? rows,
     report = (message: string) => {
@@ -333,6 +348,56 @@ export function TimelineCanvas({
             ))}
           </div>
         </details>
+        <details className="timeline-flag-controls">
+          <summary>Flags{settings.flags?.length ? ` (${settings.flags.length})` : ''}</summary>
+          <div>
+            <input
+              aria-label="Flag date"
+              type="date"
+              value={flagDate}
+              onChange={event => setFlagDate(event.target.value)}
+            />
+            <input
+              aria-label="Flag label"
+              placeholder="Label"
+              maxLength={TIMELINE_FLAG_LABEL_MAX}
+              value={flagLabel}
+              onChange={event => setFlagLabel(event.target.value)}
+              onKeyDown={event => event.stopPropagation()}
+            />
+            <select aria-label="Flag colour" value={flagColor} onChange={event => setFlagColor(event.target.value)}>
+              {timelineFlagColors.map(c => (
+                <option key={c.value} value={c.value}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <button
+              disabled={!flagDate}
+              onClick={() => {
+                try {
+                  changeSettings(addTimelineFlag(settings, { date: flagDate, label: flagLabel, color: flagColor }));
+                  setFlagLabel('');
+                } catch (error) {
+                  report((error as Error).message);
+                }
+              }}
+            >
+              Add flag
+            </button>
+            {(settings.flags ?? []).map(flag => (
+              <button
+                key={flag.id}
+                aria-label={`Remove flag ${flag.label || flag.date}`}
+                onClick={() => changeSettings(removeTimelineFlag(settings, flag.id))}
+              >
+                <Trash2 size={12} />
+                <i className="timeline-flag-swatch" style={{ background: flag.color }} aria-hidden="true" />
+                {flag.label || flag.date}
+              </button>
+            ))}
+          </div>
+        </details>
       </fieldset>
       {notice && (
         <p role="status" className="timeline-notice">
@@ -343,7 +408,7 @@ export function TimelineCanvas({
         <div style={{ width: LABEL + axis.width }}>
           <div className="timeline-calendar" style={{ gridTemplateColumns: `${LABEL}px ${axis.width}px` }}>
             <strong>Records</strong>
-            <div>
+            <div data-timeline-axis={`${axis.min}:${axis.max}:${axis.scale}`}>
               {axis.ticks.map(tick => (
                 <span key={tick.time} style={{ left: `${tick.left * 100}%` }}>
                   {tick.label}
@@ -371,7 +436,8 @@ export function TimelineCanvas({
                   </div>
                 );
               const row = entry.row,
-                bar = bars.get(row.id);
+                bar = bars.get(row.id),
+                issue = bar ? timelineBarIssue(row, full) : null;
               return (
                 <div
                   key={row.id}
@@ -463,6 +529,18 @@ export function TimelineCanvas({
                             </>
                           )}
                         </span>
+                        {issue && (
+                          <span
+                            className="timeline-bar-warning"
+                            role="img"
+                            data-bar-warning={row.id}
+                            aria-label={`Problem with ${row.title || 'Untitled record'}: ${issue}`}
+                            title={issue}
+                            style={{ left: `${Math.max(0, Math.min(97, bar.left * 100))}%` }}
+                          >
+                            <AlertTriangle size={12} aria-hidden="true" />
+                          </span>
+                        )}
                         {onRows && ['before', 'after'].includes(barSide(row, axis) ?? '') && (
                           <button
                             {...canvasControl}
@@ -546,6 +624,34 @@ export function TimelineCanvas({
             >
               Drop here to move a record last
             </div>
+            {!!settings.flags?.length && (
+              <div
+                className="timeline-flags-area"
+                style={{ width: axis.width }}
+                role="list"
+                aria-label="Timeline flags"
+              >
+                {settings.flags.map(flag => {
+                  const left = flagLeft(flag.date, axis);
+                  if (left === null) return null;
+                  return (
+                    <span
+                      key={flag.id}
+                      role="listitem"
+                      className="timeline-flag"
+                      data-timeline-flag={flag.id}
+                      style={{ left: `${left * 100}%`, ['--flag-color' as string]: flag.color }}
+                      title={`${flag.label || 'Flag'} · ${flag.date}`}
+                    >
+                      <span className="timeline-flag-label">
+                        <Flag size={10} aria-hidden="true" />
+                        {flag.label || flag.date}
+                      </span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             <div ref={area} className="timeline-links-area" style={{ width: axis.width }} aria-hidden="true">
               <svg width={axis.width} height={display.length * ROW} className="timeline-links">
                 <defs>

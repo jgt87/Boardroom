@@ -7,6 +7,8 @@ import { deepLinkHash, deepLinkTarget, parseDeepLink, type DeepLink } from './ac
 import { describeItem } from './navigation';
 import { announce } from './announce';
 import { useLatest } from './use-latest';
+import { parseQuickCreate, singleFormatBoard } from './deep-link';
+import { createItem, newBoard } from './model';
 
 /**
  * Copy text to the clipboard. The async clipboard API exists only in secure contexts; plain HTTP on the
@@ -44,10 +46,34 @@ export const objectLink = (item: Item, boardId: string) =>
   `${location.origin}${location.pathname}${location.search}${deepLinkHash(item, boardId)}`;
 
 export function useDeepLinks(core: BoardCore) {
-  const { board, library, boardActions, setSelected, fit, display } = core;
+  const { board, library, boardActions, setSelected, fit, display, setDashboard } = core;
   const pending = useRef<DeepLink | null>(null),
     [tick, setTick] = useState(0),
-    latest = useLatest({ library, boardActions });
+    latest = useLatest({ library, boardActions, display, setDashboard });
+  // Quick-create links (track L): #new, #new=<template> or #new=<format>. The hash is cleared first, so a
+  // reload never creates a second board.
+  useEffect(() => {
+    const create = () => {
+      const quick = parseQuickCreate(location.hash);
+      if (!quick) return;
+      try {
+        history.replaceState(null, '', location.pathname + location.search);
+      } catch {
+        /* history is not writable here */
+      }
+      const app = latest.current;
+      if (quick.kind === 'unknown') return app.display('That link names no starter template, so no board was created.');
+      if (quick.kind === 'format') {
+        const made = singleFormatBoard(quick.format, newBoard(), (k, x, y) => createItem(k, x, y));
+        if (!app.boardActions.createFrom(made.board)) return;
+      } else app.boardActions.create(quick.kind === 'template' ? quick.name : null);
+      app.setDashboard(false);
+      app.display(quick.kind === 'template' ? `New board from the ${quick.name} template.` : 'New board created.');
+    };
+    create();
+    addEventListener('hashchange', create);
+    return () => removeEventListener('hashchange', create);
+  }, [latest]);
   useEffect(() => {
     const read = () => {
       const link = parseDeepLink(location.hash);

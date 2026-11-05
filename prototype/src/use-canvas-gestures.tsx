@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { pinchCamera } from './camera';
 import type { Camera } from './camera';
 import { clone, createItem } from './model';
-import type { Item, Kind, Point } from './model';
+import type { Board, Item, Kind, Point } from './model';
 import {
   translate,
   selectWithin,
@@ -14,22 +14,37 @@ import {
   resizeRotated,
   rotateItems,
   rotationDelta,
+  scaleTextFont,
   selectionBounds,
+  textCornerScales,
 } from './interactions';
 import { boxCenter, canRotate, handleAngle, pointInBox } from './rotation';
 import type { Bounds, Handle } from './interactions';
 import { moveConnectorEndpoint, dragBend } from './connector-geometry';
 import { snap45 } from './diagram-gaps';
+import { canTailTarget, moveConnectorLabel, setCalloutTail } from './diagram-extras';
 import { expandGroups, editableIds, moveIds, duplicateItems } from './arrange';
 import { adoptIntoContainers, insertionPreview } from './autolayout';
 import { canCopyToRecords, copyToRecords, recordDropAt } from './record-canvas';
 import { adoptGridObjects, detachGridObjects, gridDropAt } from './grid-canvas';
 import { stackNext, simplify, strokeFromPoints, eraseAt, eraseAlong, nearestAlong } from './board-tools';
+import { pressureOf, settlePressure } from './pen-pressure';
 import { recognizeStroke, lassoSelect, lineEnds, isScribble, scribbleTargets } from './pen-smart';
 import { padSheet, peelNote } from './specs-stickypad';
+import { removeChipMark } from './chips';
+import type { ChipBadge } from './chips';
 import { detaches } from './peel-motion';
 import type { PeelState } from './peel-motion';
-import { newPenState, pointerPolicy, ignoreTouch, penDown, penUp } from './pointer-input';
+import {
+  newPenState,
+  pointerPolicy,
+  ignoreTouch,
+  penDown,
+  penUp,
+  LONG_PRESS_MS,
+  longPressApplies,
+  longPressMoved,
+} from './pointer-input';
 import type { PenState } from './pointer-input';
 
 /** Topmost object a connector being drawn would attach to at `p` (item 113). */
@@ -43,6 +58,9 @@ const connectTargetAt = (board: { items: Item[] }, p: Point, fromId?: string) =>
         i.id !== fromId &&
         pointInBox(i, p),
     );
+/** Topmost object a callout tail dragged to `p` would point at (track R2-H). */
+const tailTargetAt = (board: { items: Item[] }, p: Point, calloutId: string) =>
+  [...board.items].reverse().find(i => canTailTarget(i, calloutId) && pointInBox(i, p));
 /** A pen stroke's points in world coordinates. */
 const absolutePoints = (i: Item) => (i.points ?? []).map(p => ({ x: i.x + p.x, y: i.y + p.y }));
 import type { BoardCore, Gesture } from './board-app';
@@ -54,7 +72,9 @@ export function useCanvasGestures(core: BoardCore) {
     pinch = useRef<{ camera: Camera; a: { x: number; y: number }; b: { x: number; y: number } } | null>(null),
     // Pen and palm handling (track R5) and the pointer that owns the current gesture.
     pen = useRef<PenState>(newPenState()),
-    owner = useRef<{ id: number; touch: boolean } | null>(null);
+    owner = useRef<{ id: number; touch: boolean } | null>(null),
+    // A pending touch long press (track C): the finger, where it went down and its timer.
+    longPress = useRef<{ id: number; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null>(null);
   const {
     setDropLine,
     display,
@@ -100,12 +120,36 @@ export function useCanvasGestures(core: BoardCore) {
     setLasso,
     setConnectTarget,
     setPeeling,
+    setContextMenu,
   } = core;
+  function clearLongPress() {
+    if (longPress.current) clearTimeout(longPress.current.timer);
+    longPress.current = null;
+  }
+  /**
+   * Long press on touch (track C): holding a still finger on an object selects it and opens its context menu;
+   * on empty canvas it opens the canvas menu. Moving, lifting, a second finger or the pen cancels it.
+   */
+  function armLongPress(e: React.PointerEvent<SVGSVGElement>, itemId: string | undefined) {
+    clearLongPress();
+    const { clientX: x, clientY: y, pointerId: id } = e;
+    const timer = setTimeout(() => {
+      if (longPress.current?.id !== id) return;
+      longPress.current = null;
+      const current = boardRef.current;
+      cancelGesture();
+      if (itemId && current.items.some(i => i.id === itemId)) setSelected(expandGroups(current, [itemId]));
+      else setSelected([]);
+      setContextMenu({ x, y, world: toWorld(x, y), onItem: !!itemId });
+    }, LONG_PRESS_MS);
+    longPress.current = { id, x, y, timer };
+  }
   const hit = (e: React.PointerEvent) => (e.target as Element).closest<SVGGElement>('[data-item]')?.dataset.item;
   function cancelGesture() {
     const g = gesture.current;
     gesture.current = null;
     owner.current = null;
+    clearLongPress();
     if (g?.mode === 'pan') setCamera(g.camera);
     if (g && 'originalIds' in g && g.originalIds) setSelected(g.originalIds);
     setDraft(null);
@@ -134,15 +178,20 @@ export function useCanvasGestures(core: BoardCore) {
         turn = rotationDelta(raw, shift, single && canRotate(single) ? (single.rotation ?? 0) : null);
       return { board: rotateItems(g.board, g.ids, turn, g.pivot!), guides: [] };
     }
-    const one = g.ids.length === 1 ? g.board.items.find(i => i.id === g.ids[0]) : undefined;
+    const one = g.ids.length === 1 ? g.board.items.find(i => i.id === g.ids[0]) : undefined,
+      // A text object dragged by a corner scales with its font, keeping its proportions (Shift reflows instead).
+      scaleText = textCornerScales(one, g.handle, shift),
+      withFont = (b: Board) => (scaleText && one ? scaleTextFont(b, g.board, one.id) : b);
     // A single rotated object resizes along its own axes (gap D1); Alt resizes from the centre (gap D8).
     if (one?.rotation)
       return {
-        board: resizeItems(
-          g.board,
-          g.ids,
-          one,
-          resizeRotated(one, g.handle ?? 'se', delta, shift !== (one.type === 'image'), alt),
+        board: withFont(
+          resizeItems(
+            g.board,
+            g.ids,
+            one,
+            resizeRotated(one, g.handle ?? 'se', delta, scaleText || shift !== (one.type === 'image'), alt),
+          ),
         ),
         guides: [],
       };
@@ -150,14 +199,16 @@ export function useCanvasGestures(core: BoardCore) {
       images = g.ids.length > 0 && g.ids.every(id => g.board.items.find(i => i.id === id)?.type === 'image');
     return {
       board: bounds
-        ? resizeItems(
-            g.board,
-            g.ids,
-            bounds,
-            ((b: Bounds) => (viewPrefs.snapGrid && !shift && !alt ? snapResize(bounds, b) : b))(
-              resizeBounds(bounds, g.handle ?? 'se', delta, shift !== images, alt),
+        ? withFont(
+            resizeItems(
+              g.board,
+              g.ids,
+              bounds,
+              ((b: Bounds) => (viewPrefs.snapGrid && !shift && !alt && !scaleText ? snapResize(bounds, b) : b))(
+                resizeBounds(bounds, g.handle ?? 'se', delta, scaleText || shift !== images, alt),
+              ),
+              true,
             ),
-            true,
           )
         : g.board,
       guides: [],
@@ -213,10 +264,19 @@ export function useCanvasGestures(core: BoardCore) {
       touches.current.clear();
       pinch.current = null;
     }
+    // Any other pointer going down (a second finger, the pen) cancels a pending long press.
+    clearLongPress();
     const before = gesture.current;
     startGesture(e, policy === 'pan');
-    if (gesture.current && gesture.current !== before)
+    const started = gesture.current;
+    if (started && started !== before) {
       owner.current = { id: e.pointerId, touch: e.pointerType === 'touch' };
+      if (
+        longPressApplies(e.pointerType, policy, tool, touches.current.size) &&
+        (started.mode === 'marquee' || (started.mode === 'move' && !started.peel))
+      )
+        armLongPress(e, started.mode === 'move' ? hit(e) : undefined);
+    }
   }
   function startGesture(e: React.PointerEvent<SVGSVGElement>, fingerPans: boolean) {
     if (touchDown(e)) return;
@@ -247,7 +307,17 @@ export function useCanvasGestures(core: BoardCore) {
       moved: false,
     };
     const linkEl = (e.target as Element).closest('[data-link]'),
-      pin = (e.target as Element).closest('[data-comment]');
+      pin = (e.target as Element).closest('[data-comment]'),
+      chipMark = (e.target as Element).closest('[data-chip-remove]');
+    if (chipMark && id && e.button === 0 && tool === 'select' && !space.current) {
+      // A placed voting dot returns to its pile; the × on a sticky's estimate or assignee removes it (track F).
+      try {
+        update(removeChipMark(current, id, chipMark.getAttribute('data-chip-remove') as ChipBadge));
+      } catch (error) {
+        display((error as Error).message);
+      }
+      return;
+    }
     if (linkEl && e.button === 0) {
       const target = current.items.find(i => i.id === linkEl.getAttribute('data-link'));
       if (target) followLink(target);
@@ -295,6 +365,33 @@ export function useCanvasGestures(core: BoardCore) {
       tool === 'select'
     ) {
       gesture.current = { ...base, mode: 'label', ids: [selectedItem.id] };
+      return;
+    }
+    const extraLabel = (e.target as Element).closest('[data-label-drag]');
+    if (
+      extraLabel &&
+      selectedItem?.type === 'arrow' &&
+      selectedItem.id === extraLabel.getAttribute('data-label-of') &&
+      !selectedItem.locked &&
+      tool === 'select'
+    ) {
+      // Extra labels slide along the line like the main caption (track R2-H).
+      gesture.current = {
+        ...base,
+        mode: 'label',
+        ids: [selectedItem.id],
+        labelId: extraLabel.getAttribute('data-label-drag')!,
+      };
+      return;
+    }
+    if (
+      (e.target as Element).getAttribute('data-callout-tail') &&
+      selectedItem &&
+      selectedItem.id === (e.target as Element).getAttribute('data-callout-tail') &&
+      !selectedItem.locked &&
+      tool === 'select'
+    ) {
+      gesture.current = { ...base, mode: 'tail', ids: [selectedItem.id] };
       return;
     }
     if (tool === 'hand' || space.current || e.button === 1) gesture.current = { ...base, mode: 'pan' };
@@ -405,7 +502,8 @@ export function useCanvasGestures(core: BoardCore) {
         if (item && !['arrow', 'pen', 'frame', 'swimlane'].includes(item.type)) next.from = item.id;
       }
       if (tool === 'pen') {
-        next.points = [{ x: 0, y: 0 }];
+        // A stylus records its pressure per point (track R2-K); mouse and touch strokes stay plain.
+        next.points = [e.pointerType === 'pen' ? { x: 0, y: 0, p: pressureOf(e.pressure) } : { x: 0, y: 0 }];
         next.fill = penColor;
         next.data = { style: penStyle, width: penWidth };
       }
@@ -416,6 +514,8 @@ export function useCanvasGestures(core: BoardCore) {
   }
   function pointerMove(e: React.PointerEvent<SVGSVGElement>) {
     if (ignoreTouch(pen.current, e, performance.now())) return;
+    const lp = longPress.current;
+    if (lp?.id === e.pointerId && longPressMoved(lp, { x: e.clientX, y: e.clientY })) clearLongPress();
     if (touchMove(e) || foreign(e)) return;
     const g = gesture.current;
     if (!g) return;
@@ -449,12 +549,11 @@ export function useCanvasGestures(core: BoardCore) {
         g.board.items.find(i => i.id === g.ids[0])!,
         g.board.items,
       );
-      setDraft({
-        ...g.board,
-        items: g.board.items.map(i =>
-          i.id === g.ids[0] ? { ...i, connector: { ...i.connector, labelAt: nearestAlong(geo.nodes, p) } } : i,
-        ),
-      });
+      setDraft(moveConnectorLabel(g.board, g.ids[0], g.labelId ?? null, nearestAlong(geo.nodes, p)));
+    } else if (g.mode === 'tail' && g.moved) {
+      const over = e.altKey ? undefined : tailTargetAt(g.board, p, g.ids[0]);
+      setConnectTarget(over?.id ?? null);
+      setDraft(setCalloutTail(g.board, g.ids[0], p, over?.id));
     } else if (g.mode === 'rotate') {
       if (g.moved) setDraft(transformed(g, p, e.shiftKey, e.altKey).board);
     } else if (g.mode === 'move' || g.mode === 'resize') {
@@ -470,7 +569,8 @@ export function useCanvasGestures(core: BoardCore) {
         const next = transformed(g, p, e.shiftKey, e.altKey);
         setDraft(next.board);
         setGuides(next.guides);
-        const drop = g.mode === 'move' ? recordDropAt(document.elementsFromPoint(e.clientX, e.clientY)) : null;
+        const drop =
+          g.mode === 'move' ? recordDropAt(document.elementsFromPoint(e.clientX, e.clientY), e.clientX) : null;
         const target =
           drop && canCopyToRecords(g.board, g.ids, drop) ? g.board.items.find(i => i.id === drop.targetId) : null;
         setDropLine(
@@ -485,7 +585,9 @@ export function useCanvasGestures(core: BoardCore) {
       setMarquee({ x: Math.min(p.x, g.start.x), y: Math.min(p.y, g.start.y), w: Math.abs(dx), h: Math.abs(dy) });
     else if (g.item) {
       if (g.mode === 'draw') {
-        if ((g.item.points?.length ?? 0) < 20000) g.item.points!.push({ x: dx, y: dy });
+        const pts = g.item.points!;
+        if (pts.length < 20000)
+          pts.push(pts[0]?.p !== undefined ? { x: dx, y: dy, p: pressureOf(e.pressure) } : { x: dx, y: dy });
       } else if (g.item.type === 'arrow') {
         // Shift keeps the line at 45-degree steps (gap E5).
         const end = e.shiftKey ? snap45(dx, dy) : { x: dx, y: dy };
@@ -509,6 +611,7 @@ export function useCanvasGestures(core: BoardCore) {
   }
   function pointerUp(e: React.PointerEvent<SVGSVGElement>) {
     const now = performance.now();
+    if (longPress.current?.id === e.pointerId) clearLongPress();
     if (e.pointerType === 'pen') pen.current = penUp(pen.current, e, now);
     else if (ignoreTouch(pen.current, e, now)) {
       touches.current.delete(e.pointerId);
@@ -538,12 +641,17 @@ export function useCanvasGestures(core: BoardCore) {
           ...g.ids,
           ...expandGroups(
             g.board,
-            selectWithin(g.board.items, {
-              x: Math.min(final.x, g.start.x),
-              y: Math.min(final.y, g.start.y),
-              w: Math.abs(final.x - g.start.x),
-              h: Math.abs(final.y - g.start.y),
-            }).filter(id => !g.board.items.find(i => i.id === id)?.locked),
+            selectWithin(
+              g.board.items,
+              {
+                x: Math.min(final.x, g.start.x),
+                y: Math.min(final.y, g.start.y),
+                w: Math.abs(final.x - g.start.x),
+                h: Math.abs(final.y - g.start.y),
+              },
+              // Holding Alt while releasing inverts the "Select objects the box touches" setting.
+              viewPrefs.marqueeTouch !== e.altKey,
+            ).filter(id => !g.board.items.find(i => i.id === id)?.locked),
           ),
         ]),
       ]);
@@ -558,14 +666,18 @@ export function useCanvasGestures(core: BoardCore) {
       }
       if (g.item.type === 'pen') {
         const absolute = simplify(
-          g.item.points!.map(p => ({ x: g.item!.x + p.x, y: g.item!.y + p.y })),
+          g.item.points!.map(p => ({ ...p, x: g.item!.x + p.x, y: g.item!.y + p.y })),
           0.6 / g.camera.z,
         );
         Object.assign(
           g.item,
           strokeFromPoints(
             g.item,
-            absolute.length > 1 ? absolute : [...absolute, { x: absolute[0].x + 0.5, y: absolute[0].y + 0.5 }],
+            settlePressure(
+              absolute.length > 1
+                ? absolute
+                : [...absolute, { ...absolute[0], x: absolute[0].x + 0.5, y: absolute[0].y + 0.5 }],
+            ),
           ),
         );
       }
@@ -620,11 +732,17 @@ export function useCanvasGestures(core: BoardCore) {
       if (draft) update(draft);
     } else if (g.mode === 'label') {
       if (moved && draft) update(draft);
+    } else if (g.mode === 'tail') {
+      if (moved) {
+        const over = e.altKey ? undefined : tailTargetAt(g.board, final, g.ids[0]);
+        update(setCalloutTail(g.board, g.ids[0], final, over?.id));
+      }
     } else if (g.mode === 'move' || g.mode === 'resize') {
       // A sheet released before it tore off springs back onto the pad: nothing is taken.
       if (moved && !(g.peel && !g.peel.live.detached)) {
         const next = transformed(g, final, e.shiftKey, e.altKey).board;
-        const drop = g.mode === 'move' ? recordDropAt(document.elementsFromPoint(e.clientX, e.clientY)) : null;
+        const drop =
+          g.mode === 'move' ? recordDropAt(document.elementsFromPoint(e.clientX, e.clientY), e.clientX) : null;
         if (drop && canCopyToRecords(g.board, g.ids, drop)) {
           update(copyToRecords(g.board, g.ids, drop));
           display('Copied to records');
@@ -642,6 +760,7 @@ export function useCanvasGestures(core: BoardCore) {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   }
   function pointerCancel(e: React.PointerEvent<SVGSVGElement>) {
+    if (longPress.current?.id === e.pointerId) clearLongPress();
     if (e.pointerType === 'pen') pen.current = penUp(pen.current, e, performance.now());
     if (foreign(e)) return;
     owner.current = null;

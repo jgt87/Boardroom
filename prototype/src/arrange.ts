@@ -274,6 +274,7 @@ export function duplicateItems(
     if (i.from) copy.from = map.get(i.from) ?? i.from;
     if (i.to) copy.to = map.get(i.to) ?? i.to;
     if (i.linkTo && map.has(i.linkTo)) copy.linkTo = map.get(i.linkTo);
+    if (i.tail?.target && map.has(i.tail.target)) copy.tail = { ...i.tail, target: map.get(i.tail.target) };
     if (i.group) copy.group = newGroup.get(i.group);
     if (i.type === 'grid')
       copy.data = {

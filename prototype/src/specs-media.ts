@@ -7,6 +7,7 @@ import type { Board, Item } from './model.ts';
 import type { WidgetSpec } from './widget-types.ts';
 import { presetSize } from './frame-presets.ts';
 import { validateItemStatus } from './board-settings.ts';
+import { validCuts } from './media-playback.ts';
 
 // ---- URLs ------------------------------------------------------------------------------------
 /** Normalise a user-entered web address to an https URL, or throw a readable error. */
@@ -34,7 +35,7 @@ export const domainOf = (url: string) => {
 };
 
 export type EmbedProvider =
-  'youtube' | 'vimeo' | 'maps' | 'figma' | 'codepen' | 'gdocs' | 'gsheets' | 'gslides' | 'loom';
+  'youtube' | 'vimeo' | 'maps' | 'figma' | 'codepen' | 'gdocs' | 'gsheets' | 'gslides' | 'loom' | 'office' | 'powerbi';
 export const providerLabels: Record<EmbedProvider, string> = {
   youtube: 'YouTube video',
   vimeo: 'Vimeo video',
@@ -45,6 +46,8 @@ export const providerLabels: Record<EmbedProvider, string> = {
   gsheets: 'Google Sheets spreadsheet',
   gslides: 'Google Slides presentation',
   loom: 'Loom video',
+  office: 'Office document',
+  powerbi: 'Power BI report',
 };
 const googleKinds: Record<string, { provider: EmbedProvider; published: string; shared: string }> = {
   document: { provider: 'gdocs', published: 'pub?embedded=true', shared: 'preview' },
@@ -114,8 +117,25 @@ export function embedSource(value: string): { provider: EmbedProvider; url: stri
       throw new Error('That Loom link does not contain a video id.');
     return { provider: 'loom', url: url.href, src: `https://www.loom.com/embed/${parts[1]}` };
   }
+  // Office documents shared from OneDrive or SharePoint (track J): only their embed links, which the
+  // services publish for framing. Ordinary view or edit links are refused with a hint.
+  if (host === 'onedrive.live.com') {
+    if (parts[0] !== 'embed') throw new Error('Use the embed link from OneDrive (Share, then Embed).');
+    return { provider: 'office', url: url.href, src: url.href };
+  }
+  if (/^[a-z0-9-]{1,63}\.sharepoint\.com$/.test(host)) {
+    if (url.searchParams.get('action') !== 'embedview')
+      throw new Error('Use the embed link from SharePoint (its address contains action=embedview).');
+    return { provider: 'office', url: url.href, src: url.href };
+  }
+  // Power BI reports published to the web (/view?r=…) or embedded for an organisation (/reportEmbed?…).
+  if (host === 'app.powerbi.com') {
+    if (!['view', 'reportembed'].includes(parts[0]?.toLowerCase()) || parts.length !== 1)
+      throw new Error('Use a Power BI publish-to-web (/view) or report embed (/reportEmbed) link.');
+    return { provider: 'powerbi', url: url.href, src: url.href };
+  }
   throw new Error(
-    'This site cannot be embedded. Supported: YouTube, Vimeo, Loom, map embed links, Figma, CodePen and Google documents, spreadsheets and presentations. Use a bookmark for other links.',
+    'This site cannot be embedded. Supported: YouTube, Vimeo, Loom, map embed links, Figma, CodePen, Google documents, spreadsheets and presentations, OneDrive and SharePoint Office embed links and Power BI reports. Use a bookmark for other links.',
   );
 }
 
@@ -345,6 +365,8 @@ export const mediaSpecs: WidgetSpec[] = [
         (!d.trim || !finite(d.trim.start, 0, 1e6) || !finite(d.trim.end, 0, 1e6) || d.trim.start >= d.trim.end)
       )
         fail('Invalid video trim.');
+      // Cut-out ranges (track G): sorted, non-overlapping ranges skipped during playback.
+      if (d.cuts !== undefined && !validCuts(d.cuts)) fail('Invalid video cuts.');
     },
   },
   {
@@ -388,7 +410,7 @@ export const mediaSpecs: WidgetSpec[] = [
   {
     kind: 'embed',
     label: 'Embed',
-    description: 'Embed a video, map, design file or code pen',
+    description: 'Embed a video, map, design file, code pen, Office document or Power BI report',
     category: 'Media',
     size: [480, 300],
     init: i => ({ ...i, data: { url: '', provider: '' } }),

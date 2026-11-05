@@ -285,9 +285,12 @@ test('reduce motion: an animated GIF shows a still frame with a play/pause butto
   await pause.click();
   await expect(picture).toHaveAttribute('href', /^data:image\/png;base64,/);
 
-  // With reduce motion off, the GIF plays and there is no button.
+  // With reduce motion off, the GIF plays; its button only shows on hover (track G).
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.evaluate(() => document.documentElement.classList.remove('reduce-motion'));
   await expect(picture).toHaveAttribute('href', /^data:image\/gif;base64,/);
-  await expect(item(page, id).locator('.gif-toggle')).toHaveCount(0);
+  await page.mouse.move(5, 450);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await expect(item(page, id).locator('.gif-toggle')).toHaveClass(/playing/);
+  await expect(item(page, id).locator('.gif-toggle')).toHaveCSS('opacity', '0');
 });

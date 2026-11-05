@@ -77,8 +77,8 @@ export const catalog: Record<string, CatalogEntry[]> = {
     e('Estimation', 'card'),
     e('Planner (Program Board)', 'planner'),
     unavailable('Smartsheet'),
-    e('Story points', 'card'),
-    e('T-shirt sizing', 'card'),
+    e('Story points', 'estimates', 'Story point chips to drag onto cards and sticky notes'),
+    e('T-shirt sizing', 'estimates', 'T-shirt size chips to drag onto cards and sticky notes'),
     e('User story mapping', 'storymap'),
   ],
   'Engage activities': [
@@ -94,6 +94,7 @@ export const catalog: Record<string, CatalogEntry[]> = {
   Collaboration: [
     e('Alignment scale', 'scale'),
     e('Dot voting', 'voting'),
+    e('Dot pile', 'dotpile', 'Voting dots to drag onto any object'),
     e('Poll', 'poll'),
     e('Private mode', 'private'),
     e('Spinner wheel', 'spinner'),
@@ -109,6 +110,7 @@ export const catalog: Record<string, CatalogEntry[]> = {
     e('Video', 'video'),
     e('Image', 'image'),
     e('PDF', 'pdf'),
+    e('File', 'file', 'Keep any file on the board to download later'),
     e('Bookmark', 'bookmark'),
     e('Embed', 'embed'),
     e('Icon', 'icon'),

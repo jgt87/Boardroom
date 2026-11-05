@@ -18,11 +18,31 @@ import {
   svgDeclaredSize,
   IMAGE_ACCEPT,
 } from '../src/images.ts';
-import { gridFromTable, GRID_MAX, newGrid } from '../src/grid.ts';
+import {
+  canAddColumn,
+  canAddRow,
+  gridFit,
+  gridFromTable,
+  GRID_CELLS_MAX,
+  GRID_MAX,
+  newGrid,
+  validateGrid,
+} from '../src/grid.ts';
 import type { GridData } from '../src/grid.ts';
 import { gridImportNote, importIntoGrid, isTableFile, readTableFile } from '../src/table-file.ts';
 import { droppedImage, droppedImageName, imageSourceInHtml } from '../src/web-drop.ts';
 import { embedSource, isVideoProvider, mediaSpecs } from '../src/specs-media.ts';
+import { readFileSync } from 'node:fs';
+import { strToU8, zipSync } from 'fflate';
+import { odpSlides, odtMarkdown, parseOdp, parseOdt } from '../src/opendoc-import.ts';
+import { parseRtf, rtfMarkdown } from '../src/rtf-import.ts';
+import { FILE_ASSET_MIME, fileData, fileKindOf, fileSpec, formatBytes, safeFileName } from '../src/specs-file.ts';
+import { isValidAsset } from '../src/model-ext.ts';
+import { decodeBundle, encodeBundle } from '../src/media-bundle.ts';
+import { drawableAsset, referencedAssets } from '../src/images.ts';
+import { duplicateLayer, layersOf, MAX_LAYERS } from '../src/layers.ts';
+import { applyLayouts, gapFromHandle, gapHandle, setLayoutOption } from '../src/autolayout.ts';
+import { exportLinks, standaloneHtml } from '../src/html-export.ts';
 
 const board = (...items: Item[]): Board => ({ ...newBoard(), items });
 const asset = { mime: 'image/png', data: 'data:image/png;base64,iVBORw0KGgo=', width: 200, height: 100, name: 'a.png' };
@@ -104,11 +124,12 @@ test('spreadsheet rows become grid cells, capped at the grid limit', () => {
     ['c', ''],
   ]);
   assert.equal(small.truncated, false);
-  const big = gridFromTable(Array.from({ length: 40 }, (_, r) => Array.from({ length: 35 }, (_, c) => `${r}:${c}`)));
-  assert.equal(big.data.rows, GRID_MAX);
-  assert.equal(big.data.cols, GRID_MAX);
+  const big = gridFromTable(Array.from({ length: 120 }, (_, r) => Array.from({ length: 35 }, (_, c) => `${r}:${c}`)));
+  assert.equal(big.data.rows, 71);
+  assert.equal(big.data.cols, 35);
+  assert.ok(big.data.rows * big.data.cols <= 2500 && big.data.rows <= GRID_MAX);
   assert.equal(big.truncated, true);
-  assert.match(gridImportNote(big.data, true), /first 30 rows and columns/);
+  assert.match(gridImportNote(big.data, true), /first 71 rows and 35 columns/);
   assert.equal(gridFromTable([]).data.rows, 1);
 });
 
@@ -231,4 +252,358 @@ test('adjustments map to an SVG flip transform and a linear colour transfer', ()
   assert.deepEqual(adjustTransfer({ brightness: 150 }), { slope: 1.5, intercept: 0 });
   assert.deepEqual(adjustTransfer({ contrast: 50 }), { slope: 0.5, intercept: 0.25 });
   assert.deepEqual(adjustTransfer({ brightness: 0 }), { slope: 0, intercept: 0 });
+});
+
+// ---- Track J: OpenDocument and RTF import ---------------------------------------------------------
+const odfZip = (mime: string, content: string, styles = '') =>
+  zipSync({
+    mimetype: [strToU8(mime), { level: 0 }],
+    'content.xml': strToU8(content),
+    ...(styles ? { 'styles.xml': strToU8(styles) } : {}),
+  });
+const ODT_CONTENT = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="o" xmlns:text="t" xmlns:style="s" xmlns:fo="f" xmlns:table="tb">
+<office:automatic-styles>
+  <style:style style:name="T1" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style>
+  <style:style style:name="T2" style:family="text"><style:text-properties fo:font-style="italic"/></style:style>
+  <style:style style:name="P9" style:family="paragraph" style:parent-style-name="Title"/>
+  <text:list-style style:name="L1"><text:list-level-style-number text:level="1" style:num-format="1"/></text:list-style>
+  <text:list-style style:name="L2"><text:list-level-style-bullet text:level="1"/></text:list-style>
+</office:automatic-styles>
+<office:body><office:text>
+  <text:sequence-decls><text:sequence-decl text:name="Figure"/></text:sequence-decls>
+  <text:p text:style-name="P9">Quarterly plan</text:p>
+  <text:h text:outline-level="2">Goals &amp; risks</text:h>
+  <text:p>Plain <text:span text:style-name="T1">bold</text:span> and <text:span text:style-name="Strong">strong</text:span><text:s text:c="2"/><text:span text:style-name="T2">italic</text:span><text:note><text:note-body><text:p>Footnote</text:p></text:note-body></text:note><office:annotation><text:p>Comment</text:p></office:annotation></text:p>
+  <text:list text:style-name="L1">
+    <text:list-item><text:p>First</text:p>
+      <text:list><text:list-item><text:p>Nested</text:p></text:list-item></text:list>
+    </text:list-item>
+    <text:list-item><text:p>Second</text:p></text:list-item>
+  </text:list>
+  <text:list text:style-name="L2"><text:list-item><text:p>Bullet</text:p></text:list-item></text:list>
+  <table:table><table:table-row><table:table-cell><text:p>A</text:p></table:table-cell><table:table-cell><text:p>B|C</text:p></table:table-cell></table:table-row>
+  <table:table-row><table:table-cell><text:p>1</text:p></table:table-cell><table:covered-table-cell/></table:table-row></table:table>
+  <text:p>&lt;script&gt;alert(1)&lt;/script&gt;</text:p>
+</office:text></office:body></office:document-content>`;
+const ODT_STYLES = `<office:document-styles><office:styles>
+  <style:style style:name="Title" style:family="paragraph"><style:text-properties fo:font-size="28pt"/></style:style>
+  <style:style style:name="Strong" style:display-name="Strong Emphasis" style:family="text"><style:text-properties fo:font-weight="700"/></style:style>
+</office:styles></office:document-styles>`;
+
+test('ODT text becomes Doc Markdown with headings, lists, emphasis and tables; notes are left out', () => {
+  const md = parseOdt(odfZip('application/vnd.oasis.opendocument.text', ODT_CONTENT, ODT_STYLES)).markdown;
+  assert.equal(
+    md,
+    [
+      '# Quarterly plan',
+      '',
+      '## Goals & risks',
+      '',
+      'Plain **bold** and **strong** *italic*',
+      '',
+      '1. First',
+      '  - Nested',
+      '1. Second',
+      '- Bullet',
+      '',
+      '| A | B\\|C |',
+      '| --- | --- |',
+      '| 1 |  |',
+      '',
+      '<script>alert(1)</script>',
+    ].join('\n'),
+  );
+  assert.doesNotMatch(md, /Footnote|Comment|Figure/);
+  assert.equal(odtMarkdown('<office:text><text:p/></office:text>'), '');
+});
+
+test('ODT and ODP files are checked before import', () => {
+  assert.throws(() => parseOdt(strToU8('not a zip')), /not a readable OpenDocument text/);
+  assert.throws(
+    () => parseOdt(odfZip('application/vnd.oasis.opendocument.spreadsheet', ODT_CONTENT)),
+    /not a readable OpenDocument text/,
+  );
+  assert.throws(
+    () => parseOdt(odfZip('application/vnd.oasis.opendocument.text', '<office:text></office:text>')),
+    /no text/,
+  );
+  assert.throws(() => parseOdp(odfZip('application/vnd.oasis.opendocument.text', ODT_CONTENT)), /not a readable/);
+});
+
+test('ODP pages become slides with titles and text; notes, page numbers and footers are left out', () => {
+  const content = `<office:document-content><office:body><office:presentation>
+    <draw:page draw:name="page1">
+      <draw:frame presentation:class="title"><draw:text-box><text:p>Kick-off</text:p></draw:text-box></draw:frame>
+      <draw:frame presentation:class="subtitle"><draw:text-box><text:p>Team &amp; goals</text:p></draw:text-box></draw:frame>
+      <presentation:notes><draw:frame presentation:class="notes"><draw:text-box><text:p>Speaker secret</text:p></draw:text-box></draw:frame></presentation:notes>
+    </draw:page>
+    <draw:page draw:name="page2">
+      <draw:frame presentation:class="title"><draw:text-box><text:p>Agenda</text:p></draw:text-box></draw:frame>
+      <draw:frame presentation:class="outline"><draw:text-box><text:list><text:list-item><text:p>One<text:line-break/>more</text:p></text:list-item><text:list-item><text:p>Two</text:p></text:list-item></text:list></draw:text-box></draw:frame>
+      <draw:frame presentation:class="page-number"><draw:text-box><text:p>2</text:p></draw:text-box></draw:frame>
+      <draw:frame presentation:class="footer"><draw:text-box><text:p>Confidential</text:p></draw:text-box></draw:frame>
+    </draw:page>
+    <draw:page draw:name="page3"/>
+  </office:presentation></office:body></office:document-content>`;
+  const slides = parseOdp(odfZip('application/vnd.oasis.opendocument.presentation', content));
+  assert.deepEqual(
+    slides.map(s => [s.layout, s.title, s.body]),
+    [
+      ['title', 'Kick-off', 'Team & goals'],
+      ['content', 'Agenda', 'One\nmore\nTwo'],
+      ['blank', '', ''],
+    ],
+  );
+  assert.equal(odpSlides('<office:presentation></office:presentation>').length, 0);
+  assert.throws(
+    () => parseOdp(odfZip('application/vnd.oasis.opendocument.presentation', '<office:presentation/>')),
+    /not a readable|No slides/,
+  );
+});
+
+test('RTF text, paragraphs, emphasis, unicode and escapes become Markdown; font tables and pictures are skipped', () => {
+  const rtf = String.raw`{\rtf1\ansi\ansicpg1252\deff0{\fonttbl{\f0 Arial;}}{\colortbl;\red255\green0\blue0;}
+{\*\generator Writer;}{\info{\title Secret title}}
+\pard\outlinelevel0\b Heading\b0\par
+\pard Plain \b bold\b0  and \i italic\i0  caf\'e9 \u8364?5 \{braces\}\par
+{\pict\pngblip 89504e470d0a}
+\pard\ls1\ilvl0{\listtext\pard\plain \'b7\tab}Apples\par
+{\listtext\pard\plain 2.\tab}Pears\par
+\pard Link {\field{\*\fldinst HYPERLINK "https://example.com"}{\fldrslt here}}\par
+{\header Page header}\pard Bytes {\*\objdata 0102}\bin3 xyzend\par}`;
+  assert.equal(
+    rtfMarkdown(rtf),
+    [
+      '# Heading',
+      '',
+      'Plain **bold** and *italic* café €5 {braces}',
+      '',
+      '- Apples',
+      '1. Pears',
+      '',
+      'Link here',
+      '',
+      'Bytes end',
+    ].join('\n'),
+  );
+  assert.equal(rtfMarkdown(String.raw`{\rtf1\uc0\u233 t\'e9\par}`), 'été');
+  assert.throws(() => rtfMarkdown('Hello'), /not an RTF/);
+  assert.throws(() => rtfMarkdown('{\\rtf1' + '{'.repeat(600) + '}'), /nested too deeply/);
+  assert.throws(() => parseRtf(strToU8('{\\rtf1 {\\fonttbl{\\f0 Arial;}}}')), /no text/);
+  assert.match(parseRtf(strToU8(String.raw`{\rtf1 Hi \u-3913?\par}`)).markdown, /^Hi /);
+});
+
+// ---- Track J: File objects --------------------------------------------------------------------------
+test('file objects show a type icon and size, and download under a safe name', () => {
+  assert.equal(fileKindOf('Budget.XLSX'), 'spreadsheet');
+  assert.equal(fileKindOf('deck.odp'), 'presentation');
+  assert.equal(fileKindOf('notes', 'text/plain'), 'text');
+  assert.equal(fileKindOf('blob', 'application/x-unknown'), 'other');
+  assert.deepEqual(
+    [formatBytes(1), formatBytes(999), formatBytes(12_400), formatBytes(3_456_789)],
+    ['1 byte', '999 bytes', '12 KB', '3.5 MB'],
+  );
+  assert.equal(safeFileName('../a/b:c?.doc'), 'a b c .doc');
+  assert.equal(safeFileName('  '), 'file');
+  assert.deepEqual(fileData({ name: 'Report.Docx', size: 10, type: 'bogus type' }), { size: 10, ext: 'docx' });
+  const item: Item = {
+    ...createItem('file', 0, 0),
+    assetId: 'file-1',
+    text: 'Report.docx',
+    data: fileData({ name: 'Report.docx', size: 10, type: 'application/msword' }),
+  };
+  fileSpec.validate(item);
+  assert.throws(() => fileSpec.validate({ ...item, assetId: undefined }), /file reference/);
+  assert.throws(() => fileSpec.validate({ ...item, data: { size: -1, ext: 'doc' } }), /Invalid file/);
+  assert.throws(() => fileSpec.validate({ ...item, data: { size: 1, ext: '../x' } }), /Invalid file/);
+});
+
+test('kept files are stored as opaque bytes, pruned by reference and carried in backups and bundles', () => {
+  const kept = {
+    mime: FILE_ASSET_MIME,
+    data: `data:${FILE_ASSET_MIME};base64,AAEC`,
+    width: 1,
+    height: 1,
+    name: 'x.odg',
+  };
+  assert.ok(isValidAsset(kept));
+  assert.ok(!drawableAsset(kept), 'a kept file is never drawn as a picture');
+  const item: Item = {
+    ...createItem('file', 0, 0),
+    assetId: 'file-1',
+    text: 'x.odg',
+    data: { size: 3, ext: 'odg' },
+  };
+  const doc = board(item);
+  assert.deepEqual([...referencedAssets(doc)], ['file-1']);
+  const loaded = parseBoard(JSON.parse(JSON.stringify({ ...doc, assets: { 'file-1': kept } })));
+  assert.equal(loaded.items[0].type, 'file');
+  const round = decodeBundle(encodeBundle(doc, { 'file-1': kept }));
+  assert.deepEqual(round.assets['file-1'], kept);
+  assert.deepEqual(round.missing, []);
+  assert.throws(() => parseBoard({ ...doc, assets: { 'file-1': { ...kept, mime: 'text/html' } } }));
+});
+
+// ---- Track J: Office Online and Power BI embeds -----------------------------------------------------
+test('Office Online and Power BI embed links are allowed; other links from those services are not', () => {
+  const od = embedSource('https://onedrive.live.com/embed?resid=ABC%21123&authkey=xyz&em=2');
+  assert.equal(od.provider, 'office');
+  assert.equal(od.src, od.url);
+  const sp = embedSource(
+    'https://contoso.sharepoint.com/:w:/r/sites/x/_layouts/15/Doc.aspx?sourcedoc=%7B1%7D&action=embedview',
+  );
+  assert.equal(sp.provider, 'office');
+  assert.equal(
+    embedSource('https://contoso-my.sharepoint.com/personal/a/_layouts/15/Doc.aspx?action=embedview').provider,
+    'office',
+  );
+  assert.equal(embedSource('https://app.powerbi.com/view?r=eyJrIjoiMSJ9').provider, 'powerbi');
+  assert.equal(embedSource('https://app.powerbi.com/reportEmbed?reportId=1&autoAuth=true').provider, 'powerbi');
+  for (const bad of [
+    'https://onedrive.live.com/edit?id=1',
+    'https://contoso.sharepoint.com/sites/x/Doc.aspx?action=edit',
+    'https://contoso.sharepoint.com.evil.example/x?action=embedview',
+    'https://evil.example/contoso.sharepoint.com?action=embedview',
+    'https://app.powerbi.com/groups/me/reports/1',
+    'http://app.powerbi.com/view?r=1',
+  ])
+    assert.throws(() => embedSource(bad), Error, bad);
+  const embed = mediaSpecs.find(s => s.kind === 'embed')!;
+  embed.validate({ ...createItem('embed', 0, 0), data: { url: od.url, provider: 'office' } });
+  assert.throws(() => embed.validate({ ...createItem('embed', 0, 0), data: { url: od.url, provider: 'powerbi' } }));
+  const csp = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
+  for (const origin of ['https://onedrive.live.com', 'https://*.sharepoint.com', 'https://app.powerbi.com'])
+    assert.ok(csp.includes(`'${origin}'`), `frame-src allows ${origin}`);
+});
+
+// ---- Track J: duplicate layer -----------------------------------------------------------------------
+const arrowBetween = (from: string, to: string): Item => ({ ...createItem('arrow', 0, 0), from, to });
+test('duplicating a layer copies its objects with new ids and re-points references between copies', () => {
+  const a: Item = { ...createItem('rectangle', 0, 0), layer: 'L', group: 'g1' },
+    b: Item = { ...createItem('rectangle', 300, 0), layer: 'L', group: 'g1', linkTo: a.id },
+    outside = createItem('note', 600, 0),
+    inner = { ...arrowBetween(a.id, b.id), layer: 'L' },
+    across = { ...arrowBetween(a.id, outside.id), layer: 'L' },
+    child = { ...createItem('note', 0, 400), layer: 'L' },
+    baseChild = createItem('note', 0, 600),
+    box: Item = {
+      ...createItem('autolayout', 0, 300),
+      layer: 'L',
+      data: { direction: 'row', gap: 16, padding: 20, wrap: true, children: [child.id, baseChild.id] },
+    };
+  const doc = parseBoard(
+    JSON.parse(
+      JSON.stringify({
+        ...board(outside, a, b, inner, across, box, child, baseChild),
+        layers: [
+          { id: 'base', name: 'Layer 1' },
+          { id: 'L', name: 'Shapes', locked: true },
+          { id: 'top', name: 'Top' },
+        ],
+        groups: [{ id: 'g1', parent: null }],
+      }),
+    ),
+  );
+  let n = 0;
+  const made = duplicateLayer(doc, 'L', 'L2', () => `copy-${++n}`);
+  assert.deepEqual(
+    layersOf(made.board).map(l => [l.id, l.name, !!l.locked]),
+    [
+      ['base', 'Layer 1', false],
+      ['L', 'Shapes', true],
+      ['L2', 'Shapes copy', false],
+      ['top', 'Top', false],
+    ],
+  );
+  assert.equal(made.ids.length, 6);
+  const originals = doc.items.filter(i => i.layer === 'L'),
+    copies = made.board.items.filter(i => i.layer === 'L2'),
+    copyOf = (id: string) => copies[originals.findIndex(i => i.id === id)];
+  assert.ok(copies.every(c => !doc.items.some(i => i.id === c.id)));
+  const ca = copyOf(a.id),
+    cb = copyOf(b.id);
+  assert.deepEqual([copyOf(inner.id).from, copyOf(inner.id).to], [ca.id, cb.id]);
+  assert.deepEqual([copyOf(across.id).from, copyOf(across.id).to], [ca.id, outside.id]);
+  assert.equal(cb.linkTo, ca.id);
+  assert.ok(ca.group && ca.group !== 'g1' && ca.group === cb.group);
+  assert.deepEqual(copyOf(box.id).data!.children, [copyOf(child.id).id]);
+  const order = made.board.items.map(i => i.layer ?? 'base');
+  assert.ok(order.lastIndexOf('L') < order.indexOf('L2'), 'the copy paints above the original layer');
+  parseBoard(JSON.parse(JSON.stringify(made.board)));
+  const full: Board = {
+    ...doc,
+    layers: Array.from({ length: MAX_LAYERS }, (_, k) => ({ id: k ? `x${k}` : 'base', name: `Layer ${k + 1}` })),
+  };
+  assert.throws(() => duplicateLayer(full, 'base', 'new'), /up to 30 layers/);
+  assert.throws(() => duplicateLayer(doc, 'missing', 'new'), /no longer exists/);
+});
+
+// ---- Track J: larger grids --------------------------------------------------------------------------
+test('grids hold up to 100 rows or columns and 2,500 cells', () => {
+  assert.equal(GRID_CELLS_MAX, 2500);
+  assert.deepEqual(gridFit(500, 3), { rows: 100, cols: 3 });
+  assert.deepEqual(gridFit(80, 80), { rows: 31, cols: 80 });
+  assert.deepEqual(gridFit(2, 400), { rows: 2, cols: 100 });
+  validateGrid(newGrid(100, 25));
+  validateGrid(newGrid(50, 50));
+  assert.throws(() => validateGrid(newGrid(51, 50)), /2,500 cells/);
+  assert.throws(() => validateGrid(newGrid(101, 1)), /2,500 cells/);
+  assert.ok(canAddRow(newGrid(49, 50)) && !canAddRow(newGrid(50, 50)) && !canAddRow(newGrid(100, 1)));
+  assert.ok(canAddColumn(newGrid(25, 99)) && !canAddColumn(newGrid(25, 100)));
+});
+
+// ---- Track J: auto-layout spacing handle -------------------------------------------------------------
+test('the spacing handle sits in the first gap and sets the gap from its dragged position', () => {
+  const kids = [0, 1, 2].map(() => ({ ...createItem('note', 0, 0), w: 100, h: 100 }));
+  const row: Item = {
+    ...createItem('autolayout', 0, 0),
+    x: 0,
+    y: 0,
+    w: 600,
+    data: { direction: 'row', gap: 16, padding: 20, wrap: true, children: kids.map(k => k.id) },
+  };
+  const doc = applyLayouts(board(row, ...kids));
+  const h = gapHandle(doc, row.id)!;
+  assert.deepEqual(h, { x: 128, y: 100, axis: 'x', anchor: 120, gap: 16 });
+  assert.equal(gapFromHandle(h, 140), 40);
+  assert.equal(gapFromHandle(h, 100), 0);
+  assert.equal(gapFromHandle(h, 9999), 400);
+  assert.equal(gapFromHandle(h, 143, 8), 48);
+  const wider = setLayoutOption(doc, row.id, { gap: 40 });
+  assert.deepEqual(
+    wider.items.slice(1).map(i => i.x),
+    [20, 160, 300],
+  );
+  const column = setLayoutOption(doc, row.id, { direction: 'column' });
+  assert.deepEqual(gapHandle(column, row.id), { x: 70, y: 158, axis: 'y', anchor: 150, gap: 16 });
+  // A narrow wrapping row: the second child wraps, so the handle sits between the rows.
+  const narrow = applyLayouts({ ...doc, items: doc.items.map(i => (i.id === row.id ? { ...i, w: 150 } : i)) });
+  const wrapped = gapHandle(narrow, row.id)!;
+  assert.equal(wrapped.axis, 'y');
+  assert.equal(wrapped.anchor, 150);
+  assert.equal(gapHandle(board({ ...row, data: { ...row.data!, children: [kids[0].id] } }, kids[0]), row.id), null);
+});
+
+// ---- Track J: HTML export click-through --------------------------------------------------------------
+test('linked objects become click-through hotspots in the exported page', () => {
+  const frame = { ...createItem('frame', 1000, 0), w: 400, h: 300, name: 'Step "2" <b>' },
+    button = { ...createItem('rectangle', 100, 50), linkTo: frame.id },
+    hidden = { ...createItem('rectangle', 0, 0), linkTo: frame.id, hidden: true },
+    dangling = { ...createItem('rectangle', 0, 0), linkTo: 'gone' };
+  const doc = board(frame, button, hidden, dangling);
+  const links = exportLinks(doc, { x: -30, y: -45, w: 1500, h: 500 });
+  assert.equal(links.length, 1);
+  assert.deepEqual(
+    { ...links[0], label: '' },
+    { x: button.x + 30, y: button.y + 45, w: button.w, h: button.h, tx: 1030, ty: 45, tw: 400, th: 300, label: '' },
+  );
+  assert.equal(exportLinks(doc, { x: 0, y: 0, w: 500, h: 500 }).length, 0, 'targets outside the export are left out');
+  const html = standaloneHtml('<svg width="10" height="10"></svg>', 'Plan', new Date('2026-11-05T00:00:00Z'), links);
+  assert.match(html, /<button class="hotspot" type="button" style="left:/);
+  assert.match(html, /data-x="1030" data-y="45" data-w="400" data-h="300"/);
+  assert.match(html, /aria-label="Go to Step &quot;2&quot; &lt;b&gt;"/);
+  assert.match(html, /id="back" hidden/);
+  assert.equal((html.match(/<\/script>/gi) ?? []).length, 1);
+  assert.doesNotMatch(html, /<script src=/);
 });

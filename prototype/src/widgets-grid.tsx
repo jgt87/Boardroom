@@ -1,5 +1,5 @@
 // Grid widget view and editor (item 23).
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Minus, Merge as MergeIcon, Split, Bold, Italic, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import type { Item } from './model';
 import type { WidgetCtx } from './widget-types';
@@ -16,7 +16,9 @@ import {
   cellStyle,
   mergeAt,
   isCovered,
-  GRID_MAX,
+  canAddRow,
+  canAddColumn,
+  LARGE_GRID_CELLS,
   reorderGrid,
 } from './grid';
 import type { GridData } from './grid';
@@ -113,10 +115,44 @@ export function GridRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       ctx.display((e as Error).message);
     }
   };
+  // Large grids (track J, up to 2,500 cells) draw cells as text and keep one live field, on the current
+  // cell, so the canvas stays responsive; small grids keep a field in every cell.
+  const large = g.rows * g.cols > LARGE_GRID_CELLS,
+    [pendingFocus, setPendingFocus] = useState(0);
+  const field = (r: number, c: number) =>
+    Array.from(root.current?.querySelectorAll<HTMLTextAreaElement>('textarea') ?? []).find(
+      el => el.getAttribute('aria-label') === `Grid cell ${r + 1}, ${c + 1}`,
+    );
   const focus = (r: number, c: number) => {
-    const visible = Array.from(root.current?.querySelectorAll<HTMLTextAreaElement>('textarea') ?? []);
-    const el = visible.find(el => el.getAttribute('aria-label') === `Grid cell ${r + 1}, ${c + 1}`);
-    el?.focus();
+    const el = field(r, c);
+    if (el) el.focus();
+    else if (large) {
+      setCur({ r, c });
+      setPendingFocus(n => n + 1);
+    }
+  };
+  const target = useRef(cur);
+  target.current = cur;
+  useEffect(() => {
+    if (!pendingFocus) return;
+    // After the pointer or key event has finished, so the browser does not move focus away again.
+    const t = setTimeout(() => {
+      const { r, c } = target.current;
+      root.current?.querySelector<HTMLTextAreaElement>(`textarea[aria-label="Grid cell ${r + 1}, ${c + 1}"]`)?.focus();
+    });
+    return () => clearTimeout(t);
+  }, [pendingFocus]);
+  /** Next (or previous) visible cell in reading order, wrapping to the first. */
+  const stepCell = (r: number, c: number, back: boolean) => {
+    const total = g.rows * g.cols;
+    let k = r * g.cols + c;
+    for (let n = 0; n < total; n++) {
+      k = (k + (back ? -1 : 1) + total) % total;
+      const nr = Math.floor(k / g.cols),
+        nc = k % g.cols;
+      if (!isCovered(g, nr, nc)) return { r: nr, c: nc };
+    }
+    return { r: 0, c: 0 };
   };
   const border = (axis: 'row' | 'column', index: number) => (
     <span
@@ -217,13 +253,13 @@ export function GridRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
             <option value="manual">Manual sizing</option>
           </select>
           <button
-            disabled={!!item.locked || g.rows >= GRID_MAX}
+            disabled={!!item.locked || !canAddRow(g)}
             onClick={() => run(v => addRow(v, Math.min(cur.r + 1, v.rows)))}
           >
             + Row
           </button>
           <button
-            disabled={!!item.locked || g.cols >= GRID_MAX}
+            disabled={!!item.locked || !canAddColumn(g)}
             onClick={() => run(v => addColumn(v, Math.min(cur.c + 1, v.cols)))}
           >
             + Column
@@ -293,11 +329,17 @@ export function GridRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                         textAlign: st.align,
                       }}
                       onPointerDownCapture={e => {
+                        // Large grids: commit the live field before it moves to another cell (it unmounts).
+                        if (large && (cur.r !== r || cur.c !== c)) {
+                          const active = document.activeElement;
+                          if (active instanceof HTMLTextAreaElement && root.current?.contains(active)) active.blur();
+                        }
                         if (e.shiftKey) {
                           e.preventDefault();
                           setAnchor(a => a ?? cur);
                         } else setAnchor(null);
                         setCur({ r, c });
+                        if (large && !e.shiftKey && (cur.r !== r || cur.c !== c)) setPendingFocus(n => n + 1);
                       }}
                     >
                       {r === 0 && (
@@ -320,10 +362,10 @@ export function GridRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                           onMove={(from, to) => run(v => reorderGrid(v, 'row', from, to))}
                         />
                       )}
-                      {border('column', c)}
-                      {border('row', r)}
-                      {item.locked ? (
-                        <span>{g.cells[r][c]}</span>
+                      {(!large || r === 0) && border('column', c)}
+                      {(!large || c === 0) && border('row', r)}
+                      {item.locked || (large && (cur.r !== r || cur.c !== c)) ? (
+                        <span className={large && !item.locked ? 'grid-cell-text' : undefined}>{g.cells[r][c]}</span>
                       ) : (
                         <CanvasField
                           multiline
@@ -333,6 +375,15 @@ export function GridRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                           onCommit={text => run(v => setCell(v, r, c, text.slice(0, 2000)))}
                           onKeyDown={e => {
                             if (e.key !== 'Tab') return;
+                            if (large) {
+                              e.preventDefault();
+                              (e.currentTarget as HTMLElement).blur();
+                              const next = stepCell(r, c, e.shiftKey);
+                              setCur(next);
+                              setAnchor(null);
+                              setPendingFocus(n => n + 1);
+                              return;
+                            }
                             const cells = Array.from(root.current!.querySelectorAll<HTMLTextAreaElement>('textarea'));
                             const idx = cells.indexOf(e.currentTarget as HTMLTextAreaElement),
                               target = cells[idx + (e.shiftKey ? -1 : 1)];
@@ -440,11 +491,11 @@ export function GridEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx;
         <span>
           {g.rows} × {g.cols}
         </span>
-        <button disabled={g.rows >= GRID_MAX} onClick={() => run(() => addRow(g, cur.r + 1))}>
+        <button disabled={!canAddRow(g)} onClick={() => run(() => addRow(g, cur.r + 1))}>
           <Plus size={14} />
           Row below
         </button>
-        <button disabled={g.cols >= GRID_MAX} onClick={() => run(() => addColumn(g, cur.c + 1))}>
+        <button disabled={!canAddColumn(g)} onClick={() => run(() => addColumn(g, cur.c + 1))}>
           <Plus size={14} />
           Column right
         </button>

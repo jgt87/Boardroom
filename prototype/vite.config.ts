@@ -12,6 +12,10 @@ const embedOrigins = [
   'https://codepen.io',
   'https://docs.google.com',
   'https://www.loom.com',
+  // Office Online documents and Power BI reports (track J).
+  'https://onedrive.live.com',
+  'https://*.sharepoint.com',
+  'https://app.powerbi.com',
 ];
 function contentSecurityPolicy(dev: boolean, editorOrigin: string): string {
   return [

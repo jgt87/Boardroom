@@ -17,6 +17,8 @@ export type ViewPrefs = {
   gridStyle: 'lines' | 'dots';
   /** Extra tools pinned to the creation toolbar (gap F12): object kinds, in order. */
   pinned: string[];
+  /** Selection box picks objects it touches, not only those fully inside it (track C). Alt inverts it. */
+  marqueeTouch: boolean;
 };
 export const VIEW_PREFS_KEY = 'boardroom.view.v1';
 export const defaultViewPrefs: ViewPrefs = {
@@ -32,6 +34,7 @@ export const defaultViewPrefs: ViewPrefs = {
   snapGrid: false,
   gridStyle: 'lines',
   pinned: [],
+  marqueeTouch: false,
 };
 
 /** Parse stored preferences, falling back to defaults for anything missing or invalid. */
@@ -56,6 +59,7 @@ export function parseViewPrefs(raw: string | null | undefined, systemReducedMoti
             ...new Set((v.pinned as unknown[]).filter((k): k is string => typeof k === 'string' && k.length <= 40)),
           ].slice(0, 12)
         : [],
+      marqueeTouch: typeof v?.marqueeTouch === 'boolean' ? v.marqueeTouch : defaultViewPrefs.marqueeTouch,
     };
   } catch {
     return { ...defaultViewPrefs, reduceMotion: systemReducedMotion };

@@ -161,6 +161,34 @@ export function withDraft(drafts: Record<string, string>, key: string, text: str
   return keys.length > 100 ? Object.fromEntries(keys.slice(-100).map(k => [k, next[k]])) : next;
 }
 
+/**
+ * Threads kept open as comment cards on the canvas (track G): pinned, unresolved, and not the thread that is open
+ * in the comment popover right now (it would show twice).
+ */
+export const pinnedOpenThreads = (threads: CommentThread[] | undefined, openId?: string) =>
+  (threads ?? []).filter(t => t.pinned && !t.resolved && t.id !== openId);
+/** Pinned cards collapsed on this device: thread ids stored as a map of id to the time they were collapsed. */
+export const COMMENT_COLLAPSED_KEY = 'boardroom.comments.collapsed.v1';
+/** Collapse or expand a pinned card; keeps the newest 200 entries. */
+export function withCollapsed(map: Record<string, number>, id: string, collapsed: boolean, now = Date.now()) {
+  const next = { ...map };
+  delete next[id];
+  if (collapsed) next[id] = now;
+  const keys = Object.keys(next);
+  return keys.length > 200 ? Object.fromEntries(keys.slice(-200).map(k => [k, next[k]])) : next;
+}
+/** Where a pinned card goes on screen: beside the pin's tail, or null when the anchor is off screen. */
+export function pinnedCardPosition(
+  point: { x: number; y: number },
+  camera: { x: number; y: number; z: number },
+  size: { w: number; h: number },
+): { left: number; top: number } | null {
+  const sx = point.x * camera.z + camera.x,
+    sy = point.y * camera.z + camera.y;
+  if (sx < -40 || sy < -20 || sx > size.w || sy > size.h + 30) return null;
+  return { left: Math.round(sx + 48), top: Math.round(sy - 34) };
+}
+
 /** Pinned threads first; otherwise the stored order. */
 export const orderThreads = (threads: CommentThread[]) =>
   [...threads].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));

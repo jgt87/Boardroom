@@ -4,7 +4,7 @@ import type { WidgetSpec } from './widget-types.ts';
 import { validateGrid, newGrid, gridText } from './grid.ts';
 import type { GridData } from './grid.ts';
 import { QR_MAX } from './qr.ts';
-import { cardStatuses, tshirtSizes, isIsoDate } from './facilitation-widgets.ts';
+import { cardStatuses, tshirtSizes, isIsoDate, validateScaleData, scaleStatements } from './facilitation-widgets.ts';
 import { isValidEmojiValue } from './emoji-data.ts';
 import type { PollData, SpinnerData, ScaleData, MatrixData } from './facilitation-widgets.ts';
 
@@ -200,6 +200,7 @@ export const basicSpecs: WidgetSpec[] = [
         new Set(x.options.map((o: any) => o.id)).size !== x.options.length
       )
         fail('Invalid poll option.');
+      if (x.resultsHidden !== undefined && x.resultsHidden !== true) fail('Invalid poll.');
     },
     searchText: i => [d(i).question, ...(d(i).options ?? []).map((o: any) => o.label)].join(' '),
   },
@@ -226,9 +227,9 @@ export const basicSpecs: WidgetSpec[] = [
   {
     kind: 'scale',
     label: 'Alignment scale',
-    description: 'Gauge agreement with a marker on a scale',
+    description: 'Rate up to six statements on a scale and see the average',
     category: 'Collaboration',
-    size: [380, 140],
+    size: [400, 170],
     init: i =>
       withData(
         i,
@@ -236,28 +237,14 @@ export const basicSpecs: WidgetSpec[] = [
           label: 'How aligned are we?',
           min: 1,
           max: 5,
-          value: 3,
           leftLabel: 'Not aligned',
           rightLabel: 'Fully aligned',
+          statements: [{ id: crypto.randomUUID(), text: 'We agree on the goal', tallies: [0, 0, 0, 0, 0] }],
         } as ScaleData,
         { fill: '#ffffff' },
       ),
-    validate: i => {
-      const x = d(i);
-      if (
-        !str(x.label, 200) ||
-        !str(x.leftLabel, 60) ||
-        !str(x.rightLabel, 60) ||
-        !Number.isInteger(x.min) ||
-        !Number.isInteger(x.max) ||
-        x.min >= x.max ||
-        x.max - x.min > 100 ||
-        !Number.isInteger(x.value) ||
-        x.value < x.min ||
-        x.value > x.max
-      )
-        fail('Invalid scale.');
-    },
-    searchText: i => [d(i).label, d(i).leftLabel, d(i).rightLabel].join(' '),
+    validate: i => validateScaleData(i.data),
+    searchText: i =>
+      [d(i).label, d(i).leftLabel, d(i).rightLabel, ...scaleStatements(d(i) as ScaleData).map(s => s.text)].join(' '),
   },
 ];

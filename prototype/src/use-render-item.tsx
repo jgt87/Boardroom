@@ -2,7 +2,7 @@ import React from 'react';
 import { SELECT_GAP } from './interactions';
 import { readableTextOn } from './board-tools';
 import { Lock, Link as LinkIcon } from 'lucide-react';
-import { richKinds } from './model';
+import { richKinds, calloutTailTip } from './model';
 import type { Item } from './model';
 import { formatStyle, TextBody } from './text-format';
 import { CanvasTextEditor } from './rich-text-editor';
@@ -16,11 +16,14 @@ import type { ShapeKind } from './shapes';
 import { ShapeBody, shapeTextBox } from './shape-tools';
 import { ImageBody } from './image-tools';
 import { EmojiBadge, AuthorTag, NoteReactions } from './note-extras';
+import { DotBadges, NoteChips } from './chip-badges';
 import { MindmapCanvasEditor } from './mindmap-canvas';
 import { CodePreview } from './code-block';
 import { strokePath, penPresets, jumpPath, pointAlong } from './board-tools';
 import type { PenStyle } from './board-tools';
+import { hasPressure, pressureOutline } from './pen-pressure';
 import { viewFor } from './widgets';
+import { SvgStatusChip, svgStatusKinds } from './status-chip';
 import type { WidgetCtx } from './widget-types';
 import { useApp } from './board-app';
 import { CanvasRecords } from './canvas-records';
@@ -193,7 +196,7 @@ export function useRenderItem() {
           </foreignObject>
         )}
         {(i.link || i.tags?.length) && <NoteBadges item={i} />}{' '}
-        {shape && <ShapeBody item={i as Item & { type: ShapeKind }} />}
+        {shape && <ShapeBody item={i as Item & { type: ShapeKind }} tip={calloutTailTip(i, shown.items)} />}
         {i.type === 'image' && <ImageBody item={i} asset={assets[i.assetId!]} />}
         {i.type === 'code' && (
           <foreignObject width={i.w} height={i.h} pointerEvents="none">
@@ -263,16 +266,28 @@ export function useRenderItem() {
             return (
               <>
                 <rect width={i.w} height={i.h} fill="transparent" />
-                <path
-                  d={strokePath(i.points ?? [])}
-                  fill="none"
-                  stroke={i.fill}
-                  strokeWidth={wd}
-                  strokeOpacity={penPresets[st].opacity}
-                  strokeLinecap={st === 'highlighter' ? 'butt' : 'round'}
-                  strokeLinejoin="round"
-                  style={st === 'highlighter' ? { mixBlendMode: 'multiply' } : undefined}
-                />
+                {hasPressure(i.points) ? (
+                  // Stylus strokes (track R2-K): a filled outline whose width follows the pen pressure.
+                  <path
+                    className="pen-pressure"
+                    d={pressureOutline(i.points!, wd)}
+                    fill={i.fill}
+                    fillOpacity={penPresets[st].opacity}
+                    stroke="none"
+                    style={st === 'highlighter' ? { mixBlendMode: 'multiply' } : undefined}
+                  />
+                ) : (
+                  <path
+                    d={strokePath(i.points ?? [])}
+                    fill="none"
+                    stroke={i.fill}
+                    strokeWidth={wd}
+                    strokeOpacity={penPresets[st].opacity}
+                    strokeLinecap={st === 'highlighter' ? 'butt' : 'round'}
+                    strokeLinejoin="round"
+                    style={st === 'highlighter' ? { mixBlendMode: 'multiply' } : undefined}
+                  />
+                )}
               </>
             );
           })()}
@@ -296,6 +311,7 @@ export function useRenderItem() {
               </foreignObject>
             );
           })()}
+        {svgStatusKinds.includes(i.type) && mindEditId !== i.id && <SvgStatusChip status={i.data?.status} />}
         {i.linkTo && (
           <g
             className="link-badge"
@@ -328,6 +344,8 @@ export function useRenderItem() {
         {i.type === 'note' && <EmojiBadge item={i} />}
         {i.type === 'note' && <NoteReactions item={i} />}
         {i.type === 'note' && (shown.showAuthors || i.showAuthor) && <AuthorTag item={i} />}
+        {i.type === 'note' && <NoteChips item={i} selected={isSelected && !i.locked} />}
+        <DotBadges item={i} />
         {editing === i.id && (
           <foreignObject
             x={frame ? 0 : shape ? tb.x - 4 : 8}
@@ -448,6 +466,8 @@ export function useRenderItem() {
       i.assetId ? assets[i.assetId] : null,
       // Widgets read the prototype preview state and selection through their context.
       viewFor(i.type) ? previewState : null,
+      // A callout tail attached to another object follows it (track R2-H).
+      i.tail?.target ? shown.items.find(n => n.id === i.tail!.target) : null,
     ];
     const hit = cache.current.get(i);
     if (hit && hit.sig === sig && hit.deps.every((d, k) => d === deps[k])) return hit.el;

@@ -11,7 +11,8 @@ import {
   Hand,
   Layers3,
 } from 'lucide-react';
-import { allKinds, colors, colorName, undo, redo, bulkNotes } from './model';
+import { allKinds, colors, colorName, undo, redo, bulkNotes, createItem } from './model';
+import { addStickySet, stickySets } from './sticky-sets';
 import { useBrandKit } from './brand-kit-panel';
 import { brandFirst } from './brand-kit';
 import type { Kind } from './model';
@@ -30,6 +31,7 @@ import { useApp } from './board-app';
 import { tools } from './board-app';
 import { useState } from 'react';
 import { useRovingToolbar } from './use-roving-toolbar';
+import { lastColors } from './last-color';
 import { EmojiPicker } from './emoji-picker';
 import { StickerChoices } from './widgets-graphics';
 
@@ -69,6 +71,7 @@ export function ToolRail() {
     setTool,
     shapes,
     toWorld,
+    size,
     tool,
     update,
     pendingPlacement,
@@ -528,23 +531,58 @@ export function ToolRail() {
             )}
             {!['arrow', 'text', 'pen', 'frame', 'comment'].includes(tool) && (
               <div className={`swatches ${noteTool ? 'note-swatches' : ''}`} role="group" aria-label="Colors">
-                {brandFirst(brandKit, colors).map(c => (
-                  <button
-                    key={c}
-                    aria-label={`Use colour ${colorName(c)}`}
-                    title={colorName(c)}
-                    aria-pressed={fill === c}
-                    style={{ background: c }}
-                    className={fill === c ? 'chosen' : ''}
-                    onClick={() => setFill(c)}
-                  />
-                ))}
+                {brandFirst(brandKit, colors).map(c => {
+                  // Shapes start with the colour last applied to a shape this session, else the tool colour.
+                  const chosen = (isShapeKind(tool) ? lastColors.get('shape') : undefined) ?? fill;
+                  return (
+                    <button
+                      key={c}
+                      aria-label={`Use colour ${colorName(c)}`}
+                      title={colorName(c)}
+                      aria-pressed={chosen === c}
+                      style={{ background: c }}
+                      className={chosen === c ? 'chosen' : ''}
+                      onClick={() => {
+                        setFill(c);
+                        lastColors.remember(tool, c);
+                      }}
+                    />
+                  );
+                })}
               </div>
             )}
             {noteTool && (
               <button className="note-stack-button" onClick={() => chooseFormat('stack')}>
                 <Layers2 size={16} /> Stack
               </button>
+            )}
+            {noteTool && (
+              // Sticky note sets (track L): a small pre-coloured group placed at the centre of the view.
+              <select
+                className="note-set-select"
+                aria-label="Add a sticky note set"
+                value=""
+                onChange={e => {
+                  const set = stickySets.find(s => s.id === e.target.value);
+                  e.target.value = '';
+                  if (!set) return;
+                  const made = addStickySet(boardRef.current, set.id, toWorld(size.w / 2, size.h / 2), (x, y, f) =>
+                    createItem('note', x, y, f),
+                  );
+                  if (!made) return;
+                  update(made.board);
+                  setSelected(made.ids);
+                  setTool('select');
+                  display(`Added the ${set.label} sticky note set as a group.`);
+                }}
+              >
+                <option value="">Note sets…</option>
+                {stickySets.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
             )}
           </div>
         </AnchoredPanel>

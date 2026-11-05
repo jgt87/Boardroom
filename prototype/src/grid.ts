@@ -17,7 +17,23 @@ export type GridData = {
   resizeMode?: 'auto' | 'manual';
   objects?: { id: string; r: number; c: number; manual?: boolean; offset?: { x: number; y: number } }[];
 };
-export const GRID_MAX = 30;
+/** Most rows or columns in a grid (track J); the cell count is also capped at GRID_CELLS_MAX. */
+export const GRID_MAX = 100;
+/** Most cells in a grid: rows × cols ≤ 2,500 (for example 50 × 50 or 100 × 25). */
+export const GRID_CELLS_MAX = 2500;
+/** Above this many cells, the canvas draws Grid cells as text with a single live field (performance). */
+export const LARGE_GRID_CELLS = 400;
+/** Whether a row or a column can be added without passing the grid limits. */
+export const canAddRow = (g: Pick<GridData, 'rows' | 'cols'>) =>
+  g.rows < GRID_MAX && (g.rows + 1) * g.cols <= GRID_CELLS_MAX;
+export const canAddColumn = (g: Pick<GridData, 'rows' | 'cols'>) =>
+  g.cols < GRID_MAX && g.rows * (g.cols + 1) <= GRID_CELLS_MAX;
+/** Largest size within the limits for data of `rows` × `cols`: every column that fits, then as many rows. */
+export function gridFit(rows: number, cols: number): { rows: number; cols: number } {
+  const c = Math.min(Math.max(cols, 1), GRID_MAX),
+    r = Math.min(Math.max(rows, 1), GRID_MAX, Math.floor(GRID_CELLS_MAX / c));
+  return { rows: r, cols: c };
+}
 
 export function newGrid(rows = 3, cols = 3): GridData {
   return {
@@ -47,9 +63,10 @@ export function validateGrid(g: unknown): asserts g is GridData {
     d.rows < 1 ||
     d.cols < 1 ||
     d.rows > GRID_MAX ||
-    d.cols > GRID_MAX
+    d.cols > GRID_MAX ||
+    d.rows * d.cols > GRID_CELLS_MAX
   )
-    throw new Error(`A grid needs 1 to ${GRID_MAX} rows and columns.`);
+    throw new Error(`A grid needs 1 to ${GRID_MAX} rows and columns and at most 2,500 cells.`);
   if (
     !Array.isArray(d.cells) ||
     d.cells.length !== d.rows ||
@@ -130,7 +147,7 @@ export function validateGrid(g: unknown): asserts g is GridData {
       !d.styles ||
       typeof d.styles !== 'object' ||
       Array.isArray(d.styles) ||
-      Object.keys(d.styles).length > GRID_MAX * GRID_MAX
+      Object.keys(d.styles).length > GRID_CELLS_MAX
     )
       throw new Error('Invalid grid cell styles.');
     for (const [k, st] of Object.entries(d.styles)) {
@@ -208,7 +225,7 @@ export function unmergeCell(g: GridData, r: number, c: number): GridData {
 }
 /** Insert a row before `at` (0..rows). Merges spanning the insertion point grow. */
 export function addRow(g: GridData, at = g.rows): GridData {
-  if (g.rows >= GRID_MAX) throw new Error(`Grids hold up to ${GRID_MAX} rows.`);
+  if (!canAddRow(g)) throw new Error(`Grids hold up to ${GRID_MAX} rows and 2,500 cells.`);
   const n = clone(g);
   n.cells.splice(
     at,
@@ -227,7 +244,7 @@ export function addRow(g: GridData, at = g.rows): GridData {
   return tidy(n);
 }
 export function addColumn(g: GridData, at = g.cols): GridData {
-  if (g.cols >= GRID_MAX) throw new Error(`Grids hold up to ${GRID_MAX} columns.`);
+  if (!canAddColumn(g)) throw new Error(`Grids hold up to ${GRID_MAX} columns and 2,500 cells.`);
   const n = clone(g);
   n.cells.forEach(row => row.splice(at, 0, ''));
   n.cols++;
@@ -384,11 +401,8 @@ export const gridRows = (g: GridData): string[][] => g.cells.map(row => [...row]
  * grid's alignment and in-range cell anchors are kept; merges, colours and sizes are reset to fit the data.
  */
 export function gridFromTable(rows: string[][], base?: GridData): { data: GridData; truncated: boolean } {
-  const r = Math.min(Math.max(rows.length, 1), GRID_MAX),
-    c = Math.min(
-      rows.reduce((m, row) => Math.max(m, row.length), 1),
-      GRID_MAX,
-    );
+  const width = rows.reduce((m, row) => Math.max(m, row.length), 1),
+    { rows: r, cols: c } = gridFit(rows.length, width);
   const data = newGrid(r, c);
   for (let y = 0; y < r; y++) for (let x = 0; x < c; x++) data.cells[y][x] = (rows[y]?.[x] ?? '').slice(0, 2000);
   if (base) {
@@ -398,7 +412,7 @@ export function gridFromTable(rows: string[][], base?: GridData): { data: GridDa
   }
   return {
     data,
-    truncated: rows.length > GRID_MAX || rows.some(row => row.length > GRID_MAX || row.some(v => v.length > 2000)),
+    truncated: rows.length > r || width > c || rows.some(row => row.some(v => v.length > 2000)),
   };
 }
 /** Display size for a grid of `rows` × `cols` cells. */

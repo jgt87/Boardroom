@@ -3,9 +3,18 @@ import { useMemo, useRef, useState } from 'react';
 import { X, Plus, Minus, RotateCcw, Shuffle, Eraser, Users } from 'lucide-react';
 import type { Item } from './model';
 import type { WidgetAction, WidgetCtx } from './widget-types';
-import { matrixContents, votePoll, pollResults, pollTotal, resetPoll, clampScale } from './facilitation-widgets';
+import { matrixContents, votePoll, pollResults, pollTotal, resetPoll, setPollHidden } from './facilitation-widgets';
 import { spin, removePicked, fillFromPeople } from './facilitation-widgets';
-import type { PollData, SpinnerData, ScaleData, MatrixData } from './facilitation-widgets';
+import {
+  scaleStatements,
+  scaleStats,
+  tallyScale,
+  normalizeScale,
+  resetScale,
+  rangeScale,
+} from './facilitation-widgets';
+import { SCALE_BUTTON_STEPS, SCALE_STATEMENTS_MAX } from './facilitation-widgets';
+import type { PollData, SpinnerData, ScaleData, ScaleStatement, MatrixData } from './facilitation-widgets';
 import { Dialog, data, setData, stop } from './widget-kit';
 
 // ---- Matrix (43) -----------------------------------------------------------------------------
@@ -100,9 +109,10 @@ export function PollRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const d = data<PollData>(item),
     results = pollResults(d),
     total = pollTotal(d),
-    locked = !!item.locked;
+    locked = !!item.locked,
+    hidden = !!d.resultsHidden;
   return (
-    <div className="w-poll">
+    <div className={`w-poll${hidden ? ' results-hidden' : ''}`}>
       <strong>{d.question}</strong>
       <ul>
         {results.map(o => (
@@ -116,18 +126,20 @@ export function PollRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                 setData(ctx, item.id, votePoll(d, o.id));
               }}
             >
-              <span className="bar" style={{ width: `${o.share * 100}%` }} />
+              {!hidden && <span className="bar" style={{ width: `${o.share * 100}%` }} />}
               <span className="label">{o.label}</span>{' '}
-              <span className="count">
-                {o.votes}
-                <span className="sr-only"> {o.votes === 1 ? 'vote' : 'votes'}</span>
-              </span>
+              {!hidden && (
+                <span className="count">
+                  {o.votes}
+                  <span className="sr-only"> {o.votes === 1 ? 'vote' : 'votes'}</span>
+                </span>
+              )}
             </button>
           </li>
         ))}
       </ul>
       <small>
-        {total} {total === 1 ? 'vote' : 'votes'} · on this device
+        {total} {total === 1 ? 'vote' : 'votes'} · {hidden ? 'results hidden' : 'on this device'}
       </small>
     </div>
   );
@@ -204,6 +216,10 @@ export function PollEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx;
             </li>
           ))}
         </ol>
+        <label className="check-line span2">
+          <input type="checkbox" checked={!!d.resultsHidden} onChange={e => setD(setPollHidden(d, e.target.checked))} />
+          Hide results until revealed
+        </label>
         <div className="w-row span2">
           <button
             disabled={d.options.length >= 12}
@@ -363,95 +379,164 @@ export function SpinnerEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetC
     </Dialog>
   );
 }
-export function ScaleRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
-  const d = data<ScaleData>(item),
-    steps = Array.from({ length: d.max - d.min + 1 }, (_, i) => d.min + i),
-    set = (v: number) => {
-      if (!item.locked && v !== d.value) setData(ctx, item.id, clampScale(d, v));
-    };
+/** Height that fits `n` statements; the editor grows a scale to it. */
+export const scaleHeight = (n: number) => 76 + n * 74;
+function ScaleRow({
+  d,
+  s,
+  locked,
+  onTally,
+}: {
+  d: ScaleData;
+  s: ScaleStatement;
+  locked: boolean;
+  onTally: (value: number) => void;
+}) {
+  const stats = scaleStats(s, d.min),
+    steps = Array.from({ length: d.max - d.min + 1 }, (_, k) => d.min + k),
+    peak = Math.max(0, ...stats.shares),
+    [pick, setPick] = useState(Math.round((d.min + d.max) / 2)),
+    name = s.text || d.label || 'Statement';
   return (
-    <div className="w-scale">
-      <strong>{d.label}</strong>
-      <div
-        className="w-scale-track"
-        role="slider"
-        tabIndex={0}
-        aria-label={d.label}
-        aria-valuemin={d.min}
-        aria-valuemax={d.max}
-        aria-valuenow={d.value}
-        aria-valuetext={`${d.value} of ${d.max}`}
-        onPointerDown={stop}
-        onKeyDown={e => {
-          const step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[e.key];
-          if (step) {
-            e.preventDefault();
-            e.stopPropagation();
-            set(d.value + step);
-          } else if (e.key === 'Home' || e.key === 'End') {
-            e.preventDefault();
-            e.stopPropagation();
-            set(e.key === 'Home' ? d.min : d.max);
-          }
-        }}
-      >
-        {steps.length <= 21 &&
-          steps.map(v => (
-            <span
+    <li className="w-scale-row">
+      <div className="w-scale-head">
+        <span className="w-scale-text">{s.text}</span>
+        <span className="w-scale-avg" aria-label={`Average for ${name}`}>
+          {stats.average === null ? 'No responses' : `Avg ${stats.average}`}
+          <small>
+            {' '}
+            · {stats.count} {stats.count === 1 ? 'response' : 'responses'}
+          </small>
+        </span>
+      </div>
+      {steps.length <= SCALE_BUTTON_STEPS ? (
+        <div className="w-scale-steps" role="group" aria-label={`Rate ${name}`}>
+          {steps.map((v, k) => (
+            <button
               key={v}
-              role="presentation"
-              className={`w-scale-step ${v === d.value ? 'on' : ''}`}
+              className="w-scale-step"
+              disabled={locked}
+              aria-label={`Add a ${v} for ${name}`}
+              title={`${s.tallies[k] ?? 0} at ${v}`}
+              onPointerDown={stop}
               onClick={e => {
                 e.stopPropagation();
-                set(v);
+                onTally(v);
               }}
             >
-              {v}
-            </span>
+              <span
+                className="w-scale-dist"
+                aria-hidden="true"
+                style={{ height: `${peak ? ((stats.shares[k] ?? 0) / peak) * 100 : 0}%` }}
+              />
+              <span className="w-scale-value">{v}</span>
+            </button>
           ))}
-        {steps.length > 21 && (
+        </div>
+      ) : (
+        <div className="w-scale-steps wide" role="group" aria-label={`Rate ${name}`} onPointerDown={stop}>
           <input
             type="range"
             min={d.min}
             max={d.max}
-            value={d.value}
-            aria-hidden="true"
-            tabIndex={-1}
-            onChange={e => set(Number(e.target.value))}
+            value={pick}
+            aria-label={`Value for ${name}`}
+            onChange={e => setPick(Number(e.target.value))}
           />
+          <button
+            className="w-scale-add"
+            disabled={locked}
+            onClick={e => {
+              e.stopPropagation();
+              onTally(pick);
+            }}
+          >
+            Add {pick}
+          </button>
+        </div>
+      )}
+      <div className="w-scale-bar" aria-hidden="true">
+        {stats.shares.map((share, k) =>
+          share ? (
+            <span
+              key={k}
+              style={{ width: `${share * 100}%`, opacity: 0.35 + (0.65 * k) / Math.max(1, steps.length - 1) }}
+            />
+          ) : null,
         )}
       </div>
+    </li>
+  );
+}
+export function ScaleRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
+  const d = data<ScaleData>(item),
+    statements = scaleStatements(d),
+    locked = !!item.locked;
+  return (
+    <div className="w-scale">
+      <strong>{d.label}</strong>
+      <ol className="w-scale-list">
+        {statements.map(s => (
+          <ScaleRow
+            key={s.id}
+            d={d}
+            s={s}
+            locked={locked}
+            onTally={v => {
+              try {
+                setData(ctx, item.id, tallyScale(d, s.id, v));
+              } catch (e) {
+                ctx.display((e as Error).message);
+              }
+            }}
+          />
+        ))}
+      </ol>
       <div className="w-scale-ends">
-        <span>{d.leftLabel}</span>
-        <span>{d.rightLabel}</span>
+        <span>
+          {d.min} {d.leftLabel}
+        </span>
+        <span>
+          {d.rightLabel} {d.max}
+        </span>
       </div>
     </div>
   );
 }
 export function ScaleEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose: () => void }) {
-  const [d, setD] = useState<ScaleData>(data<ScaleData>(item));
+  const [d, setD] = useState<ScaleData>(() => normalizeScale(data<ScaleData>(item))),
+    [min, setMin] = useState(d.min),
+    [max, setMax] = useState(d.max);
+  const statements = d.statements ?? [];
   const error =
-    !Number.isInteger(d.min) || !Number.isInteger(d.max) || d.min >= d.max
+    !Number.isInteger(min) || !Number.isInteger(max) || min >= max
       ? 'Minimum must be below maximum.'
-      : d.max - d.min > 100
+      : max - min > 100
         ? 'Use at most 100 steps.'
-        : '';
+        : !statements.length
+          ? 'Add at least one statement.'
+          : statements.some(s => !s.text.trim())
+            ? 'Give every statement some text.'
+            : '';
+  const setStatement = (id: string, text: string) =>
+    setD({ ...d, statements: statements.map(s => (s.id === id ? { ...s, text } : s)) });
   return (
     <Dialog
       title="Alignment scale"
+      hint="Click a step on the board to add a response. Responses are counted on this device only."
       onClose={onClose}
       onApply={() => {
-        if (!error) {
-          setData(ctx, item.id, clampScale(d, d.value));
-          onClose();
-        }
+        if (error) return;
+        const next = rangeScale(d, min, max);
+        setData(ctx, item.id, next, { h: Math.max(item.h, scaleHeight(next.statements?.length ?? 1)) });
+        onClose();
       }}
       applyDisabled={!!error}
       error={error}
     >
       <div className="w-form">
         <label className="span2">
-          Question
+          Title
           <input
             aria-label="Scale question"
             maxLength={200}
@@ -459,6 +544,54 @@ export function ScaleEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx
             onChange={e => setD({ ...d, label: e.target.value })}
           />
         </label>
+        <ol className="w-options span2" aria-label="Statements">
+          {statements.map((s, i) => (
+            <li key={s.id}>
+              <input
+                aria-label={`Statement ${i + 1}`}
+                maxLength={200}
+                value={s.text}
+                onChange={e => setStatement(s.id, e.target.value)}
+              />
+              <span className="count" title="Responses">
+                {scaleStats(s, d.min).count}
+              </span>
+              <button
+                className="icon-button"
+                aria-label={`Delete statement ${i + 1}`}
+                disabled={statements.length <= 1}
+                onClick={() => setD({ ...d, statements: statements.filter(x => x.id !== s.id) })}
+              >
+                <X size={14} />
+              </button>
+            </li>
+          ))}
+        </ol>
+        <div className="w-row span2">
+          <button
+            disabled={statements.length >= SCALE_STATEMENTS_MAX}
+            onClick={() =>
+              setD({
+                ...d,
+                statements: [
+                  ...statements,
+                  {
+                    id: crypto.randomUUID(),
+                    text: `Statement ${statements.length + 1}`,
+                    tallies: new Array<number>(d.max - d.min + 1).fill(0),
+                  },
+                ],
+              })
+            }
+          >
+            <Plus size={14} />
+            Add statement
+          </button>
+          <button onClick={() => setD(resetScale(d))}>
+            <RotateCcw size={14} />
+            Reset responses
+          </button>
+        </div>
         <label>
           Low label
           <input
@@ -482,8 +615,8 @@ export function ScaleEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx
           <input
             aria-label="Scale minimum"
             type="number"
-            value={d.min}
-            onChange={e => setD({ ...d, min: Math.round(Number(e.target.value)) })}
+            value={min}
+            onChange={e => setMin(Math.round(Number(e.target.value)))}
           />
         </label>
         <label>
@@ -491,21 +624,11 @@ export function ScaleEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx
           <input
             aria-label="Scale maximum"
             type="number"
-            value={d.max}
-            onChange={e => setD({ ...d, max: Math.round(Number(e.target.value)) })}
+            value={max}
+            onChange={e => setMax(Math.round(Number(e.target.value)))}
           />
         </label>
-        <label className="span2">
-          Value: {d.value}
-          <input
-            aria-label="Scale value"
-            type="range"
-            min={d.min}
-            max={Math.max(d.min, d.max)}
-            value={Math.min(Math.max(d.value, d.min), d.max)}
-            onChange={e => setD({ ...d, value: Number(e.target.value) })}
-          />
-        </label>
+        <small className="span2">Changing the range keeps responses that are still on the scale.</small>
       </div>
     </Dialog>
   );

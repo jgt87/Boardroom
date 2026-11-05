@@ -77,6 +77,10 @@ export function useKeyboardShortcuts(core: BoardCore, gestures: { cancelGesture:
     setThread,
     setBoardOutline,
     setDashboard,
+    notesOpen,
+    setNotesOpen,
+    outline,
+    setOutline,
   } = core;
   const { cancelGesture } = gestures;
   useEffect(() => {
@@ -257,8 +261,15 @@ export function useKeyboardShortcuts(core: BoardCore, gestures: { cancelGesture:
         if (next) reveal(next);
         return;
       }
-      if (mod && e.shiftKey && !e.altKey && (key === 'arrowdown' || key === 'arrowup') && selected.length) {
-        // Enter or leave a container: frames and groups (gap F2, track R1).
+      if (
+        mod &&
+        e.shiftKey &&
+        !e.altKey &&
+        (key === 'arrowdown' || key === 'arrowup') &&
+        (selected.length || (key === 'arrowdown' && onBoard))
+      ) {
+        // Enter or leave a container: frames and groups (gap F2, track R1). With nothing selected, Ctrl+Shift+Down
+        // enters the board itself and selects its first object in reading order (track C).
         e.preventDefault();
         const next =
           key === 'arrowdown' ? enterContainer(boardRef.current, selected) : leaveContainer(boardRef.current, selected);
@@ -299,6 +310,13 @@ export function useKeyboardShortcuts(core: BoardCore, gestures: { cancelGesture:
         const b = selectionBounds(boardRef.current.items, selected);
         if (!b) return;
         setThread({ x: b.x + b.w, y: b.y, itemId: selected.length === 1 ? selected[0] : undefined });
+        return;
+      }
+      if (e.altKey && !mod && !e.shiftKey && (key === 'n' || e.code === 'KeyN')) {
+        // Alt+N: board notes panel (track L).
+        e.preventDefault();
+        setOutline(false);
+        setNotesOpen(!(notesOpen && !outline));
         return;
       }
       if (e.altKey && !mod && !e.shiftKey && key === 'o') {

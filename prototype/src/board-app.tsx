@@ -4,8 +4,9 @@ import { zoomCameraAt, clampZoom, centeredCamera } from './camera';
 import { loadViewPrefs, saveViewPrefs, wheelLooksLikeMouse, type ViewPrefs } from './view-prefs';
 import { useLatest } from './use-latest';
 import { deepLinkUrl, parseDeepLink } from './deep-link';
-import { presentationFrames, slideFrames } from './navigation';
-import { SHORTCUT_EVENT, type ShortcutData } from './specs-shortcut';
+import { rememberTemplateUse } from './user-templates';
+import { starterUseKey } from './starter-templates';
+import { slideFrames } from './navigation';
 import { parsePenPresets, PEN_PRESETS_KEY, type PenPreset } from './pen-smart';
 import { activityKey, appendActivity, diffActivity, parseActivity } from './activity';
 import {
@@ -48,12 +49,20 @@ import { droppedImageName, type DroppedImage } from './web-drop';
 import { loadAssets, saveAsset, pruneAssets, readImageWithOriginal } from './assets-store';
 import { wireframeItem } from './specs-media';
 import { OPEN_EDITOR_EVENT } from './widgets-media';
+import { startObjectOf } from './board-settings';
 import { stampChoice } from './widgets-graphics';
 import { PREVIEW_EVENT, usePreviewState } from './prototype-preview';
 import { looksLikeMarkdown } from './markdown';
 import { applyLayouts } from './autolayout';
 import { syncRecordCards } from './record-canvas';
-import { classifyPaste, gridFromCells, itemsFromText } from './smart-paste';
+import {
+  PASTE_NOTES_MAX,
+  classifyPaste,
+  gridFromCells,
+  itemsFromText,
+  notesFromCells,
+  parseDelimited,
+} from './smart-paste';
 import type { GridData } from './grid';
 import { maybeSnapshot } from './versions';
 import { decryptBackup, isEncryptedBackup } from './encrypted-backup';
@@ -97,7 +106,7 @@ import {
   setSpaceInfo,
   spaceInfoOf,
 } from './board-library';
-import type { Library, OpenTarget, SpaceInfo } from './board-library';
+import type { BoardMetaPatch, Library, OpenTarget, SpaceInfo } from './board-library';
 import { createFromBlueprint, type Blueprint } from './blueprints';
 import { copySelection, clipboardFormats, readClipboardHtml, pastePayload, cutIds } from './clipboard';
 import type { ClipPayload } from './clipboard';
@@ -106,11 +115,14 @@ import { useKeyboardShortcuts } from './use-keyboard-shortcuts';
 import { useDeepLinks } from './use-deep-links';
 import type { WidgetCtx } from './widget-types';
 import { readDrawioFile } from './drawio-files';
+import { BOARD_OBJECT_LIMIT, drawioImportNote, drawioToItems } from './drawio-shapes';
 import { docFromMarkdown, DOC_FILE_MAX } from './doc-tools';
 import { validateWidget } from './widget-specs';
 import { stampAuthors, cleanAuthor, AUTHOR_KEY } from './authors';
 import { stampTimes } from './item-times';
 import { linkOf, syncMermaidLinks } from './mermaid-link';
+import { lastColors, rememberKindColors } from './last-color';
+import { modeRefusal } from './board-modes';
 
 export const KEY = LEGACY_KEY;
 /** Open the local board library (migrating a legacy single board on first run). */
@@ -140,6 +152,8 @@ export const tools = [
 ] as const;
 export type Tool = 'select' | 'hand' | Kind | 'stack' | 'comment';
 export type Camera = { x: number; y: number; z: number };
+/** Which import the shared document file chooser was opened for. */
+type DocImportKind = 'markdown' | 'pptx' | 'docx' | 'odt' | 'odp' | 'table' | 'grid' | 'drawio';
 export type Gesture =
   | {
       mode: 'move' | 'resize' | 'pan' | 'draw' | 'create' | 'marquee' | 'endpoint' | 'bend' | 'lasso' | 'rotate';
@@ -164,7 +178,9 @@ export type Gesture =
       peel?: PeelState;
     }
   | {
-      mode: 'erase' | 'label';
+      mode: 'erase' | 'label' | 'tail';
+      /** Label drag: the extra label being moved; missing for the main caption (track R2-H). */
+      labelId?: string;
       start: Point;
       screen: Point;
       board: Board;
@@ -228,6 +244,8 @@ function useBoardCore() {
   const [outline, setOutline] = useState(false),
     // Board outline by frame for screen readers (track R1, Alt+O).
     [boardOutline, setBoardOutline] = useState(false),
+    // Docked board notes panel (track L, Alt+N).
+    [notesOpen, setNotesOpen] = useState(false),
     [help, setHelp] = useState(false),
     [menu, setMenu] = useState(false);
   const [notice, setNotice] = useState(initial.error),
@@ -346,10 +364,13 @@ function useBoardCore() {
     space = useRef(false);
   const pauseSave = useRef(Boolean(initial.error)),
     noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const display = (message: string) => {
+  /** A one-click follow-up shown in the notification, e.g. "One sticky per cell" after a grid paste. */
+  const [noticeAction, setNoticeAction] = useState<{ message: string; label: string; run: () => void } | null>(null);
+  const display = (message: string, action?: { label: string; run: () => void }) => {
     setNotice(message);
+    setNoticeAction(action ? { message, ...action } : null);
     clearTimeout(noticeTimer.current);
-    noticeTimer.current = setTimeout(() => setNotice(''), 5000);
+    noticeTimer.current = setTimeout(() => setNotice(''), action ? 8000 : 5000);
   };
   const normalize = (input: Board): Board => {
     const next = applyGridLayouts(applyLayouts(syncRecordCards(stripRotation(input), boardRef.current)));
@@ -381,9 +402,10 @@ function useBoardCore() {
   const update = (input: Board) => {
     if (input.items.length > 2000) return display('This prototype supports up to 2,000 objects per board.');
     const prev = boardRef.current;
-    // View-only boards (gap C16) refuse every change except turning view-only off.
-    if (prev.viewOnly && input.viewOnly && input !== prev)
-      return display('This board is view-only. Turn off View only in the Board menu to edit.');
+    // View-only boards (gap C16) refuse every change except turning view-only off; comment-only boards
+    // (track R2-K) accept comment changes only.
+    const refusal = modeRefusal(prev, input);
+    if (refusal) return display(refusal);
     let next: Board;
     try {
       next = stampTimes(
@@ -411,13 +433,15 @@ function useBoardCore() {
     rawSelectedItem && gridOwner(shown, rawSelectedItem.id)?.locked
       ? { ...rawSelectedItem, locked: true }
       : rawSelectedItem;
-  const patch = (changes: Partial<Item>) =>
+  const patch = (changes: Partial<Item>) => {
+    const editable = (i: Item) => selected.includes(i.id) && !i.locked && !gridOwner(boardRef.current, i.id)?.locked;
+    // A colour applied to shapes, text or connectors becomes the default for new ones of that kind (session only).
+    if (changes.fill) rememberKindColors(boardRef.current.items.filter(editable), changes.fill);
     update({
       ...boardRef.current,
-      items: boardRef.current.items.map(i =>
-        selected.includes(i.id) && !i.locked && !gridOwner(boardRef.current, i.id)?.locked ? { ...i, ...changes } : i,
-      ),
+      items: boardRef.current.items.map(i => (editable(i) ? { ...i, ...changes } : i)),
     });
+  };
   const patchStyle = (style: Item['style']) =>
     update({
       ...boardRef.current,
@@ -535,11 +559,30 @@ function useBoardCore() {
     setThread(null);
     setDashboard(false);
     pauseSave.current = false;
+    const skipStart = skipStartObject.current;
+    skipStartObject.current = false;
     requestAnimationFrame(() => {
       if (focusTarget(next, target)) return;
+      // A board set to open in a format object (track D) opens that object's focus view.
+      if (!target && !skipStart && openStartObject(next)) return;
       if (next.startView) setCamera(centeredCamera(next.startView, next.startView.z, size));
       else fit(next.items);
     });
+  };
+  /** Set while a deep link opens a board, so the link (not the board's start object) decides what opens. */
+  const skipStartObject = useRef(false);
+  /** Select, reveal and optionally open an object in its focus view (deep links with focus=1, start objects). */
+  const showObject = (target: Item, focus: boolean) => {
+    setSelected([target.id]);
+    fit([target]);
+    if (focus) openEditor(target.id);
+  };
+  const openStartObject = (b: Board) => {
+    const id = startObjectOf(b),
+      target = id ? b.items.find(i => i.id === id) : undefined;
+    if (!target) return false;
+    showObject(target, true);
+    return true;
   };
   /** Apply a library change now, so several actions in one event see each other's result. */
   const commitLibrary = (lib: Library) => {
@@ -579,6 +622,7 @@ function useBoardCore() {
     create: (template: TemplateName | null, space?: string) => {
       try {
         const fresh: Board = { ...newBoard(), title: template ?? 'Untitled board' };
+        if (template) rememberTemplateUse(starterUseKey(template));
         if (template) fresh.items = templateItems(template, { x: 0, y: 0 }, (t, x, y, f) => createItem(t, x, y, f));
         openNew(fresh, space);
       } catch (err) {
@@ -612,7 +656,7 @@ function useBoardCore() {
       }
     },
     /** File under a space or star one or more boards (item 107). */
-    setMeta: (id: string | string[], patch: { space?: string | null; starred?: boolean }) => {
+    setMeta: (id: string | string[], patch: BoardMetaPatch) => {
       try {
         commitLibrary(setBoardMeta(localStorage, libraryRef.current, id, patch));
       } catch (err) {
@@ -766,11 +810,33 @@ function useBoardCore() {
       cells: 'Pasted the cells as a grid.',
       mermaid: 'Added a Mermaid diagram.',
       lines: `Added ${made.items.length} sticky notes.`,
+      doc: 'Long text pasted as a Doc.',
       text: '',
     }[made.kind];
     const message = [what, made.note].filter(Boolean).join(' ');
-    if (message) display(message);
+    if (made.kind === 'cells') {
+      // Offer the other reading of spreadsheet cells without asking up front (one click, then gone).
+      const gridId = made.items[0].id;
+      display(message, { label: 'One sticky per cell', run: () => cellsAsNotes(gridId, text, center) });
+    } else if (message) display(message);
     return true;
+  }
+  /** Replace a just-pasted Grid with one sticky note per non-empty cell. */
+  function cellsAsNotes(gridId: string, text: string, center: Point) {
+    const b = boardRef.current;
+    if (!b.items.some(i => i.id === gridId)) return display('The pasted grid is no longer on the board.');
+    const n = notesFromCells(parseDelimited(text.trim(), '\t'), center);
+    if (!n.items.length) return;
+    update({ ...b, items: [...b.items.filter(i => i.id !== gridId), ...n.items] });
+    setSelected(n.items.map(i => i.id));
+    display(
+      [
+        `Added ${n.items.length} sticky notes.`,
+        n.truncated ? `Only the first ${PASTE_NOTES_MAX} cells were pasted.` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
   }
   /** Store an added image file, plus the download-only original of a converted SVG or BMP (gap R2-Q3). */
   async function storeImageFile(f: File): Promise<{ id: string; asset: ImageAsset; originalId?: string }> {
@@ -864,6 +930,23 @@ function useBoardCore() {
     }
     if (errors.length) display(errors.join(' '));
   }
+  /** A .drawio file as native shapes and connectors (track R2-H), centred on `at` or the view; one undo step. */
+  async function importDrawioShapes(file: File, at?: Point) {
+    const center = at ?? toWorld(size.w / 2, size.h / 2);
+    try {
+      const xml = await readDrawioFile(file),
+        current = boardRef.current,
+        room = BOARD_OBJECT_LIMIT - current.items.length;
+      if (room <= 0) return display('This prototype supports up to 2,000 objects per board.');
+      const made = drawioToItems(xml, center, (t, x, y, f) => createItem(t, x, y, f), room);
+      update({ ...current, items: [...current.items, ...made.items] });
+      setSelected(made.items.map(i => i.id));
+      setTool('select');
+      display(drawioImportNote(made));
+    } catch (error) {
+      display((error as Error).message);
+    }
+  }
   /** Add a recorded or captured file (Talktrack video, Photobooth photo) to the board. */
   async function insertCaptured(file: File) {
     if (file.type.startsWith('image/')) return insertImages([file]);
@@ -931,7 +1014,15 @@ function useBoardCore() {
       h = Math.max(...pts.map(p => p.y)) - y;
     const left = size.w <= 600 ? 65 : 100,
       // Leave room for the outline or the linked Mermaid code panel on the right.
-      right = outline ? 320 : mermaidLinkId && size.w > 900 ? 470 : size.w <= 600 ? 20 : 40;
+      right = outline
+        ? 320
+        : notesOpen && size.w > 900
+          ? 420
+          : mermaidLinkId && size.w > 900
+            ? 470
+            : size.w <= 600
+              ? 20
+              : 40;
     const usableW = Math.max(100, size.w - left - right),
       z = Math.max(0.1, Math.min(1.4, (usableW - 32) / Math.max(w, 1), (size.h - 220) / Math.max(h, 1)));
     setCamera({ z, x: left + (usableW - w * z) / 2 - x * z, y: 90 + (size.h - 180 - h * z) / 2 - y * z });
@@ -953,7 +1044,7 @@ function useBoardCore() {
   };
   const addCentered = (kind: Kind) => {
     const p = toWorld(size.w / 2, size.h / 2),
-      i = createItem(kind, p.x, p.y, fill);
+      i = lastColors.apply(createItem(kind, p.x, p.y, fill));
     i.x -= i.w / 2;
     i.y -= i.h / 2;
     update({ ...boardRef.current, items: [...boardRef.current.items, i] });
@@ -963,11 +1054,11 @@ function useBoardCore() {
   };
   /** Place a tool dropped on the board (gap F12): object kinds are created at the point, others open as usual. */
   const placeAt = (kind: string, at: Point) => {
-    if (!(allKinds as string[]).includes(kind) || ['image', 'video', 'pdf', 'drawio', 'pen'].includes(kind)) {
+    if (!(allKinds as string[]).includes(kind) || ['image', 'video', 'pdf', 'file', 'drawio', 'pen'].includes(kind)) {
       chooseFormat(kind);
       return;
     }
-    const i = createItem(kind as Kind, at.x, at.y, kind === 'note' ? fill : undefined);
+    const i = lastColors.apply(createItem(kind as Kind, at.x, at.y, kind === 'note' ? fill : undefined));
     i.x -= i.w / 2;
     i.y -= i.h / 2;
     update({ ...boardRef.current, items: [...boardRef.current.items, i] });
@@ -978,7 +1069,7 @@ function useBoardCore() {
   const mediaFile = useRef<HTMLInputElement>(null),
     mediaKind = useRef<string | null>(null),
     docImportFile = useRef<HTMLInputElement>(null),
-    docImportKind = useRef<'markdown' | 'pptx' | 'docx' | 'table' | 'grid'>('markdown');
+    docImportKind = useRef<DocImportKind>('markdown');
   /**
    * Markdown and Word files become Docs, PowerPoint files become Slides decks (items 79 and 84), and CSV or
    * Excel files become a Table of records (gap list B3, B15, I2).
@@ -1034,13 +1125,35 @@ function useBoardCore() {
         note = doc.truncated
           ? 'The document was shortened to 60,000 characters.'
           : `Imported ${file.name}. Images and page layout are not imported.`;
-      } else if (/.pptx$/i.test(file.name)) {
-        const { parsePptx, PPTX_MAX_BYTES } = await import('./pptx');
-        if (file.size > PPTX_MAX_BYTES) throw new Error('PowerPoint files up to 50 MB can be imported.');
-        const slides = parsePptx(new Uint8Array(await file.arrayBuffer()));
+      } else if (/\.(odt|rtf)$/i.test(file.name)) {
+        // OpenDocument text and Rich Text Format (track J): read as data into a Doc's Markdown.
+        const rtf = /\.rtf$/i.test(file.name);
+        if (file.size > 20 * 1024 * 1024)
+          throw new Error(`${rtf ? 'RTF' : 'OpenDocument'} files up to 20 MB can be imported.`);
+        const bytes = new Uint8Array(await file.arrayBuffer()),
+          doc = rtf
+            ? (await import('./rtf-import')).parseRtf(bytes)
+            : (await import('./opendoc-import')).parseOdt(bytes);
+        item = createItem('doc', center.x, center.y, '#ffffff');
+        item.data = { ...item.data, markdown: doc.markdown };
+        item.text = docFromMarkdown(doc.markdown, file.name.replace(/\.(odt|rtf)$/i, '.md')).title;
+        note = doc.truncated
+          ? 'The document was shortened to 60,000 characters.'
+          : `Imported ${file.name}. Images and page layout are not imported.`;
+      } else if (/\.(pptx|odp)$/i.test(file.name)) {
+        const odp = /\.odp$/i.test(file.name);
+        let slides;
+        if (odp) {
+          if (file.size > 20 * 1024 * 1024) throw new Error('OpenDocument files up to 20 MB can be imported.');
+          slides = (await import('./opendoc-import')).parseOdp(new Uint8Array(await file.arrayBuffer()));
+        } else {
+          const { parsePptx, PPTX_MAX_BYTES } = await import('./pptx');
+          if (file.size > PPTX_MAX_BYTES) throw new Error('PowerPoint files up to 50 MB can be imported.');
+          slides = parsePptx(new Uint8Array(await file.arrayBuffer()));
+        }
         item = createItem('slides', center.x, center.y);
         item.data = { slides, current: 0 };
-        item.text = file.name.replace(/.pptx$/i, '').slice(0, 200) || 'Imported deck';
+        item.text = file.name.replace(/\.(pptx|odp)$/i, '').slice(0, 200) || 'Imported deck';
         note = `${slides.length} ${slides.length === 1 ? 'slide' : 'slides'} imported. Images and layouts are not imported.`;
       } else {
         if (file.size > DOC_FILE_MAX) throw new Error('Markdown files up to 1 MB can be imported.');
@@ -1064,7 +1177,7 @@ function useBoardCore() {
   const makePlacedItem = (kind: Kind, point: Point): Item => {
     const item = pendingPlacement?.startsWith('wf:')
       ? wireframeItem(pendingPlacement.slice(3) as never, point, (t: Kind, x: number, y: number) => createItem(t, x, y))
-      : createItem(kind, point.x, point.y, fill);
+      : lastColors.apply(createItem(kind, point.x, point.y, fill));
     const stamp =
       kind === 'stamp' && pendingPlacement?.startsWith('stamp:') ? stampChoice(pendingPlacement.slice(6)) : null;
     if (stamp) Object.assign(item, { data: stamp.data, fill: stamp.fill });
@@ -1114,20 +1227,29 @@ function useBoardCore() {
       choice === 'import:markdown' ||
       choice === 'import:pptx' ||
       choice === 'import:docx' ||
+      choice === 'import:odt' ||
+      choice === 'import:odp' ||
       choice === 'import:table' ||
+      choice === 'import:drawio' ||
       choice === 'import:grid'
     ) {
       setTool('select');
-      docImportKind.current = choice.slice(7) as 'markdown' | 'pptx' | 'docx' | 'table' | 'grid';
+      docImportKind.current = choice.slice(7) as DocImportKind;
       if (docImportFile.current) {
         docImportFile.current.accept =
           choice === 'import:pptx'
             ? '.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation'
             : choice === 'import:docx'
               ? '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-              : choice === 'import:table' || choice === 'import:grid'
-                ? '.csv,.tsv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                : '.md,.markdown,text/markdown,text/plain';
+              : choice === 'import:odt'
+                ? '.odt,.rtf,application/vnd.oasis.opendocument.text,application/rtf,text/rtf'
+                : choice === 'import:odp'
+                  ? '.odp,application/vnd.oasis.opendocument.presentation'
+                  : choice === 'import:drawio'
+                    ? '.drawio,.xml,application/xml,text/xml'
+                    : choice === 'import:table' || choice === 'import:grid'
+                      ? '.csv,.tsv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                      : '.md,.markdown,text/markdown,text/plain';
         docImportFile.current.click();
       }
       return;
@@ -1492,7 +1614,9 @@ function useBoardCore() {
   const privateSet = React.useMemo(() => privateIds(shown), [shown]);
   const covered = React.useMemo(() => coveredIds(shown), [shown]);
   const searchExclude = React.useMemo(() => new Set([...privateSet, ...covered]), [privateSet, covered]);
+  const selectedLatest = useLatest(selected);
   const widgetCtx = (item: Item): WidgetCtx => ({
+    selection: () => selectedLatest.current,
     board: shown,
     assets,
     storeAsset: async asset => {
@@ -1518,25 +1642,7 @@ function useBoardCore() {
     });
   const mixedBorders =
     allShapes && new Set(selected.map(id => JSON.stringify(shown.items.find(i => i.id === id)?.style ?? {}))).size > 1;
-  // Action Shortcut buttons (item 99) ask the board to navigate, present or open the timer.
-  const runShortcutAction = useLatest((d: ShortcutData) => {
-    if (d.action === 'timer') setTimerOn(true);
-    else if (d.action === 'present') {
-      if (presentationFrames(boardRef.current).length) startPresenting(0);
-      else display('Add a frame to present.');
-    } else if (d.action === 'frame') {
-      const frame = boardRef.current.items.find(i => i.id === d.target && i.type === 'frame');
-      if (frame) {
-        setSelected([frame.id]);
-        fit([frame]);
-      } else display('The frame for this shortcut no longer exists.');
-    }
-  });
-  useEffect(() => {
-    const handle = (e: Event) => runShortcutAction.current((e as CustomEvent<ShortcutData>).detail);
-    window.addEventListener(SHORTCUT_EVENT, handle);
-    return () => window.removeEventListener(SHORTCUT_EVENT, handle);
-  }, [runShortcutAction]);
+  // Action Shortcut buttons (item 99) are answered by ShortcutRunner (shortcut-runner.tsx).
   /** Follow a deep link in the URL fragment: open its board, then select, show or focus its object. */
   const followDeepLink = useLatest(() => {
     const link = parseDeepLink(location.hash);
@@ -1549,6 +1655,7 @@ function useBoardCore() {
     if (link.board && link.board !== libraryRef.current.activeId) {
       if (!liveBoards(libraryRef.current).some(b => b.id === link.board))
         return display('That board is not in this browser. Links only open boards stored on this device.');
+      skipStartObject.current = !!link.object;
       boardActions.open(link.board);
     }
     setDashboard(false);
@@ -1558,12 +1665,18 @@ function useBoardCore() {
       requestAnimationFrame(() => {
         const target = boardRef.current.items.find(i => i.id === link.object);
         if (!target) return display('That object is no longer on this board.');
-        setSelected([target.id]);
-        fit([target]);
-        if (link.focus) openEditor(target.id);
+        showObject(target, !!link.focus);
       }),
     );
   });
+  /** On first load, open the board's start object (track D) unless a link in the URL names an object. */
+  const openInitialStart = useLatest(() => {
+    if (/(^|[#&])(object|item|frame)=/.test(location.hash)) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => openStartObject(boardRef.current)));
+  });
+  useEffect(() => {
+    openInitialStart.current();
+  }, [openInitialStart]);
   useEffect(() => {
     followDeepLink.current();
     const follow = () => followDeepLink.current();
@@ -1663,11 +1776,14 @@ function useBoardCore() {
     normalize,
     normalizeText,
     notice,
+    noticeAction,
     noticeTimer,
     openEditor,
     outline,
     boardOutline,
     setBoardOutline,
+    notesOpen,
+    setNotesOpen,
     panel,
     patch,
     patchStyle,
@@ -1784,6 +1900,7 @@ function useBoardCore() {
     activeLayer,
     setActiveLayer,
     insertDrawio,
+    importDrawioShapes,
     editSeed,
     pendingPlacement,
     setPendingPlacement,

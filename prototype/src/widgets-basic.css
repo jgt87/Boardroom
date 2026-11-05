@@ -433,6 +433,9 @@
 .w-poll .count {
   font-weight: 700;
 }
+.w-poll.results-hidden li button {
+  justify-content: flex-start;
+}
 .w-poll small {
   color: #8a8a94;
   font-size: 11px;
@@ -510,34 +513,107 @@
 .w-scale strong {
   font-size: 14px;
 }
-.w-scale-track {
+.w-scale-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  gap: 4px;
-  outline: none;
-  border-radius: 6px;
-}
-.w-scale-track:focus-visible {
-  outline: 2px solid #4262ff;
-  outline-offset: 3px;
-}
-.w-scale-track .w-scale-step {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
   flex: 1;
-  height: 30px;
-  border-radius: 5px;
-  background: #f0f0f4;
-  font-size: 12px;
-  cursor: pointer;
+  min-height: 0;
+  overflow: auto;
 }
-.w-scale-track .w-scale-step.on {
-  background: #4262ff;
-  color: #fff;
+.w-scale-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.w-scale-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+.w-scale-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.w-scale-avg {
+  flex: none;
   font-weight: 700;
 }
-.w-scale-track input {
+.w-scale-avg small {
+  font-weight: 400;
+  color: #696973;
+}
+.w-scale-steps {
+  display: flex;
+  gap: 4px;
+}
+.w-scale-steps.wide {
+  align-items: center;
+}
+.w-scale-steps.wide input {
   flex: 1;
+}
+.w-scale-step {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex: 1;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: #f0f0f4;
+  color: #25252c;
+  font-size: 12px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.w-scale-step:hover:not(:disabled) {
+  background: #e4e7ff;
+}
+.w-scale-step:focus-visible {
+  outline: 2px solid #4262ff;
+  outline-offset: 1px;
+}
+.w-scale-step:disabled {
+  cursor: default;
+}
+.w-scale-dist {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #4262ff33;
+  transition: height 0.25s;
+}
+.w-scale-value {
+  position: relative;
+  align-self: center;
+}
+.w-scale-add {
+  flex: none;
+}
+.w-scale-bar {
+  display: flex;
+  height: 5px;
+  border-radius: 3px;
+  background: #f0f0f4;
+  overflow: hidden;
+}
+.w-scale-bar span {
+  background: #4262ff;
+}
+@media (prefers-reduced-motion: reduce) {
+  .w-scale-dist {
+    transition: none;
+  }
 }
 .w-scale-ends {
   display: flex;

@@ -173,6 +173,11 @@ export function pastePayload(
       if (idMap.has(src.linkTo)) i.linkTo = idMap.get(src.linkTo);
       else if (!existing.has(src.linkTo)) delete i.linkTo;
     }
+    // A pasted callout keeps pointing at a pasted or still-present object; otherwise its tail stays put.
+    if (src.tail?.target) {
+      if (idMap.has(src.tail.target)) i.tail = { ...src.tail, target: idMap.get(src.tail.target) };
+      else if (!existing.has(src.tail.target)) i.tail = { x: src.tail.x, y: src.tail.y };
+    }
     if (src.type === 'arrow') {
       for (const end of ['from', 'to'] as const) {
         const target = src[end];

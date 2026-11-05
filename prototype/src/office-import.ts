@@ -18,9 +18,12 @@ const decode = (s: string) =>
     .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Math.min(0x10ffff, Number(n))))
     .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(Math.min(0x10ffff, parseInt(n, 16))))
     .replace(/&amp;/g, '&');
+/** Decode the XML entities of a text node or attribute value. */
+export const decodeXml = decode;
 const attr = (tag: string, name: string) => tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1];
 
-function unzipParts(bytes: Uint8Array, wanted: (name: string) => boolean, kind: string): Record<string, string> {
+/** Decompress the wanted parts of an Office or OpenDocument ZIP as text. Throws a user-readable Error. */
+export function unzipParts(bytes: Uint8Array, wanted: (name: string) => boolean, kind: string): Record<string, string> {
   if (bytes.length > OFFICE_MAX_BYTES) throw new Error(`${kind} files up to 20 MB can be imported.`);
   let files: Record<string, Uint8Array>;
   try {
@@ -167,8 +170,9 @@ export function parseXlsx(bytes: Uint8Array, index = 0): { sheet: string; rows: 
 
 // ---- DOCX ---------------------------------------------------------------------------------------------
 
-const escapeMd = (s: string) => s.replace(/([\\`*_[\]~])/g, '\\$1').replace(/\+(?=\+)/g, '\\+');
-type Segment = { text: string; fmt: string };
+export const escapeMd = (s: string) => s.replace(/([\\`*_[\]~])/g, '\\$1').replace(/\+(?=\+)/g, '\\+');
+/** A run of text and its formatting flags: b(old), i(talic), s(trikethrough), u(nderline). */
+export type Segment = { text: string; fmt: string };
 /** Whether a run property such as `<w:b/>` or `<w:u w:val="single"/>` is switched on. */
 const runFlag = (props: string, tag: string) =>
   [...props.matchAll(/<w:([a-zA-Z]+)\b([^>]*)\/>/g)].some(m => m[1] === tag && !/w:val="(0|false|none)"/.test(m[2]));
@@ -196,7 +200,11 @@ function runSegments(p: string): Segment[] {
 }
 /** Markdown for the runs of one `<w:p>` paragraph body (adjacent runs with the same formatting are merged). */
 function runsMarkdown(p: string): string {
-  return runSegments(p)
+  return segmentsMarkdown(runSegments(p));
+}
+/** Markdown for formatted runs (shared with the OpenDocument and RTF importers). */
+export function segmentsMarkdown(segments: Segment[]): string {
+  return segments
     .map(({ text, fmt }) => {
       const core = text.trim();
       if (!core || !fmt) return escapeMd(text);

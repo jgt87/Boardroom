@@ -1,5 +1,5 @@
 // Action Shortcut view and editor (item 99). Clicking the button runs its action; the board
-// handles frame, presentation and timer actions through a window event (see board-app).
+// answers every other action through a window event (see shortcut-runner).
 import './widgets-people.css';
 import { useState } from 'react';
 import { Zap } from 'lucide-react';
@@ -7,7 +7,7 @@ import type { Item } from './model';
 import type { WidgetCtx, WidgetView } from './widget-types';
 import { Dialog, data, setData, stop } from './widget-kit';
 import { BrandSwatches } from './brand-kit-panel';
-import { isSafeLink, shortcutActions, SHORTCUT_EVENT } from './specs-shortcut';
+import { isSafeLink, shortcutActions, shortcutGroups, shortcutUsesTarget, SHORTCUT_EVENT } from './specs-shortcut';
 import type { ShortcutAction, ShortcutData } from './specs-shortcut';
 import { readableTextOn } from './board-tools';
 
@@ -62,7 +62,7 @@ function ShortcutEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; on
         setData(
           ctx,
           item.id,
-          { action, target: action === 'link' || action === 'frame' ? target : '' },
+          { action, target: shortcutUsesTarget(action) ? target : '' },
           { text: label.trim().slice(0, 80), fill },
         );
         onClose();
@@ -83,12 +83,22 @@ function ShortcutEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; on
           <select
             aria-label="Shortcut action"
             value={action}
-            onChange={e => setAction(e.target.value as ShortcutAction)}
+            onChange={e => {
+              const next = e.target.value as ShortcutAction;
+              // A label still naming the previous action follows the new one.
+              if (label.trim() === shortcutActions.find(a => a.id === action)?.label)
+                setLabel(shortcutActions.find(a => a.id === next)?.label ?? label);
+              setAction(next);
+            }}
           >
-            {shortcutActions.map(a => (
-              <option key={a.id} value={a.id}>
-                {a.label}
-              </option>
+            {shortcutGroups().map(g => (
+              <optgroup key={g.group} label={g.group}>
+                {g.actions.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </label>

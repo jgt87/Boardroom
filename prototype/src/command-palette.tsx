@@ -24,6 +24,7 @@ export function CommandPalette() {
     setHelp,
     setOutline,
     setBoardOutline,
+    setNotesOpen,
     setInspector,
     viewPrefs,
     setViewPrefs,
@@ -90,6 +91,17 @@ export function CommandPalette() {
         shortcut: 'Alt O',
         run: () => setBoardOutline(true),
       },
+      {
+        id: 'board-notes',
+        label: 'Board notes',
+        group: 'View',
+        keywords: 'notes meeting minutes document side panel',
+        shortcut: 'Alt N',
+        run: () => {
+          setOutline(false);
+          setNotesOpen(true);
+        },
+      },
       { id: 'props', label: 'Properties', group: 'View', keywords: 'inspector', run: () => setInspector(true) },
       { id: 'timer', label: 'Timer', group: 'Facilitation', run: () => setTimerOn(true) },
       { id: 'shortcuts', label: 'Keyboard shortcuts', group: 'Help', shortcut: '?', run: () => setHelp(true) },
@@ -149,6 +161,7 @@ export function CommandPalette() {
     setPresentPanel,
     setOutline,
     setBoardOutline,
+    setNotesOpen,
     setInspector,
     setTimerOn,
     setHelp,

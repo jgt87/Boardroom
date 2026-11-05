@@ -9,6 +9,7 @@ import { spokenColor } from './access-tools';
 import { AUTHOR_KEY, cleanAuthor, initials } from './authors';
 import { addMember, colorFor, personColors, removeMember, PEOPLE_MAX } from './specs-people';
 import type { PeopleData, UserCardData } from './specs-people';
+import { ChipButton } from './widgets-chips';
 
 /** The display name set on this device (Profile), or ''. Storage may be unavailable. */
 function myName(): string {
@@ -31,7 +32,7 @@ function Avatar({ name, color, size = 36 }: { name: string; color: string; size?
   );
 }
 
-function PeopleRender({ item }: { item: Item }) {
+function PeopleRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const d = data<PeopleData>(item);
   return (
     <div className="w-people">
@@ -42,8 +43,17 @@ function PeopleRender({ item }: { item: Item }) {
         <ul aria-label={`${d.title} members`}>
           {d.members.map(m => (
             <li key={m.id} title={[m.name, m.role].filter(Boolean).join(' · ')}>
-              <Avatar name={m.name} color={m.color} />
-              <span>{m.name}</span>
+              {/* Drag an avatar onto a card or sticky note to assign it (track F). */}
+              <ChipButton
+                chip={{ kind: 'person', name: m.name }}
+                ownerId={item.id}
+                ctx={ctx}
+                label={`Assign ${m.name}`}
+                className="w-person"
+              >
+                <Avatar name={m.name} color={m.color} />
+                <span>{m.name}</span>
+              </ChipButton>
             </li>
           ))}
         </ul>
@@ -216,6 +226,6 @@ function UserCardEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; on
 }
 
 export const peopleViews: WidgetView[] = [
-  { kind: 'people', mode: 'html', Render: PeopleRender, Editor: PeopleEditor },
+  { kind: 'people', mode: 'html', Render: PeopleRender, Editor: PeopleEditor, interactive: true },
   { kind: 'usercard', mode: 'html', Render: UserCardRender, Editor: UserCardEditor },
 ];

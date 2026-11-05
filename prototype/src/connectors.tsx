@@ -5,7 +5,16 @@ import { canConnect, addBend, removeBend, resetBends, setBendPoint, DEFAULT_CLEA
 import { bendsToPoints } from './routing';
 import { pointAlong } from './board-tools';
 import { addConnectorLabel, updateConnectorLabel, removeConnectorLabel, MAX_CONNECTOR_LABELS } from './diagram-gaps';
+import {
+  setConnectorLabelStyle,
+  labelColors,
+  labelSizes,
+  MAIN_LABEL_SIZE,
+  EXTRA_LABEL_SIZE,
+  LABEL_COLOR,
+} from './diagram-extras';
 import { X, Plus, Trash2, RotateCcw } from 'lucide-react';
+import './diagram-extras.css';
 export { connectorGeometry } from './connector-geometry';
 export function ConnectorControls({ item, onChange }: { item: Item; onChange: (format: ConnectorFormat) => void }) {
   const f = item.connector ?? {};
@@ -123,47 +132,66 @@ const crowHeads: [ConnectorHead, string, number?][] = [
   ['zero-many', 'M20 3 L11 10 L20 17', 5],
   ['one-many', 'M20 3 L11 10 L20 17 M7 3 V17'],
 ];
-/** Extra labels along a connector (gap E4); `at` is a fraction along the drawn path. Edited in the details panel. */
+/**
+ * Extra labels along a connector (gap E4); `at` is a fraction along the drawn path. Edited in the details panel;
+ * on a selected connector each label can be dragged along the line (track R2-H).
+ */
 export function ConnectorLabels({ item, nodes }: { item: Item; nodes: Point[] }) {
   const labels = item.connector?.labels;
   if (!labels?.length || nodes.length < 2) return null;
   return (
-    <g pointerEvents="none">
+    <g>
       {labels
         .filter(l => l.text.trim())
         .map(l => {
           const p = pointAlong(nodes, l.at),
-            width = Math.min(200, Math.max(40, l.text.length * 7 + 16)),
-            height = 26;
+            size = l.size ?? EXTRA_LABEL_SIZE,
+            k = size / EXTRA_LABEL_SIZE,
+            width = Math.min(200 * k, Math.max(40, l.text.length * 0.54 * size + 16)),
+            height = Math.round(size * 1.3 + 9);
           return (
-            <foreignObject
-              key={l.id}
-              data-connector-label={l.id}
-              x={p.x - width / 2}
-              y={p.y - height / 2}
-              width={width}
-              height={height}
-            >
-              <div
-                className="object-text connector-caption"
-                title={l.text}
-                style={{
-                  background: '#fff',
-                  borderRadius: 4,
-                  padding: '3px 6px',
-                  fontSize: 13,
-                  fontFamily: 'Arial',
-                  color: '#25252c',
-                  textAlign: 'center',
-                  lineHeight: 1.3,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
+            <g key={l.id}>
+              <rect
+                data-label-drag={l.id}
+                data-label-of={item.id}
+                x={p.x - width / 2}
+                y={p.y - height / 2}
+                width={width}
+                height={height}
+                fill="transparent"
+                style={{ cursor: 'grab' }}
               >
-                {l.text}
-              </div>
-            </foreignObject>
+                <title>Drag to move the label along the line</title>
+              </rect>
+              <foreignObject
+                data-connector-label={l.id}
+                x={p.x - width / 2}
+                y={p.y - height / 2}
+                width={width}
+                height={height}
+                pointerEvents="none"
+              >
+                <div
+                  className="object-text connector-caption"
+                  title={l.text}
+                  style={{
+                    background: '#fff',
+                    borderRadius: 4,
+                    padding: '3px 6px',
+                    fontSize: size,
+                    fontFamily: 'Arial',
+                    color: l.color ?? LABEL_COLOR,
+                    textAlign: 'center',
+                    lineHeight: 1.3,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {l.text}
+                </div>
+              </foreignObject>
+            </g>
           );
         })}
     </g>
@@ -299,6 +327,43 @@ export function ConnectorDetails({
     </aside>
   );
 }
+/** Colour and font size of one connector label (track R2-H). Each change is one undo step. */
+function LabelStyle({
+  name,
+  color,
+  size,
+  onChange,
+}: {
+  name: string;
+  color?: string;
+  size: number;
+  onChange: (patch: { color?: string | null; size?: number | null }) => void;
+}) {
+  const sizes = labelSizes.includes(size) ? labelSizes : [...labelSizes, size].sort((a, b) => a - b);
+  return (
+    <>
+      <select
+        aria-label={`${name} colour`}
+        value={color ?? LABEL_COLOR}
+        onChange={e => onChange({ color: e.target.value === LABEL_COLOR ? null : e.target.value })}
+      >
+        {labelColors.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+        {color && !labelColors.some(([v]) => v === color) && <option value={color}>{color}</option>}
+      </select>
+      <select aria-label={`${name} size`} value={size} onChange={e => onChange({ size: Number(e.target.value) })}>
+        {sizes.map(s => (
+          <option key={s} value={s}>
+            {s} px
+          </option>
+        ))}
+      </select>
+    </>
+  );
+}
 /** Extra labels along the line (gap E4). Each change is one undo step. */
 function LabelsEditor({ item, onRoute }: { item: Item; onRoute: (change: (b: Board) => Board) => void }) {
   const labels = item.connector?.labels ?? [];
@@ -313,9 +378,18 @@ function LabelsEditor({ item, onRoute }: { item: Item; onRoute: (change: (b: Boa
   };
   return (
     <section className="route-editor" aria-label="Extra labels">
+      <div className="side-row label-style-row">
+        <span>Main label</span>
+        <LabelStyle
+          name="Main label"
+          color={item.connector?.labelColor}
+          size={item.connector?.labelSize ?? MAIN_LABEL_SIZE}
+          onChange={patch => run(b => setConnectorLabelStyle(b, item.id, null, patch))}
+        />
+      </div>
       <h3>More labels</h3>
       {labels.length > 0 && (
-        <ol className="bend-list">
+        <ol className="bend-list label-list">
           {labels.map((l, index) => (
             <li key={l.id}>
               <input
@@ -358,6 +432,14 @@ function LabelsEditor({ item, onRoute }: { item: Item; onRoute: (change: (b: Boa
                 />
                 %
               </label>
+              <div className="label-style">
+                <LabelStyle
+                  name={`Extra label ${index + 1}`}
+                  color={l.color}
+                  size={l.size ?? EXTRA_LABEL_SIZE}
+                  onChange={patch => run(b => setConnectorLabelStyle(b, item.id, l.id, patch))}
+                />
+              </div>
               <button
                 type="button"
                 className="icon-button"
@@ -532,10 +614,13 @@ export function ConnectorCaption({
   editing: boolean;
   onCommit: (text: string) => void;
 }) {
-  const width = Math.min(240, Math.max(80, item.text.length * 7 + 24)),
+  // Colour and size of the caption (track R2-H); the default size keeps the original measurements.
+  const size = item.connector?.labelSize ?? MAIN_LABEL_SIZE,
+    k = size / MAIN_LABEL_SIZE,
+    width = Math.min(240 * k, Math.max(80, item.text.length * 7 * k + 24)),
     height = Math.min(
-      72,
-      Math.max(30, (Math.ceil((item.text.length * 7) / width) + item.text.split('\n').length - 1) * 18 + 10),
+      72 * k,
+      Math.max(30, (Math.ceil((item.text.length * 7 * k) / width) + item.text.split('\n').length - 1) * 18 * k + 10),
     );
   if (editing)
     return (
@@ -581,9 +666,9 @@ export function ConnectorCaption({
             background: '#fff',
             borderRadius: 4,
             padding: '4px 8px',
-            fontSize: 14,
+            fontSize: size,
             fontFamily: 'Arial',
-            color: '#25252c',
+            color: item.connector?.labelColor ?? LABEL_COLOR,
             textAlign: 'center',
             lineHeight: 1.3,
             overflow: 'hidden',

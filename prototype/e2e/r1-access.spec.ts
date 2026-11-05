@@ -124,7 +124,10 @@ test.describe('R1 keyboard and assistive access', () => {
     await page.keyboard.press('ArrowRight');
     await expect(bar.locator(':focus')).toHaveCount(1);
     expect((await savedBoard(page)).items[0].x).toBe(before);
-    await expect(bar.locator('input[type=color]').first()).toHaveAttribute('aria-label', /: Light yellow$/);
+    await expect(bar.getByRole('button', { name: /^Object colour: / })).toHaveAttribute(
+      'aria-label',
+      /: Light yellow$/,
+    );
   });
 
   test('copy a link to an object and open it', async ({ page, context }) => {

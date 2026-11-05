@@ -39,7 +39,10 @@ export type WidgetKind =
   | 'stickypad'
   | 'chart'
   | 'entity'
-  | 'swimlane';
+  | 'swimlane'
+  | 'estimates'
+  | 'dotpile'
+  | 'file';
 export const widgetKinds: WidgetKind[] = [
   'drawio',
   'card',
@@ -77,6 +80,9 @@ export const widgetKinds: WidgetKind[] = [
   'chart',
   'entity',
   'swimlane',
+  'estimates',
+  'dotpile',
+  'file',
 ];
 export type Kind =
   | 'note'
@@ -187,6 +193,8 @@ export type TextFormat = {
   list?: 'none' | 'bullet' | 'number';
 };
 export type Point = { x: number; y: number };
+/** A pen stroke point; `p` is the stylus pressure (0..1), recorded only for pen input (track R2-K). */
+export type StrokePoint = Point & { p?: number };
 /** `one`, `many`, `zero-one`, `zero-many` and `one-many` are ERD crow's-foot heads (gap E3). */
 export const connectorHeads = [
   'none',
@@ -202,7 +210,14 @@ export const connectorHeads = [
 ] as const;
 export type ConnectorHead = (typeof connectorHeads)[number];
 /** Extra connector label at fraction `at` (0 to 1) along the path (gap E4). */
-export type ConnectorLabel = { id: string; text: string; at: number };
+export type ConnectorLabel = {
+  id: string;
+  text: string;
+  at: number;
+  /** Text colour `#rrggbb` and font size in world pixels (track R2-H); missing means the defaults. */
+  color?: string;
+  size?: number;
+};
 export type Side = 'top' | 'right' | 'bottom' | 'left';
 /** Manual bend in the start-to-end frame: u along the line, v perpendicular (both as fractions of its length). */
 export type Bend = { u: number; v: number };
@@ -221,6 +236,9 @@ export type ConnectorFormat = {
   endSide?: Side;
   jumps?: boolean;
   labelAt?: number;
+  /** Main caption colour `#rrggbb` and font size (track R2-H). */
+  labelColor?: string;
+  labelSize?: number;
   /** Labels in addition to the main caption (`Item.text`). */
   labels?: ConnectorLabel[];
 };
@@ -231,8 +249,8 @@ export type ShapeStyle = {
   borderOpacity?: number;
   /** Corner radius in world units for rectangles, rounded rectangles and images (gaps D8, D11). */
   radius?: number;
-  /** Image mask: 'circle' clips an image to the ellipse inscribed in its box (gap D11). */
-  mask?: 'circle';
+  /** Image mask: the outline an image is clipped to inside its box (gap D11; more outlines in track G). */
+  mask?: import('./image-masks.ts').ImageMask;
 };
 export type Crop = { x: number; y: number; w: number; h: number };
 export type FrameFormat = { preset: string; orientation: 'portrait' | 'landscape' };
@@ -249,7 +267,7 @@ export type Item = {
   h: number;
   text: string;
   fill: string;
-  points?: Point[];
+  points?: StrokePoint[];
   from?: string;
   to?: string;
   nodes?: MindNode[];
@@ -276,11 +294,15 @@ export type Item = {
   crop?: Crop;
   /** Image flip, brightness and contrast, applied when drawn; the stored picture is unchanged. */
   adjust?: ImageAdjust;
+  /** Animated GIF playback (track G): start paused, and/or play the animation once instead of looping. */
+  gif?: { paused?: boolean; once?: boolean };
   emoji?: string;
   /** Display name of whoever created a sticky note on this device (item 85). */
   author?: string;
   /** Show this note's author in its bottom-left corner (item 111). */
   showAuthor?: boolean;
+  /** Sticky note shape used by the size presets: a wide 2:1 rectangle; missing means square. */
+  noteShape?: NoteShape;
   frame?: FrameFormat;
   language?: string;
   /** Per-widget payload; shape is defined and validated by the widget registry (widget-types.ts). */
@@ -307,7 +329,20 @@ export type Item = {
    * code) and `id` the stable Mermaid key (node or subgraph id, or `from>to#n` for an edge). See mermaid-link.ts.
    */
   mermaidNode?: { frame: string; id: string };
+  /**
+   * Callout tail (track R2-H): tip offset from the callout's top-left corner, and optionally the object it points
+   * at. With a `target`, the tip follows that object; `x`/`y` keep the last position for when it is removed.
+   */
+  tail?: CalloutTail;
+  /** Estimate dropped on a sticky note from an estimate palette: story points, "?" or a T-shirt size (track F). */
+  estimate?: string;
+  /** Person dropped on a sticky note from a People widget (track F). */
+  assignee?: string;
+  /** Voting dots dropped from dot piles, per pile, with the pile's colour when placed (track F). */
+  dots?: PlacedDots[];
 };
+export type PlacedDots = { pile: string; color: string; n: number };
+export type CalloutTail = { x: number; y: number; target?: string };
 export type CommentThread = {
   id: string;
   itemId?: string;
@@ -359,6 +394,8 @@ export type Board = {
   thumbnailFrame?: string;
   /** View-only board (gap C16): editing is refused until it is turned off. */
   viewOnly?: boolean;
+  /** Comment-only board (track R2-K): only comment changes are accepted; see board-modes.ts. */
+  commentOnly?: boolean;
   /** Card tag colours by tag name (item 115); tags without an entry use the default colour. */
   tagColors?: Record<string, string>;
   /** Show sticky note authors (item 85). */
@@ -366,9 +403,15 @@ export type Board = {
   /** Board settings (item 103): canvas colour, the view new visitors open at, and a status. */
   background?: string;
   startView?: { x: number; y: number; z: number };
+  /** Open the board in this format object's focus view (a Table, Kanban, Timeline, Doc or Slides id). */
+  startObject?: string;
   status?: 'draft' | 'in-progress' | 'review' | 'approved' | 'done' | 'outdated';
   /** Short board description (shown in Details and on dashboard cards). */
   description?: string;
+  /** Sensitivity label (track R2-K): shown in the top bar and on dashboard cards, and stamped on exports. */
+  sensitivity?: import('./board-settings.ts').Sensitivity;
+  /** Board notes (track L): Markdown shown in the docked notes panel; see board-notes.ts. */
+  notes?: string;
 };
 export type History = { past: Board[]; current: Board; future: Board[] };
 export const colors = [
@@ -467,9 +510,16 @@ export function redo(h: History): History {
 }
 export function removeItems(board: Board, ids: string[]): Board {
   const removed = new Set(ids),
-    items = board.items.filter(
-      i => !removed.has(i.id) && !(i.type === 'arrow' && (removed.has(i.from ?? '') || removed.has(i.to ?? ''))),
-    );
+    items = board.items
+      .filter(
+        i => !removed.has(i.id) && !(i.type === 'arrow' && (removed.has(i.from ?? '') || removed.has(i.to ?? ''))),
+      )
+      .map(i => {
+        // A callout pointing at a removed object keeps its tail where it pointed (track R2-H).
+        if (!i.tail?.target || !removed.has(i.tail.target)) return i;
+        const tip = calloutTailTip(i, board.items)!;
+        return { ...i, tail: { x: Math.round(tip.x), y: Math.round(tip.y) } };
+      });
   return pruneReferences({ ...board, items });
 }
 /** Drop empty groups and presentation entries whose frames no longer exist. */
@@ -519,6 +569,12 @@ export function pruneReferences(board: Board): Board {
       delete n.linkTo;
       return n;
     });
+  // A callout pointing at a removed object keeps its tail where it last pointed (track R2-H).
+  if ((next.items ?? board.items).some(i => i.tail?.target && !alive.has(i.tail.target)))
+    next.items = (next.items ?? board.items).map(i => {
+      if (!i.tail?.target || alive.has(i.tail.target)) return i;
+      return { ...i, tail: { x: i.tail.x, y: i.tail.y } };
+    });
   if (board.privateMode && board.privateMode.frames.some(f => !alive.has(f)))
     next.privateMode = { ...board.privateMode, frames: board.privateMode.frames.filter(f => alive.has(f)) };
   return next;
@@ -533,6 +589,22 @@ export function edge(item: Item, toward: Point): Point {
     return rotatePoint(flatEdge(item, rotatePoint(toward, c, -item.rotation)), c, item.rotation);
   }
   return flatEdge(item, toward);
+}
+/**
+ * Tip of a callout's custom tail in the callout's own unrotated frame (track R2-H), or null for the built-in
+ * tail. An attached tail points at the edge of its target, seen from the callout's centre.
+ */
+export function calloutTailTip(i: Item, items: Item[]): Point | null {
+  if (!i.tail) return null;
+  const target = i.tail.target ? items.find(n => n.id === i.tail!.target && n.id !== i.id) : undefined;
+  if (!target) return { x: i.tail.x, y: i.tail.y };
+  const c = center(i),
+    hit = edge(target, c),
+    d = Math.hypot(c.x - hit.x, c.y - hit.y) || 1,
+    // Stop just short of the target's outline so the tip stays visible.
+    world = { x: hit.x + ((c.x - hit.x) / d) * 4, y: hit.y + ((c.y - hit.y) / d) * 4 },
+    flat = i.rotation ? rotatePoint(world, c, -i.rotation) : world;
+  return { x: flat.x - i.x, y: flat.y - i.y };
 }
 function flatEdge(item: Item, toward: Point): Point {
   if (isShapeKind(item.type) && !['rectangle', 'ellipse', 'diamond'].includes(item.type))
@@ -683,7 +755,10 @@ export function parseBoard(raw: unknown): Board {
       (!Array.isArray(i.points) ||
         i.points.length > 20000 ||
         i.points.some(
-          p => !p || ![p.x, p.y].every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e7),
+          p =>
+            !p ||
+            ![p.x, p.y].every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e7) ||
+            (p.p !== undefined && !(typeof p.p === 'number' && Number.isFinite(p.p) && p.p >= 0 && p.p <= 1)),
         ))
     )
       throw new Error('The board contains an invalid drawing.');
@@ -720,6 +795,9 @@ export function parseBoard(raw: unknown): Board {
         i.tags.some(t => typeof t !== 'string' || !t.trim() || t !== t.trim() || t.length > 32))
     )
       throw new Error('Invalid note tags.');
+    // Not tied to the note type: converting a note to another kind keeps the field harmlessly.
+    if (i.noteShape !== undefined && !(noteShapes as readonly string[]).includes(i.noteShape as string))
+      throw new Error('Invalid sticky note shape.');
     if (i.format?.valign !== undefined && !['top', 'middle', 'bottom'].includes(i.format.valign))
       throw new Error('Invalid vertical text alignment.');
     if (i.format) {
@@ -831,6 +909,34 @@ export function validLink(value: unknown): boolean {
   } catch {
     return false;
   }
+}
+export const noteShapes = ['square', 'rectangle'] as const;
+export type NoteShape = (typeof noteShapes)[number];
+/** Sticky note size presets: the height of the note (a square note is as wide; a rectangle twice as wide). */
+export const noteSizes = [140, 210, 300] as const;
+/** The preset a note matches (shape plus size), or 'custom' after a free resize. */
+export function noteSizeOf(item: Pick<Item, 'w' | 'h' | 'noteShape'>): number | 'custom' {
+  const ratio = item.noteShape === 'rectangle' ? 2 : 1;
+  return (noteSizes as readonly number[]).includes(item.h) && item.w === item.h * ratio ? item.h : 'custom';
+}
+/**
+ * The change that gives a note a preset size and shape, keeping its centre. A custom-sized note switching shape
+ * keeps its height. Square notes drop the field so older boards stay byte-identical.
+ */
+export function noteSizePatch(
+  item: Pick<Item, 'x' | 'y' | 'w' | 'h' | 'noteShape'>,
+  size: number | 'keep',
+  shape: NoteShape = item.noteShape ?? 'square',
+): Pick<Item, 'x' | 'y' | 'w' | 'h' | 'noteShape'> {
+  const h = size === 'keep' ? Math.max(40, Math.min(item.h, 1000)) : size,
+    w = shape === 'rectangle' ? h * 2 : h;
+  return {
+    x: item.x + (item.w - w) / 2,
+    y: item.y + (item.h - h) / 2,
+    w,
+    h,
+    noteShape: shape === 'rectangle' ? 'rectangle' : undefined,
+  };
 }
 export function normalizeNoteLink(value: string): string | undefined {
   const text = value.trim();

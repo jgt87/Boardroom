@@ -216,7 +216,7 @@ test('corner radius is validated, capped and drawn', () => {
 test('images take a border, a radius and a circle crop', () => {
   const image = { ...createItem('image', 0, 0), assetId: 'a1', style: { borderWidth: 3, mask: 'circle' as const } };
   assert.equal(parseBoard(boardOf(image)).items[0].style?.mask, 'circle');
-  assert.throws(() => parseBoard(boardOf({ ...image, style: { mask: 'star' as unknown as 'circle' } })), /border/i);
+  assert.throws(() => parseBoard(boardOf({ ...image, style: { mask: 'blob' as unknown as 'circle' } })), /border/i);
   const board = boardOf({ ...createItem('image', 0, 0), assetId: 'a1' });
   const id = board.items[0].id;
   const circled = setStyleField(board, [id], 'mask', 'circle');

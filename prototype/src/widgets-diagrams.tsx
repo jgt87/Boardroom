@@ -30,8 +30,16 @@ import {
   ORG_NODE_W,
   ORG_NODE_H,
   ORG_DESCRIPTION_MAX,
+  ORG_FIELDS_MAX,
+  ORG_FIELD_NAME_MAX,
+  ORG_BUILTIN_CARD_FIELDS,
+  ORG_DEFAULT_CARD_FIELDS,
   orgBranchColor,
+  orgFieldNames,
+  setOrgField,
+  freshFieldName,
 } from './orgchart';
+import './diagram-extras.css';
 import { mindPalette, mindColorNames } from './mindmap-style';
 import { saveText } from './widget-kit';
 import type { OrgNode } from './orgchart';
@@ -41,6 +49,7 @@ import {
   rename,
   removeLane,
   addCard,
+  addCardNear,
   removeCard,
   renameCard,
   cellCards,
@@ -204,11 +213,14 @@ function OrgDiagram({
   width,
   height,
   active,
+  shown = ORG_DEFAULT_CARD_FIELDS,
 }: {
   nodes: OrgNode[];
   width: number;
   height: number;
   active?: string;
+  /** Fields shown on the cards (track R2-H). */
+  shown?: string[];
 }) {
   const visible = visibleOrgNodes(nodes),
     { positions, width: w, height: h } = layoutOrgChart(nodes);
@@ -279,9 +291,9 @@ function OrgDiagram({
             <text x={p.x + 12} y={p.y + 44} fontSize="12" fill="#696973">
               {n.role.length > 24 ? n.role.slice(0, 23) + '…' : n.role}
             </text>
-            {(n.team || n.location) && (
+            {orgMeta(n, shown) && (
               <text x={p.x + 12} y={p.y + 58} fontSize="10" fill="#8b8b94">
-                {orgMeta(n)}
+                {orgMeta(n, shown)}
               </text>
             )}
             {more > 0 && (
@@ -364,6 +376,16 @@ function OrgEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose
         return next;
       }),
     );
+  // Custom fields and the fields shown on cards (track R2-H).
+  const shown: string[] = live?.data?.cardFields ?? ORG_DEFAULT_CARD_FIELDS,
+    cardOptions = [...ORG_BUILTIN_CARD_FIELDS, ...orgFieldNames(nodes)];
+  const toggleShown = (name: string, on: boolean) => {
+    const next = cardOptions.filter(o => (o === name ? on : shown.some(s => s.toLowerCase() === o.toLowerCase())));
+    ctx.update(b => ({
+      ...b,
+      items: b.items.map(i => (i.id === item.id ? { ...i, data: { ...i.data, cardFields: next } } : i)),
+    }));
+  };
   const csvInput = useRef<HTMLInputElement>(null);
   const importCsv = async (file: File) => {
     if (file.size > 1_000_000) return setError('Choose a CSV file up to 1 MB.');
@@ -530,6 +552,64 @@ function OrgEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose
                 ))}
               </select>
             </label>
+            <section aria-label="Custom fields">
+              <p className="format-hint">Custom fields</p>
+              {!!chosen.fields?.length && (
+                <ul className="org-custom-fields">
+                  {chosen.fields.map((f, index) => (
+                    <li key={`${active}-${index}`}>
+                      <CommitInput
+                        key={`fname-${active}-${index}-${f.name}`}
+                        aria-label={`Field ${index + 1} name`}
+                        maxLength={ORG_FIELD_NAME_MAX}
+                        value={f.name}
+                        onCommit={v => run(() => setOrgField(nodes, active, index, { name: v, value: f.value }))}
+                      />
+                      <CommitInput
+                        key={`fvalue-${active}-${index}`}
+                        aria-label={`${f.name} value`}
+                        maxLength={200}
+                        value={f.value}
+                        onCommit={v => run(() => setOrgField(nodes, active, index, { name: f.name, value: v }))}
+                      />
+                      <button
+                        className="icon-button"
+                        aria-label={`Remove field ${f.name}`}
+                        onClick={() => run(() => setOrgField(nodes, active, index, null))}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="format-actions wrap">
+                <button
+                  disabled={(chosen.fields?.length ?? 0) >= ORG_FIELDS_MAX}
+                  onClick={() =>
+                    run(() => setOrgField(nodes, active, null, { name: freshFieldName(chosen), value: '' }))
+                  }
+                >
+                  <Plus size={15} />
+                  Add field
+                </button>
+              </div>
+            </section>
+            <fieldset className="org-card-fields">
+              <legend>Shown on cards</legend>
+              {cardOptions.map(name => (
+                <label key={name} className="check-inline">
+                  <input
+                    type="checkbox"
+                    aria-label={`Show ${name} on cards`}
+                    disabled={!!live?.locked}
+                    checked={shown.some(s => s.toLowerCase() === name.toLowerCase())}
+                    onChange={e => toggleShown(name, e.target.checked)}
+                  />
+                  {name}
+                </label>
+              ))}
+            </fieldset>
             <div className="format-actions wrap">
               <button onClick={() => run(() => addChild(nodes, active))}>
                 <Plus size={15} />
@@ -587,7 +667,7 @@ function OrgEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose
             <div className="format-actions wrap">
               <button
                 disabled={!!live.locked}
-                title="Replace the chart with people from a CSV file (Name, Role, Team, Location, Manager ID)"
+                title="Replace the chart with people from a CSV file (Name, Role, Team, Location, Manager ID; other columns become custom fields)"
                 onClick={() => csvInput.current?.click()}
               >
                 <FileUp size={15} />
@@ -616,7 +696,7 @@ function OrgEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose
         )}
       </section>
       <div className="diagram-live org-live">
-        <OrgDiagram nodes={nodes} width={560} height={420} active={active} />
+        <OrgDiagram nodes={nodes} width={560} height={420} active={active} shown={shown} />
       </div>
     </Dialog>
   );
@@ -654,7 +734,7 @@ function StoryEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
   return (
     <Dialog
       title="User story map"
-      hint="Drag stories between cells, or focus a story and press Alt + arrow keys. Every change can be undone."
+      hint="Drag stories between cells, or focus a story and press Alt + arrow keys. Tab adds a story to the right, Ctrl + Down or Up one below or above. Every change can be undone."
       onClose={onClose}
       error={error}
       wide
@@ -818,7 +898,7 @@ function StoryEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
                       tabIndex={0}
                       draggable
                       role="button"
-                      aria-label={`${c.title}. Alt plus arrow keys move this story.`}
+                      aria-label={`${c.title}. Alt plus arrow keys move this story; Tab adds a story to the right.`}
                       onClick={() => setSelected(c.id)}
                       onDragStart={e => {
                         e.dataTransfer.effectAllowed = 'move';
@@ -849,6 +929,34 @@ function StoryEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
                           { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' } as const
                         )[e.key as 'ArrowUp'];
                         if (e.key === 'Enter') setSelected(c.id);
+                        // Keyboard creation (track C): Tab adds a sibling to the right, Ctrl+Down/Up one below
+                        // or above in the same cell. The new story is selected and focused; one undo step each.
+                        const modKey = e.ctrlKey || e.metaKey,
+                          where =
+                            e.key === 'Tab' && !modKey && !e.altKey && !e.shiftKey
+                              ? 'right'
+                              : modKey && !e.altKey && !e.shiftKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')
+                                ? e.key === 'ArrowDown'
+                                  ? 'below'
+                                  : 'above'
+                                : null;
+                        if (where) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          try {
+                            const n = addCardNear(map, c.id, where);
+                            setSelected(n.id);
+                            setError('');
+                            focusAfter.current = n.id;
+                            ctx.update(b => ({
+                              ...b,
+                              items: b.items.map(i => (i.id === item.id ? { ...i, data: n.map } : i)),
+                            }));
+                          } catch (err) {
+                            setError((err as Error).message);
+                          }
+                          return;
+                        }
                         if (!e.altKey || !dir) return;
                         e.preventDefault();
                         focusAfter.current = c.id;

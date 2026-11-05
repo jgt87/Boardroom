@@ -4,8 +4,9 @@ import { slideFrames } from './navigation';
 import { recordsCsv } from './board-tools';
 import { cardsCsv } from './card-tools';
 import { boardTextCsv } from './csv';
-import { standaloneHtml } from './html-export';
+import { exportLinks, standaloneHtml } from './html-export';
 import { useApp } from './board-app';
+import { sensitivityBadge, badgeInk, sensitivityStampBox } from './board-settings';
 import { exportIds, frameExportRegion, FRAME_TITLE_OFFSET, FRAME_TITLE_SIZE, type Region } from './export-area';
 
 /** SVG, PNG/JPG, PDF and CSV export of the board or selection. */
@@ -116,6 +117,32 @@ export function useExporters() {
     out.setAttribute('viewBox', `${box.x} ${box.y} ${box.w} ${box.h}`);
     out.setAttribute('width', String(box.w));
     out.setAttribute('height', String(box.h));
+    // Sensitivity label (track R2-K): stamped in the bottom-right corner of every SVG, PNG, PDF page and print.
+    const badge = sensitivityBadge(boardRef.current.sensitivity);
+    if (badge) {
+      const at = sensitivityStampBox(box, badge.label),
+        stamp = document.createElementNS(ns, 'g'),
+        rect = document.createElementNS(ns, 'rect'),
+        text = document.createElementNS(ns, 'text');
+      stamp.setAttribute('class', 'sensitivity-stamp');
+      rect.setAttribute('x', String(at.x));
+      rect.setAttribute('y', String(at.y));
+      rect.setAttribute('width', String(at.w));
+      rect.setAttribute('height', String(at.h));
+      rect.setAttribute('rx', String(at.h / 2));
+      rect.setAttribute('fill', badge.color);
+      text.setAttribute('x', String(at.x + at.w / 2));
+      text.setAttribute('y', String(at.y + at.h / 2));
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'central');
+      text.setAttribute('font-family', 'Arial, Helvetica, sans-serif');
+      text.setAttribute('font-weight', '600');
+      text.setAttribute('font-size', String(at.font));
+      text.setAttribute('fill', badgeInk(badge.color));
+      text.textContent = badge.label;
+      stamp.append(rect, text);
+      out.append(stamp);
+    }
     const css = [...document.styleSheets]
         .map(sheet => {
           try {
@@ -328,7 +355,12 @@ export function useExporters() {
           .replace(/[\\/:*?"<>|]+/g, ' ')
           .trim()
           .slice(0, 80) || 'board';
-      download(standaloneHtml(built.svg, boardRef.current.title), `${name}.html`, 'text/html');
+      // Objects linked to another object or frame click through to it in the page (track J).
+      download(
+        standaloneHtml(built.svg, boardRef.current.title, new Date(), exportLinks(boardRef.current, built.box)),
+        `${name}.html`,
+        'text/html',
+      );
     } catch (err) {
       display((err as Error).message || 'The HTML copy could not be created.');
     }

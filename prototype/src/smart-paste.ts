@@ -1,10 +1,13 @@
 // Smart paste and drop of plain text (gap list B1, B2, B6, B7, B8): spreadsheet cells become a Grid, a single
 // web address becomes an embed (allow-listed providers) or a bookmark, Mermaid code becomes a diagram, and
-// other text becomes sticky notes (several lines) or a text object (one line). Pure: no React, no DOM.
+// other text becomes sticky notes (several lines), a Doc (long prose) or a text object (one line).
+// Pure: no React, no DOM.
 import type { Item, Point } from './model.ts';
 import { createItem } from './model.ts';
 import { GRID_MAX, gridFromTable, gridSize } from './grid.ts';
+import type { GridData } from './grid.ts';
 import { embedSource, normalizeHttpsUrl } from './specs-media.ts';
+import { DOC_MAX } from './doc-tools.ts';
 
 export const PASTE_NOTES_MAX = 100;
 
@@ -58,7 +61,23 @@ export function parseDelimited(text: string, delimiter?: string): string[][] {
 const MERMAID_START =
   /^\s*(flowchart|graph|sequenceDiagram|classDiagram|erDiagram|stateDiagram(-v2)?|gantt|mindmap|journey|pie|timeline|gitGraph|quadrantChart)\b/;
 
-export type PasteKind = 'url' | 'cells' | 'mermaid' | 'lines' | 'text';
+export type PasteKind = 'url' | 'cells' | 'mermaid' | 'lines' | 'text' | 'doc';
+
+/** Plain text at least this long can become a Doc (when it also reads as prose, see `isLongProse`). */
+export const PASTE_DOC_MIN = 600;
+/** A line longer than this does not fit a sticky note comfortably. */
+export const PASTE_DOC_LINE = 280;
+
+/**
+ * Over-long prose (an article, an e-mail, meeting notes) is better kept together in a Doc than split into
+ * dozens of sticky notes or one huge text object: more than PASTE_DOC_MIN characters and either a paragraph
+ * break (a blank line) or a line too long for a note. A plain list of short lines, however long, stays notes.
+ */
+export function isLongProse(text: string): boolean {
+  const t = text.trim();
+  if (t.length <= PASTE_DOC_MIN) return false;
+  return /\n[ \t]*\r?\n/.test(t) || t.split(/\r?\n/).some(l => l.trim().length > PASTE_DOC_LINE);
+}
 
 /** What a plain-text paste should become. Markdown is detected separately (markdown.ts). */
 export function classifyPaste(text: string): PasteKind | null {
@@ -72,6 +91,7 @@ export function classifyPaste(text: string): PasteKind | null {
     const rows = parseDelimited(t, '\t');
     if (rows.some(r => r.length > 1) || rows.length > 1) return 'cells';
   }
+  if (isLongProse(t)) return 'doc';
   return lines.filter(l => l.trim()).length > 1 ? 'lines' : 'text';
 }
 
@@ -154,6 +174,45 @@ export function mermaidItem(code: string, at: Point): Item {
   return item;
 }
 
+/** A Doc holding long pasted prose; blank lines stay paragraph breaks. Capped at the Doc limit. */
+export function docItem(text: string, at: Point): { item: Item; truncated: boolean } {
+  const clean = text.replace(/\r\n?/g, '\n').trim(),
+    item = createItem('doc', at.x, at.y, '#ffffff');
+  item.x -= item.w / 2;
+  item.y -= item.h / 2;
+  item.data = { ...item.data, markdown: clean.slice(0, DOC_MAX) };
+  return { item, truncated: clean.length > DOC_MAX };
+}
+
+/**
+ * One sticky note per non-empty spreadsheet cell, laid out like the cells (the "one sticky per cell" choice
+ * offered after cells were pasted as a Grid). Up to PASTE_NOTES_MAX notes, read row by row.
+ */
+export function notesFromCells(rows: string[][], at: Point): { items: Item[]; truncated: boolean } {
+  const cells: { r: number; c: number; text: string }[] = [];
+  rows.forEach((row, r) =>
+    row.forEach((cell, c) => {
+      const text = cell.trim();
+      if (text) cells.push({ r, c, text });
+    }),
+  );
+  const kept = cells.slice(0, PASTE_NOTES_MAX);
+  if (!kept.length) return { items: [], truncated: false };
+  const probe = createItem('note', 0, 0),
+    gap = 24,
+    cols = Math.max(...kept.map(k => k.c)) + 1,
+    rowCount = Math.max(...kept.map(k => k.r)) + 1,
+    w = cols * probe.w + (cols - 1) * gap,
+    h = rowCount * probe.h + (rowCount - 1) * gap;
+  const items = kept.map(k => ({
+    ...createItem('note', 0, 0),
+    text: k.text.slice(0, 6000),
+    x: at.x - w / 2 + k.c * (probe.w + gap),
+    y: at.y - h / 2 + k.r * (probe.h + gap),
+  }));
+  return { items, truncated: cells.length > kept.length };
+}
+
 /** Build the objects for a plain-text paste, or null when the text should be left to other handlers. */
 export function itemsFromText(text: string, at: Point): { items: Item[]; kind: PasteKind; note?: string } | null {
   const kind = classifyPaste(text);
@@ -171,7 +230,9 @@ export function itemsFromText(text: string, at: Point): { items: Item[]; kind: P
     return {
       items: [g.item],
       kind,
-      note: g.truncated ? `Only the first ${GRID_MAX} rows and columns were pasted.` : undefined,
+      note: g.truncated
+        ? `Only the first ${(g.item.data as GridData).rows} rows and ${(g.item.data as GridData).cols} columns were pasted (a grid holds up to ${GRID_MAX} rows or columns and 2,500 cells).`
+        : undefined,
     };
   }
   if (kind === 'lines') {
@@ -180,6 +241,14 @@ export function itemsFromText(text: string, at: Point): { items: Item[]; kind: P
       items: n.items,
       kind,
       note: n.truncated ? `Only the first ${PASTE_NOTES_MAX} lines were pasted.` : undefined,
+    };
+  }
+  if (kind === 'doc') {
+    const d = docItem(text, at);
+    return {
+      items: [d.item],
+      kind,
+      note: d.truncated ? `Only the first ${DOC_MAX.toLocaleString('en')} characters were pasted.` : undefined,
     };
   }
   return { items: [textItem(text, at)], kind };

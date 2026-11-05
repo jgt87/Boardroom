@@ -69,6 +69,15 @@ export function normalizeHref(input: string): string | null {
     return null;
   }
 }
+/**
+ * Pasted text that should link the selected words instead of replacing them: a single http(s) address and
+ * nothing else. Returns the normalised address, or null for anything else (several words, other schemes).
+ */
+export function pastedLink(pasted: string): string | null {
+  const t = pasted.trim();
+  if (!/^https?:\/\/\S+$/i.test(t)) return null;
+  return normalizeHref(t);
+}
 /** A mention name as stored: trimmed, single line, no square brackets (they delimit mentions in Markdown). */
 export function cleanMentionName(name: string): string {
   return name

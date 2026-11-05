@@ -20,6 +20,15 @@ export function pointerPolicy(state: PenState, e: PointerLike, tool: string, now
 /** Touch moves and lifts are ignored while the pen is down (palm rejection). */
 export const ignoreTouch = (state: PenState, e: PointerLike, now: number) =>
   e.pointerType === 'touch' && (state.penDown !== null || now - state.penUpAt < PALM_GRACE_MS);
+/** Long press (track C): a still finger held this long opens the context menu; moving further cancels it. */
+export const LONG_PRESS_MS = 500;
+export const LONG_PRESS_SLOP = 8;
+/** A long press only starts from a single finger in the select tool, never from a palm or a panning finger. */
+export const longPressApplies = (pointerType: string, policy: TouchPolicy, tool: string, fingers: number) =>
+  pointerType === 'touch' && policy === 'default' && tool === 'select' && fingers === 1;
+/** True once the finger has strayed more than the slop (screen pixels) from where it went down. */
+export const longPressMoved = (start: { x: number; y: number }, now: { x: number; y: number }) =>
+  Math.hypot(now.x - start.x, now.y - start.y) > LONG_PRESS_SLOP;
 export function penDown(state: PenState, e: PointerLike): PenState {
   return e.pointerType === 'pen' ? { ...state, penDown: e.pointerId, penSeen: true } : state;
 }

@@ -1,0 +1,118 @@
+/* Pen, platform and board modes (track R2-K). */
+
+/* Mode badges in the top bar: view-only and comment-only read as neutral state, not as content colour. */
+.board-status.view-only {
+  background: #52525b;
+  color: #fff;
+}
+.board-status.comment-only {
+  background: #edf0ff;
+  color: #334fd8;
+}
+.sensitivity-badge {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Custom sensitivity label field in the main menu. */
+.sensitivity-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sensitivity-form input[type='color'] {
+  width: 30px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+/* Supported browsers notice: under the top bar, never covering the whole board. */
+.browser-notice {
+  position: fixed;
+  top: 86px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: min(560px, calc(100vw - 32px));
+  padding: 10px 8px 10px 14px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink, #25252c);
+}
+.browser-notice p {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Browser zoom up to 200% (track R2-K): a 1280×800 laptop window zoomed to 200% is about 640×400 CSS px. */
+@media (min-width: 601px) and (max-width: 760px) {
+  /* Narrow but not phone: the header gives way so it never runs under the top-right toolbar. */
+  .board-header {
+    max-width: calc(100vw - 300px);
+    gap: 8px;
+  }
+  .wordmark > span:last-child {
+    display: none;
+  }
+  .board-header input {
+    width: auto;
+    flex: 1 1 60px;
+    min-width: 40px;
+  }
+  .board-header .board-status {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+@media (max-height: 560px) {
+  /* Short window: the tool rail starts under the header and scrolls; undo and redo sit beside it. */
+  .tools {
+    top: 72px;
+    transform: none;
+    max-height: calc(100vh - 84px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  .tool-tip {
+    display: none !important;
+  }
+  .history {
+    left: 64px;
+    top: auto;
+    bottom: 12px;
+    flex-direction: row;
+  }
+  .local-label {
+    display: none;
+  }
+  .canvas-footer {
+    justify-content: flex-end;
+  }
+  .empty-symbol {
+    display: none;
+  }
+  .empty-state {
+    top: 55%;
+  }
+  .tool-options {
+    top: 72px;
+    max-height: calc(100vh - 84px);
+    overflow-y: auto;
+  }
+  .export-anchor .export-menu {
+    max-height: calc(100vh - 84px);
+    overflow-y: auto;
+  }
+}

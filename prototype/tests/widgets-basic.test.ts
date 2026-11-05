@@ -121,9 +121,10 @@ test('grid merge, unmerge and structural edits keep merges consistent', () => {
   assert.deepEqual(unmergeCell(g, 1, 1).merges, []);
   assert.throws(() => unmergeCell(g, 2, 2));
   assert.throws(() => removeRow(newGrid(1, 2), 0));
-  let wide = newGrid(1, 29);
+  let wide = newGrid(1, 99);
   wide = addColumn(wide);
   assert.throws(() => addColumn(wide));
+  assert.throws(() => addRow(newGrid(50, 50)), /2,500 cells/);
   const colored = setCellColor(newGrid(2, 2), 1, 1, '#ff0000');
   assert.deepEqual(removeRow(colored, 0).colors, { '0,1': '#ff0000' });
   assert.equal(removeRow(colored, 1).colors, undefined);

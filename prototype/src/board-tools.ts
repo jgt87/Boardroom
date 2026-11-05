@@ -2,7 +2,7 @@
 // Evidence: catalogue "Sticky stack"; ComputeCurveWidget smoothing/eraser layers; DOT_VOTING,
 // BOARD_TIMER, PRIVATE_MODE, COMMENT/ADD_COMMENT; FrameWidget setContentHidden/hyperlinkService;
 // NavigatSidebar; ComputeLineWidget LINE_JUMP/relativePosition; BoardExport PDF/PNG/JPG/CSV.
-import type { Board, Item, Point, RecordRow, CommentThread, VotingResult } from './model.ts';
+import type { Board, Item, Point, StrokePoint, RecordRow, CommentThread, VotingResult } from './model.ts';
 import { isShapeKind } from './shapes.ts';
 import { starterItems, starterNames } from './starter-templates.ts';
 import type { StarterName } from './starter-templates.ts';
@@ -41,8 +41,20 @@ function perpendicular(p: Point, a: Point, b: Point) {
     len = Math.hypot(dx, dy);
   return len ? Math.abs(dy * p.x - dx * p.y + b.x * a.y - b.y * a.x) / len : Math.hypot(p.x - a.x, p.y - a.y);
 }
-/** Ramer–Douglas–Peucker simplification (iterative, safe for 20,000 points). */
-export function simplify(points: Point[], tolerance = 0.8): Point[] {
+/** Pressure change that keeps a point even on a straight run (a stroke pressed harder in the middle). */
+export const PRESSURE_TOLERANCE = 0.08;
+/** How far a point's pen pressure strays from the straight blend between `a` and `b` (0 without pressure). */
+function pressureGap(p: StrokePoint, a: StrokePoint, b: StrokePoint) {
+  if (p.p === undefined || a.p === undefined || b.p === undefined) return 0;
+  const span = Math.hypot(b.x - a.x, b.y - a.y),
+    t = span ? Math.min(1, Math.max(0, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / span ** 2)) : 0.5;
+  return Math.abs(p.p - (a.p + (b.p - a.p) * t));
+}
+/**
+ * Ramer–Douglas–Peucker simplification (iterative, safe for 20,000 points). Points are kept or dropped
+ * whole, so pen pressure stays with its point; a pressure swing also keeps a point (track R2-K).
+ */
+export function simplify<T extends StrokePoint>(points: T[], tolerance = 0.8): T[] {
   if (points.length < 3) return points.slice();
   const keep = new Uint8Array(points.length);
   keep[0] = keep[points.length - 1] = 1;
@@ -52,7 +64,8 @@ export function simplify(points: Point[], tolerance = 0.8): Point[] {
     let index = -1,
       max = tolerance;
     for (let i = s + 1; i < e; i++) {
-      const d = perpendicular(points[i], points[s], points[e]);
+      const gap = pressureGap(points[i], points[s], points[e]),
+        d = Math.max(perpendicular(points[i], points[s], points[e]), gap > PRESSURE_TOLERANCE ? tolerance + gap : 0);
       if (d > max) {
         max = d;
         index = i;
@@ -78,23 +91,28 @@ export function strokePath(points: Point[]): string {
   const last = points.at(-1)!;
   return `${d} L${last.x},${last.y}`;
 }
-const absPoints = (i: Item) => (i.points ?? []).map(p => ({ x: i.x + p.x, y: i.y + p.y }));
+// Pen pressure (`p`) travels with each point through every step below, so it stays aligned with the points.
+const absPoints = (i: Item): StrokePoint[] => (i.points ?? []).map(p => ({ ...p, x: i.x + p.x, y: i.y + p.y }));
 /** Normalise a stroke to its bounding box (stores original size so resizing scales points). */
-export function strokeFromPoints(base: Item, points: Point[]): Item {
+export function strokeFromPoints(base: Item, points: StrokePoint[]): Item {
   const minX = Math.min(...points.map(p => p.x)),
     minY = Math.min(...points.map(p => p.y)),
     w = Math.max(1, Math.max(...points.map(p => p.x)) - minX),
     h = Math.max(1, Math.max(...points.map(p => p.y)) - minY);
-  return { ...base, x: minX, y: minY, w, h, points: points.map(p => ({ x: p.x - minX, y: p.y - minY })) };
+  return { ...base, x: minX, y: minY, w, h, points: points.map(p => ({ ...p, x: p.x - minX, y: p.y - minY })) };
 }
 /** Insert points so no segment is longer than `step` (lets the eraser hit long straight segments). */
-function densify(points: Point[], step: number): Point[] {
-  const out: Point[] = [];
+function densify(points: StrokePoint[], step: number): StrokePoint[] {
+  const out: StrokePoint[] = [];
   points.forEach((p, k) => {
     if (k) {
       const a = points[k - 1],
         n = Math.min(400, Math.floor(Math.hypot(p.x - a.x, p.y - a.y) / step));
-      for (let j = 1; j < n; j++) out.push({ x: a.x + ((p.x - a.x) * j) / n, y: a.y + ((p.y - a.y) * j) / n });
+      for (let j = 1; j < n; j++) {
+        const q: StrokePoint = { x: a.x + ((p.x - a.x) * j) / n, y: a.y + ((p.y - a.y) * j) / n };
+        if (a.p !== undefined && p.p !== undefined) q.p = Math.round((a.p + ((p.p - a.p) * j) / n) * 1000) / 1000;
+        out.push(q);
+      }
     }
     out.push(p);
   });
@@ -119,8 +137,8 @@ export function eraseAt(board: Board, at: Point, radius: number, precise: boolea
     if (!hit.some(Boolean)) return [i];
     changed = true;
     if (!precise) return [];
-    const pieces: Point[][] = [];
-    let current: Point[] = [];
+    const pieces: StrokePoint[][] = [];
+    let current: StrokePoint[] = [];
     pts.forEach((p, k) => {
       if (hit[k]) {
         if (current.length > 1) pieces.push(current);

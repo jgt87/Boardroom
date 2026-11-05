@@ -6,7 +6,7 @@ import { toCard } from './card-tools.ts';
 
 export const cardStatuses = ['Not started', 'In progress', 'Complete'] as const;
 export type CardStatus = string;
-export const tshirtSizes = ['XS', 'S', 'M', 'L', 'XL'] as const;
+export const tshirtSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'] as const;
 export type CardData = {
   description: string;
   assignee: string;
@@ -70,7 +70,15 @@ export function matrixContents(board: Board, matrixId: string): [Item[], Item[],
 
 // ---- Poll ----------------------------------------------------------------------------------
 export type PollOption = { id: string; label: string; votes: number };
-export type PollData = { question: string; options: PollOption[] };
+/** `resultsHidden` keeps counts and bars hidden until the facilitator reveals them (track R1-E). */
+export type PollData = { question: string; options: PollOption[]; resultsHidden?: boolean };
+/** Show or hide the results; hidden is stored only while on. */
+export function setPollHidden(d: PollData, hidden: boolean): PollData {
+  const next = { ...d };
+  if (hidden) next.resultsHidden = true;
+  else delete next.resultsHidden;
+  return next;
+}
 export function votePoll(data: PollData, optionId: string, delta = 1): PollData {
   if (!data.options.some(o => o.id === optionId)) throw new Error('That option no longer exists.');
   return {
@@ -159,15 +167,137 @@ export function shuffleFlipCards(board: Board, ids: string[], source?: (buf: Uin
 }
 
 // ---- Scale ---------------------------------------------------------------------------------
+/** One statement on a scale; `tallies[k]` counts the responses at step `min + k` on this device. */
+export type ScaleStatement = { id: string; text: string; tallies: number[] };
+/**
+ * A scale has a title (`label`), end labels and up to six statements (track R1-E). Older boards stored a single
+ * marker `value` and no statements; they still load and read as one statement with that value as its response.
+ */
 export type ScaleData = {
   label: string;
   min: number;
   max: number;
-  value: number;
+  /** Older single-marker scales only. */
+  value?: number;
   leftLabel: string;
   rightLabel: string;
+  statements?: ScaleStatement[];
 };
+export const SCALE_STATEMENTS_MAX = 6;
+/** Steps a statement can be rated on with buttons; larger ranges use a slider and an Add button. */
+export const SCALE_BUTTON_STEPS = 11;
 export const clampScale = (d: ScaleData, value: number): ScaleData => ({
   ...d,
   value: Math.round(Math.min(d.max, Math.max(d.min, value))),
 });
+/** Statements of a scale. An older single-marker scale reads as one statement (its title) with one response. */
+export function scaleStatements(d: ScaleData): ScaleStatement[] {
+  if (Array.isArray(d.statements)) return d.statements;
+  const tallies = new Array<number>(d.max - d.min + 1).fill(0),
+    v = d.value;
+  if (typeof v === 'number' && Number.isInteger(v) && v >= d.min && v <= d.max) tallies[v - d.min] = 1;
+  return [{ id: 'statement-1', text: d.label, tallies }];
+}
+/** The scale in the current format: statements stored, the older marker value dropped. */
+export function normalizeScale(d: ScaleData): ScaleData {
+  const next: ScaleData = { ...d, statements: scaleStatements(d) };
+  delete next.value;
+  return next;
+}
+/** Add (or with a negative delta, remove) one response at `value` for a statement. */
+export function tallyScale(d: ScaleData, statementId: string, value: number, delta = 1): ScaleData {
+  if (!Number.isInteger(value) || value < d.min || value > d.max) throw new Error('That step is not on the scale.');
+  const n = normalizeScale(d),
+    statements = n.statements ?? [];
+  if (!statements.some(s => s.id === statementId)) throw new Error('That statement no longer exists.');
+  return {
+    ...n,
+    statements: statements.map(s =>
+      s.id !== statementId
+        ? s
+        : { ...s, tallies: s.tallies.map((t, k) => (k === value - d.min ? Math.min(1e6, Math.max(0, t + delta)) : t)) },
+    ),
+  };
+}
+/** Response count, average to one decimal (null without responses) and the share of responses at each step. */
+export function scaleStats(
+  s: ScaleStatement,
+  min: number,
+): { count: number; average: number | null; shares: number[] } {
+  const count = s.tallies.reduce((a, t) => a + t, 0),
+    sum = s.tallies.reduce((a, t, k) => a + t * (min + k), 0);
+  return {
+    count,
+    average: count ? Math.round((sum / count) * 10) / 10 : null,
+    shares: s.tallies.map(t => (count ? t / count : 0)),
+  };
+}
+/** Responses across every statement. */
+export const scaleTotal = (d: ScaleData) =>
+  scaleStatements(d).reduce((a, s) => a + s.tallies.reduce((b, t) => b + t, 0), 0);
+/** Clear every response. */
+export function resetScale(d: ScaleData): ScaleData {
+  const n = normalizeScale(d);
+  return { ...n, statements: (n.statements ?? []).map(s => ({ ...s, tallies: s.tallies.map(() => 0) })) };
+}
+/**
+ * Change the range: responses keep their step value and responses outside the new range are dropped.
+ * Statements beyond the limit are left out.
+ */
+export function rangeScale(d: ScaleData, min: number, max: number): ScaleData {
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min >= max) throw new Error('Minimum must be below maximum.');
+  if (max - min > 100) throw new Error('Use at most 100 steps.');
+  const n = normalizeScale(d);
+  return {
+    ...n,
+    min,
+    max,
+    statements: (n.statements ?? []).slice(0, SCALE_STATEMENTS_MAX).map(s => ({
+      ...s,
+      tallies: Array.from({ length: max - min + 1 }, (_, k) => {
+        const old = min + k - d.min;
+        return old >= 0 && old < s.tallies.length ? s.tallies[old] : 0;
+      }),
+    })),
+  };
+}
+/** Throws when scale data is invalid. Accepts the statements format and older single-marker scales. */
+export function validateScaleData(x: any): void {
+  const str = (v: unknown, max: number) => typeof v === 'string' && v.length <= max;
+  const inRange = (v: unknown) => Number.isInteger(v) && (v as number) >= x.min && (v as number) <= x.max;
+  if (
+    !x ||
+    !str(x.label, 200) ||
+    !str(x.leftLabel, 60) ||
+    !str(x.rightLabel, 60) ||
+    !Number.isInteger(x.min) ||
+    !Number.isInteger(x.max) ||
+    x.min >= x.max ||
+    x.max - x.min > 100
+  )
+    throw new Error('Invalid scale.');
+  if (x.statements === undefined) {
+    if (!inRange(x.value)) throw new Error('Invalid scale.');
+    return;
+  }
+  if (x.value !== undefined && !inRange(x.value)) throw new Error('Invalid scale.');
+  const steps = x.max - x.min + 1;
+  if (
+    !Array.isArray(x.statements) ||
+    !x.statements.length ||
+    x.statements.length > SCALE_STATEMENTS_MAX ||
+    x.statements.some(
+      (s: any) =>
+        !s ||
+        typeof s.id !== 'string' ||
+        !s.id ||
+        s.id.length > 80 ||
+        !str(s.text, 200) ||
+        !Array.isArray(s.tallies) ||
+        s.tallies.length !== steps ||
+        s.tallies.some((t: unknown) => !Number.isInteger(t) || (t as number) < 0 || (t as number) > 1e6),
+    ) ||
+    new Set(x.statements.map((s: any) => s.id)).size !== x.statements.length
+  )
+    throw new Error('A scale needs 1 to 6 valid statements.');
+}

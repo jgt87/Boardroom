@@ -18,8 +18,17 @@ export type OrgNode = {
   hiring?: boolean;
   description?: string;
   color?: string;
+  /** User-defined fields such as "Email" or "Start date" (track R2-H). */
+  fields?: OrgField[];
 };
-export const ORG_DESCRIPTION_MAX = 1000;
+export type OrgField = { name: string; value: string };
+export const ORG_DESCRIPTION_MAX = 1000,
+  ORG_FIELDS_MAX = 20,
+  ORG_FIELD_NAME_MAX = 60;
+/** Built-in fields that can be shown on cards; custom field names may not reuse them or other CSV columns. */
+export const ORG_BUILTIN_CARD_FIELDS = ['Team', 'Location'];
+/** Fields shown on cards when the chart has no setting: team and location, as before custom fields. */
+export const ORG_DEFAULT_CARD_FIELDS = ['Team', 'Location'];
 /** Branch colour: the nearest colour set on the person or one of their managers. */
 export function orgBranchColor(nodes: OrgNode[], id: string): string | undefined {
   const map = new Map(nodes.map(n => [n.id, n]));
@@ -56,7 +65,8 @@ export function validateOrgNodes(nodes: unknown): asserts nodes is OrgNode[] {
         (n.hiring !== undefined && typeof n.hiring !== 'boolean') ||
         (n.description !== undefined &&
           (typeof n.description !== 'string' || n.description.length > ORG_DESCRIPTION_MAX)) ||
-        (n.color !== undefined && (typeof n.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(n.color))),
+        (n.color !== undefined && (typeof n.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(n.color))) ||
+        (n.fields !== undefined && !validFields(n.fields)),
     )
   )
     throw new Error('Invalid org chart node.');
@@ -73,11 +83,98 @@ export function validateOrgNodes(nodes: unknown): asserts nodes is OrgNode[] {
   }
 }
 
-/** "Team · Location" line under the role (gap E8). */
-export const orgMeta = (n: OrgNode) => {
-  const text = [n.team, n.location].filter(Boolean).join(' · ');
+/** Custom field names may not reuse a CSV column name or one of its aliases, so CSV files round-trip. */
+const reservedName = (name: string) =>
+  [...ORG_CSV_HEADER, ...Object.values(headerAliases).flat()].some(h => h.toLowerCase() === name.trim().toLowerCase());
+function validFields(fields: unknown): boolean {
+  if (!Array.isArray(fields) || fields.length > ORG_FIELDS_MAX) return false;
+  const names = new Set<string>();
+  for (const f of fields) {
+    if (
+      !f ||
+      typeof f !== 'object' ||
+      typeof f.name !== 'string' ||
+      !f.name.trim() ||
+      f.name !== f.name.trim() ||
+      f.name.length > ORG_FIELD_NAME_MAX ||
+      reservedName(f.name) ||
+      typeof f.value !== 'string' ||
+      f.value.length > 200 ||
+      names.has(f.name.toLowerCase())
+    )
+      return false;
+    names.add(f.name.toLowerCase());
+  }
+  return true;
+}
+/** The chart's "shown on cards" setting: the built-in and custom field names shown, in order (track R2-H). */
+export function validateOrgCardFields(value: unknown): void {
+  if (
+    value !== undefined &&
+    (!Array.isArray(value) ||
+      value.length > ORG_FIELDS_MAX + ORG_BUILTIN_CARD_FIELDS.length ||
+      value.some(v => typeof v !== 'string' || !v.trim() || v.length > ORG_FIELD_NAME_MAX) ||
+      new Set(value.map(v => v.toLowerCase())).size !== value.length)
+  )
+    throw new Error('Invalid org chart card fields.');
+}
+/** Every custom field name used in the chart, in order of first use. */
+export function orgFieldNames(nodes: OrgNode[]): string[] {
+  const out: string[] = [];
+  for (const n of nodes)
+    for (const f of n.fields ?? []) if (!out.some(o => o.toLowerCase() === f.name.toLowerCase())) out.push(f.name);
+  return out;
+}
+/** A person's value for a built-in or custom field name. */
+export function orgFieldValue(n: OrgNode, name: string): string {
+  const key = name.toLowerCase();
+  if (key === 'team') return n.team ?? '';
+  if (key === 'location') return n.location ?? '';
+  return n.fields?.find(f => f.name.toLowerCase() === key)?.value ?? '';
+}
+/**
+ * Line under the role (gap E8): the values of the fields chosen for cards, "Team · Location" by default.
+ * `shown` is the chart's `cardFields` setting.
+ */
+export const orgMeta = (n: OrgNode, shown: string[] = ORG_DEFAULT_CARD_FIELDS) => {
+  const text = shown
+    .map(name => orgFieldValue(n, name).trim())
+    .filter(Boolean)
+    .join(' · ');
   return text.length > 30 ? text.slice(0, 29) + '…' : text;
 };
+/** Add, rename, change or remove one of a person's custom fields. Names stay unique per person. */
+export function setOrgField(nodes: OrgNode[], id: string, index: number | null, field: OrgField | null): OrgNode[] {
+  return nodes.map(n => {
+    if (n.id !== id) return n;
+    const fields = [...(n.fields ?? [])];
+    if (field === null) {
+      if (index !== null) fields.splice(index, 1);
+    } else {
+      const next = { name: field.name.trim().slice(0, ORG_FIELD_NAME_MAX), value: field.value.slice(0, 200) };
+      if (!next.name) throw new Error('Give the field a name.');
+      if (reservedName(next.name)) throw new Error(`"${next.name}" is a built-in field. Choose another name.`);
+      if (fields.some((f, k) => k !== index && f.name.toLowerCase() === next.name.toLowerCase()))
+        throw new Error(`This person already has a "${next.name}" field.`);
+      if (index === null) {
+        if (fields.length >= ORG_FIELDS_MAX) throw new Error(`A person holds up to ${ORG_FIELDS_MAX} custom fields.`);
+        fields.push(next);
+      } else fields[index] = next;
+    }
+    const out = { ...n };
+    if (fields.length) out.fields = fields;
+    else delete out.fields;
+    return out;
+  });
+}
+/** A field name not yet used by this person ("Field", "Field 2", ...). */
+export function freshFieldName(n: OrgNode, base = 'Field'): string {
+  const used = new Set((n.fields ?? []).map(f => f.name.toLowerCase()));
+  for (let k = 1; ; k++) {
+    const name = k === 1 ? base : `${base} ${k}`;
+    if (!used.has(name.toLowerCase())) return name;
+  }
+}
 const childrenOf = (nodes: OrgNode[], id: string) => nodes.filter(n => n.parent === id);
 /** Visible nodes (descendants of collapsed nodes are hidden). */
 export function visibleOrgNodes(nodes: OrgNode[]): OrgNode[] {
@@ -220,8 +317,10 @@ export function orgToCsv(nodes: OrgNode[]): string {
     },
     root = nodes.find(n => n.parent === null);
   if (root) visit(root);
+  // Custom fields follow the built-in columns, one column per field name (track R2-H).
+  const custom = orgFieldNames(nodes);
   return toCsv([
-    ORG_CSV_HEADER,
+    [...ORG_CSV_HEADER, ...custom],
     ...out.map(n => [
       n.id,
       n.name,
@@ -231,6 +330,7 @@ export function orgToCsv(nodes: OrgNode[]): string {
       n.parent ?? '',
       n.hiring ? 'Yes' : '',
       n.description ?? '',
+      ...custom.map(name => orgFieldValue(n, name)),
     ]),
   ]);
 }
@@ -271,6 +371,21 @@ export function orgFromCsv(text: string): OrgNode[] {
     Object.entries(headerAliases).map(([key, names]) => [key, head.findIndex(h => names.includes(h))]),
   ) as Record<keyof typeof headerAliases, number>;
   if (col.name < 0) throw new Error('The CSV needs a Name column.');
+  // Columns that are not a known field become custom fields named after their header (track R2-H).
+  const known = new Set(Object.values(col).filter(k => k >= 0)),
+    extras: { index: number; name: string }[] = [];
+  rows[0].forEach((h, index) => {
+    const name = unguard(h).slice(0, ORG_FIELD_NAME_MAX).trim();
+    if (
+      known.has(index) ||
+      !name ||
+      reservedName(name) ||
+      extras.length >= ORG_FIELDS_MAX ||
+      extras.some(e => e.name.toLowerCase() === name.toLowerCase())
+    )
+      return;
+    extras.push({ index, name });
+  });
   const cell = (r: string[], key: keyof typeof headerAliases) =>
     col[key] < 0 ? '' : unguard(r[col[key]] ?? '').slice(0, 200);
   const people = rows.slice(1).filter(r => r.some(c => c.trim()));
@@ -301,6 +416,10 @@ export function orgFromCsv(text: string): OrgNode[] {
     if (location) node.location = location;
     if (truthy(cell(r, 'hiring'))) node.hiring = true;
     if (description) node.description = description;
+    const fields = extras
+      .map(e => ({ name: e.name, value: unguard(r[e.index] ?? '').slice(0, 200) }))
+      .filter(f => f.value);
+    if (fields.length) node.fields = fields;
     return node;
   });
   for (const n of nodes) {

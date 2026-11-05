@@ -76,6 +76,40 @@ export function useLibraryFiles() {
     }
   };
   /**
+   * Back up one or a few boards (track R2-I) in the library backup format, so the file restores the same way:
+   * the boards with their space, star, emoji and media. Templates and blueprints are left out.
+   */
+  const backupBoards = async (ids: string[]) => {
+    try {
+      const lib = boardActions.flush();
+      const chosen = lib.boards.filter(b => ids.includes(b.id));
+      if (!chosen.length) return display('Choose boards to back up.');
+      const [{ encodeLibrary }, all] = await Promise.all([
+        import('./library-backup'),
+        loadAssets().catch(() => ({}) as Record<string, ImageAsset>),
+      ]);
+      const made = encodeLibrary(localStorage, lib, all, undefined, [], [], ids);
+      const stem =
+        chosen.length === 1
+          ? chosen[0].title
+              .replace(/[^\w -]+/g, '')
+              .trim()
+              .replace(/\s+/g, '-')
+              .slice(0, 60) || 'board'
+          : `${chosen.length}-boards`;
+      saveBlob(
+        new Blob([made.bytes as BlobPart], { type: 'application/zip' }),
+        `boardroom-${stem}-${new Date().toISOString().slice(0, 10)}.boardroom`,
+      );
+      display(
+        `Backed up ${chosen.length === 1 ? `“${chosen[0].title}”` : plural(made.boards, 'board')}` +
+          (made.media ? ` with ${plural(made.media, 'media file')}.` : '.'),
+      );
+    } catch (err) {
+      display((err as Error).message || 'The backup could not be created.');
+    }
+  };
+  /**
    * Add what a backup file holds: a library backup adds all its boards (new ids where an id is taken);
    * a single-board backup becomes a new board and opens. Nothing existing is replaced.
    */
@@ -129,5 +163,5 @@ export function useLibraryFiles() {
       return null;
     }
   };
-  return { backupAll, importFile, exportTemplateFile, importTemplateFile };
+  return { backupAll, backupBoards, importFile, exportTemplateFile, importTemplateFile };
 }
