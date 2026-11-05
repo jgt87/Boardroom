@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0 — 2026-11-05
+
 ### Decided questions, colours and records
 - **Colour menu everywhere:** Kanban column colours, number colour rules and progress bars (record fields), QR code and background, icon, Action Shortcut, Grid cell and cell text, slide background and prototype screen background now use the shared colour menu (palette with shades, hex field, custom picker, recent, saved and brand colours) instead of the browser's colour input. The menu opens above editor dialogs and focus views. The sensitivity label's custom colour (inside the main menu) and the brand kit editor keep the browser picker.
 - **Sticky colour memory:** a colour applied to sticky notes through the selection bar or the inspector becomes the colour for new sticky notes, and the tool-rail swatches show it (as an extra swatch when it is not one of them). Colours applied to shapes, text, connectors or a mixed selection leave it alone.
