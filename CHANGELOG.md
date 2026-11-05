@@ -2,6 +2,119 @@
 
 ## Unreleased
 
+## 0.4.0 — 2026-11-05
+
+### Connectors and diagrams
+- Every connector label drags along its line on a selected connector, not only the main one, and each label (main or extra) has its own colour and font size in Connector details. Each drag or change is one undo step.
+- Callouts (speech, oval and thought bubbles) have a tail handle: drag it onto an object and the tail points at that object and follows it when it moves; hold Alt to leave it free. "Reset callout tail" restores the built-in tail. Pasted and duplicated callouts keep pointing at copied objects, and a tail whose object is deleted stays where it pointed.
+- Seven new Diagramming templates built from native shapes and connectors: Org chart, Mind map, Sequence diagram, ER diagram (crow's-foot relationships), Network diagram, Customer journey flow and Decision tree.
+- Org chart people have custom fields (name and value), and each chart chooses which fields its cards show ("Shown on cards"; team and location by default). CSV import turns unknown columns into custom fields, and CSV export writes them back as columns.
+- A sticky note or card dropped onto a Timeline becomes a record scheduled where it was dropped: the start is the day under the pointer and the end one day (days scale) or one week later. A card's later due date is kept as the end.
+- Draw.io files import as native shapes: "Draw.io as shapes" in the Upload and Diagram menus, or "Convert to shapes" on a Draw.io widget. Plain and compressed pages are read; rectangles, rounded rectangles, ellipses, diamonds, text and other common shapes keep their fill, line and text colours, edges become connectors between them, and unknown styles become rectangles. Imports stop at the 2,000-object board limit and report what was left out.
+
+### Pen, platform and board modes
+- **Pen pressure:** strokes drawn with a stylus record the pressure of each point and are drawn as a filled outline whose width follows it (a light touch is thinner, a firm press up to 1.8× the chosen width), on the board and in SVG, PNG, PDF and print exports. Mouse and touch strokes are unchanged, and a pen that reports one constant pressure draws like a mouse. Simplifying, resizing and erasing keep each pressure with its point, and simplifying keeps a point where the pressure swings on a straight run. Pressure is checked on load (0 to 1).
+- **Browser zoom up to 200%:** at about 640×400 CSS pixels (a laptop window zoomed to 200%), the tool rail starts under the header and scrolls, undo and redo sit beside it, the header shrinks so it never runs under the top-right toolbar, and the export menu scrolls. Main menu submenus that would leave the window move to the other side or overlap their parent, and scroll when taller than the window.
+- **Supported browsers notice:** when the browser lacks IndexedDB, ResizeObserver, CSS `:has()`, `structuredClone`, pointer events or local storage, a notice says what will not work. It does not block the board; dismissing it is remembered on this device until a different feature goes missing.
+- **Comment-only boards:** Main menu → Board → Comment only. Comments can still be added, replied to, resolved, reacted to and deleted; every other change is refused with a message. A "Comment only" badge shows in the top bar. Comment only and View only exclude each other, and both are saved with the board.
+- **Sensitivity label:** Main menu → Board → Sensitivity label sets Public, Internal, Confidential or Restricted, or a custom label (up to 40 characters) with its own colour. The label shows as a badge beside the board name and on the board's dashboard card, and is stamped in the bottom-right corner of SVG, PNG, JPG and PDF exports and prints. It is validated on load.
+- The View only badge in the top bar now has a background (its white text was unreadable on the white header).
+
+### Files and containers
+- **OpenDocument and RTF import:** .odt and .rtf files become a Doc (headings, bulleted and numbered lists, bold, italic, strikethrough, underline and, for .odt, simple tables); .odp files become Slides, one slide per page with its title and text. Speaker notes, comments, footnotes, pictures, font and colour tables are left out. Drop the files on the board or use Upload → "OpenDocument or RTF as Doc" / "OpenDocument slides as Slides". Files are read as data only.
+- **File object:** any other file (other Office formats, archives, text…) dropped on the board, or added with Upload → Any file or Media → File, is kept as it is (up to 25 MB): a card with a type icon, the name, the size and Download. The bytes are stored as opaque data, never previewed or opened, are kept by startup pruning while referenced, and travel in JSON backups and `.boardroom` bundles.
+- **Office Online and Power BI embeds:** OneDrive (`onedrive.live.com/embed`) and SharePoint (`*.sharepoint.com` with `action=embedview`) embed links and Power BI reports (`app.powerbi.com/view` and `/reportEmbed`) can be embedded; the Content Security Policy allows exactly these origins. Other links from those services are refused with a hint.
+- **Duplicate layer:** a new button in Board layers copies a layer and its objects to "<name> copy" directly above it, with new ids; connectors, object links, groups, auto-layout children and Grid cell objects between copied objects point at the copies. One undo step.
+- **Larger grids:** a Grid holds up to 100 rows or columns and 2,500 cells (for example 50 × 50 or 100 × 25); spreadsheet imports and pastes keep every column that fits, then as many rows. Grids over 400 cells draw cells as text with one live field on the current cell, so the canvas stays responsive.
+- **Auto-layout spacing handle:** a selected auto-layout container shows a blue handle between its first two children; drag it to change the gap with a live preview (Shift snaps to 8), or use the arrow keys. One undo step; locked containers show no handle.
+- **Web page export click-through:** objects linked to another object or frame are clickable in the exported web page and fly the view to their target; Back returns to the previous view. The page still loads no external scripts.
+
+### Templates, notes and navigation
+- **Board notes:** a docked notes panel per board (Alt+N, View → Board notes, or "Board notes" in Commands), edited with the same rich text editor as Docs and stored with the board, so it travels in backups.
+  - Each save is one undo step. View-only boards show the notes read-only.
+  - Notes are found by the dashboard's content search, and "Export notes as Markdown" saves them as "<board> notes.md".
+  - Note templates: Meeting notes, Retro notes, Decision log and 1:1, each dated with today's date.
+- **Doc block selection:** in a Doc (and in board notes), Esc selects the block holding the cursor; Esc again leaves the Doc.
+  - With blocks selected, Up/Down moves the selection, Shift+Up/Down extends it, and Alt+Up/Down moves the blocks.
+  - Delete or Backspace removes the blocks, Ctrl+C and Ctrl+X copy and cut them as Markdown, and Enter goes back to typing.
+  - Esc used to discard unsaved typing; typing is now kept when you leave a Doc.
+  - Leaving a Doc without changes no longer records an extra undo step.
+- **Starter columns for Tables and Kanbans:** a new Table or Kanban offers "Templates…" (Bug tracker, Sprint backlog, Content calendar, CRM pipeline) with statuses, custom fields and two example records. The menu disappears once the format holds real work; Undo brings back the starter record.
+- **Sticky note sets:** the sticky note tool offers "Note sets…" (Retro, Start/stop/continue, Brainstorm, SWOT). The pre-coloured notes are placed at the centre of the view as one group.
+- **Template gallery sort:** sort the Templates panel by Featured, Name, Category or Recently used. The choice and the last use of each template (inserted, or used for a new board) are remembered in this browser.
+- **Quick-create links:** opening the app with `#new` creates and opens a blank board; `#new=<template>` (for example `#new=kanban-retro` or `#new=swot`) starts from a starter template, and `#new=doc`, `table`, `kanban` or `timeline` makes a single-format board. The address is cleared at once, so reloading never creates another board.
+
+### Library, history and records
+- **Board emoji:** set one short emoji or symbol in Main menu → Board → Board emoji (suggestions or typed) or in Board details. It shows beside the board name and on its dashboard card, is kept in the board index (validated like space emoji), follows duplicates and travels in backups.
+- **Back up one or selected boards:** each dashboard card and Board details have "Back up", and the dashboard selection bar backs up the selected boards together. The file uses the library backup format, with only those boards, their spaces, emoji and media, so Import restores it next to existing boards.
+- **Catch-up walkthrough:** Catch up steps through the changed objects one by one (oldest change first) with Previous and Next, shows "n of N" and the change, and zooms to each object.
+- **Restore several deleted objects:** History lets you tick deleted objects (or all of them) and restore them in one undo step. Connectors deleted in the same change come back attached when both their ends are restored or still on the board; a connector end whose object is missing is left loose instead of pointing nowhere.
+- **Boards in this space:** Main menu → Board → Boards in this space lists the other boards in the open board's space (or the boards without a space) and opens one.
+- **Saved view order:** "Order views" on a Table, Kanban or Timeline lists the saved views; drag one to a new place or press Alt+Up/Down on it. The order is shared by every view of the dataset.
+- **Timeline flags:** add free milestone flags (date, label and colour, up to 50) from the Timeline's Flags menu. They are drawn as dashed coloured lines with a labelled flag, are kept with that Timeline (not in saved views or records) and widen the fitted range.
+- **Timeline bar warnings:** a warning icon on a bar explains in its tooltip when a date is not a real calendar day, the end is before the start, a milestone has a range, or the bar starts before a record it depends on ends.
+- **Status chips on Mermaid, mind-map and draw.io objects:** the selection bar's Status button steps through the board statuses as for Docs and Slides, and the chip is drawn in the object's top-left corner.
+
+### Media and comments
+- **Video and Talktrack player:** a playing video now has its own controls bar with back and forward 10 seconds, play/pause and a speed menu from 0.5× to 2×. The native controls stay available.
+  - When the player has focus (it takes focus as playback starts): J or ← goes back 10 s, L or → goes forward 10 s, K or Space plays or pauses, and < or > changes the speed. These keys never reach the board.
+  - The trim start and end still apply, whether you skip, scrub or play through.
+- **Cut parts out of a recording:** the video editor ("Rename or trim") has a "Cut out of the middle" list. Add as many cuts as needed (up to 50), each with a start and end time. Cut parts are skipped during playback, and the poster shows the length that will actually play.
+  - A waveform of the recording's sound shows the trimmed-off ends and the cuts. When the browser cannot read the sound (no audio track or an unsupported codec), a note says so, and trim and cuts still work.
+  - Cuts are validated on load: sorted, non-overlapping ranges.
+- **Animated GIFs:** every animated GIF has a play/pause button. It is always shown while the GIF is paused, and on hover or focus while it plays, whatever the reduce motion setting. Pausing or playing this way changes only your view.
+  - The selection bar adds two stored settings: "Start animation paused", and "Play animation once" instead of looping. Pressing play replays a play-once GIF from the start.
+- **Crop shapes for images:** the circle crop is now a "Crop shape" menu with circle, rounded rectangle, triangle, hexagon, star and heart, plus "No crop shape". Select several images to apply one shape to all of them as a single undo step. Locked images are left alone, and exports keep the shape.
+- **Pinned comments stay open on the canvas:** a pinned, unresolved thread now shows as an open comment card beside its pin, with its latest messages, until it is unpinned. Each card can be collapsed to one line (remembered on this device), unpinned, or opened to reply or edit. Cards are hidden while presenting, when comments are hidden, and in exports.
+
+### Focus views and slides
+- **Full-viewport focus view:** Table, Kanban and Timeline records, Mermaid, mind maps and Docs now open over the whole canvas instead of in a centred modal.
+  - The header shows the title (with the object's name for records), an "Esc closes" hint and a Close button.
+  - Tab stays inside the view, the canvas and toolbars behind it are hidden from screen readers, and focus returns to where it was on close.
+- **Open a board in a format:** Board menu → Start view → "Open in: …" lists the board's Tables, Kanbans, Timelines, Docs and Slides. On opening, the board shows that object in its focus view. A link to another object still wins.
+- **Slide images:**
+  - "Export slide as PNG" saves the visible slide at 1920×1080.
+  - "Export all slides as PNG (ZIP)" saves every slide, one PNG each, in a single ZIP.
+- **Slide sorter:** opened from the deck's sorter button, the Edit button or Enter.
+  - It shows the slides as a grid of thumbnails beside an editor for the selected slide.
+  - Drag a slide, or press Alt with an arrow key, to reorder. Arrow keys move between slides. "Present" starts the deck from the selected slide.
+- **New activity slide layouts**, each counted on this device only, like the poll. They work on the canvas and while presenting:
+  - **Scale:** one statement rated 1–5 or 1–10, showing a bar for each rating, the number of ratings and the average.
+  - **Word cloud:** each word entered appears in the cloud, sized by how often it was entered. Case and extra spaces are ignored.
+  - **Open-ended:** answers are collected as a list.
+  - "Reset responses" clears a slide's results.
+  - The PDF export lists the results.
+- While presenting, typing in an answer box no longer changes slides or toggles notes.
+
+### Colours
+- **Colour system:** every colour control (object fill, line colour, border, text highlight and background, and the inspector) opens the same colour menu. It adds a palette of ten hues in five shades from light to dark, with spoken names and arrow-key navigation, and a hex field (#rgb or #rrggbb; Enter applies; invalid input shows an inline error). New shapes, text and connectors start with the colour last applied to that kind in this session.
+
+### Text editing, paste and sticky notes
+- Pasting a single web address while words are selected in the text editor links those words instead of replacing them.
+- Long pasted prose (over 600 characters with paragraph breaks, or a line too long for a note) becomes a Doc instead of sticky notes or a huge text object. Short multi-line paste and plain lists still become sticky notes.
+- Pasted spreadsheet cells still become a Grid, and the notification now offers "One sticky per cell" to turn them into notes laid out like the cells (one undo step back to the Grid).
+- Dragging a corner handle of a text object scales its font with the box, keeping proportions; side handles (or Shift at a corner) still reflow the text.
+- Sticky notes can be rectangles (2:1) as well as squares: a shape option next to the size presets, saved with the note.
+
+### Selection, touch and widget keyboard
+- **Selection:** "Select objects the box touches" (main menu → Accessibility, off by default) makes the selection box pick objects it overlaps, not only those fully inside it. An object that encloses the whole box, such as the frame it was drawn in, is left out. Holding Alt while releasing the box inverts the setting for that drag.
+- **Touch:** holding a still finger on an object for half a second selects it and opens its context menu; on empty canvas it opens the canvas menu. Moving more than 8 px, lifting, a second finger or the pen cancels it, and palm rejection is unchanged.
+- **Kanban keyboard:** on a focused card, Enter adds a card below it in the same column (and lane) with its title ready to type, Ctrl+Up/Down adds one above or below, and Tab / Shift+Tab move to the next or previous card. Each addition is one undo step.
+- **User story map keyboard:** in the story map editor, Tab on a story adds a sibling in the next activity (adding an activity after the last one), and Ctrl+Down/Up adds a story below or above in the same cell. The new story is selected and focused.
+- **Keyboard navigation:** Ctrl+Shift+Down with nothing selected selects the first object in reading order.
+
+### Drag-and-drop chips
+- **Estimate chips:** a new palette (Planning: Story points, T-shirt sizing) shows story points (0–21 and ?) or T-shirt sizes (XS–XXL). Drag a chip onto a card to set its estimate, or onto a sticky note to give it an estimate badge. XXL is now a card size too.
+- **Dot pile:** a new Collaboration widget holds a set number of voting dots in one colour. Drag dots onto any object; the pile shows how many are left. Click a placed dot to return it. "Return all dots" empties the board of that pile's dots.
+- **People avatars:** drag an avatar from a People widget onto a card to assign it, or onto a sticky note to show a person chip.
+- Every drop is one undo step, and locked objects refuse chips. Pressing a chip (click, Enter or Space) applies it to the selected objects. A selected sticky shows a × on its estimate and person chip to remove them.
+
+### Facilitation widgets
+- Alignment scales rate up to six statements. Clicking a step adds a response counted on this device, and each statement shows its average and a small distribution bar. Older single-marker scales still load and read as one statement.
+- Polls can hide their results until revealed (selection bar or editor), and "Export to Table" puts the options and vote counts in a new Table beside the poll.
+- Voting results: "Add results to board" in the Dot voting panel places a ranked Table (item, votes, rank) beside the voted objects, as one undo step.
+- Action Shortcuts offer 22 actions in groups: navigate, present, facilitate (timer, dot voting, comments, private mode), panels (layers, outline, minimap, commands), view (grid, view only), create (sticky note, text, pen, comment) and export (PNG, PDF).
+
 ## 0.3.0 — 2026-11-04
 
 ### Help-center gaps, closing round
