@@ -42,3 +42,5 @@ prototype/e2e/.tmp/
 
 # Agent lessons: machine-local (C:\Files\Apps\__CommonShared\agent)
 tasks/lessons.md
+# Git worktrees made for parallel agents: separate checkouts, never part of this one
+/.claude/worktrees/
