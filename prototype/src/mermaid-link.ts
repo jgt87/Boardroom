@@ -7,10 +7,11 @@
 //   position, size and style; text, shape kind and table rows come from the code), lays out new keys, deletes
 //   keys that disappeared and rebuilds connectors (keeping their routing and colour). Sequence diagrams keep only
 //   colours and styles: their messages hang off the participant columns, so the layout is always redone.
-// - Shapes to code (flowcharts only): labels, shape kinds, added or deleted shapes, frames (subgraphs) and
-//   connectors (label, dotted, thick, arrowhead) are written back to the code; positions and colours are not.
-// - Sequence, class, state and ER diagrams sync from code to shapes only: canvas edits are kept until the next
-//   rebuild and are never written into the code.
+// - Shapes to code, flowcharts: labels, shape kinds, added or deleted shapes, frames (subgraphs) and connectors
+//   (label, dotted, thick, arrowhead) are written back by regenerating the code; positions and colours are not.
+// - Shapes to code, sequence, class, state and ER diagrams (decision R6c-Q2): the stored code is patched line by
+//   line (mermaid-writeback.ts), so lines the shapes cannot show stay in place and unchanged shapes give the same
+//   code. In sequence diagrams the vertical order of message lines is their order in the code.
 import type { Board, ConnectorFormat, Item, Point } from './model.ts';
 import { createItem } from './model.ts';
 import { brackets, edgeKey, mermaidKind, mermaidToNative } from './mermaid-native.ts';
@@ -19,8 +20,18 @@ import { contains, itemBounds } from './interactions.ts';
 import type { Bounds } from './interactions.ts';
 import { isShapeKind } from './shapes.ts';
 import { editableIds } from './arrange.ts';
-import { MERMAID_CODE_MAX, hasLinks, hashText, linkOf, linkedMembers } from './mermaid-link-rules.ts';
+import {
+  MERMAID_CODE_MAX,
+  hasLinks,
+  hashText,
+  keyOf,
+  linkOf,
+  linkedMembers,
+  parentFrame,
+} from './mermaid-link-rules.ts';
 import type { LinkKind, MermaidLink } from './mermaid-link-rules.ts';
+import { writers } from './mermaid-writeback.ts';
+import { sequenceSignature } from './mermaid-writeback-sequence.ts';
 
 export { linkOf, linkedMembers, MERMAID_CODE_MAX } from './mermaid-link-rules.ts';
 export type { MermaidLink } from './mermaid-link-rules.ts';
@@ -35,34 +46,20 @@ export const kindLabels: Record<LinkKind, string> = {
   er: 'ER diagram',
 };
 /** What syncs in which direction, in words for the edit panel. */
-export function syncSummary(kind: LinkKind): string {
-  return kind === 'flowchart'
-    ? 'Two-way: renaming, adding or deleting shapes, frames and connectors inside the frame updates the code, and applying the code updates the shapes. Positions and colours stay on the canvas only, and shapes without a Mermaid form are written as rectangles. Styling lines (classDef, class, style, click) are kept; linkStyle lines and comments are dropped when the code is rewritten.'
-    : `Code to shapes only: applying the code rebuilds the ${kindLabels[kind].toLowerCase()} and ${
-        kind === 'sequence'
-          ? 'keeps the colours of existing objects (the layout is redone)'
-          : 'keeps moved objects in place'
-      }. Edits on the canvas are not written back into ${kindLabels[kind].toLowerCase()} code.`;
-}
+const summaries: Record<LinkKind, string> = {
+  flowchart:
+    'Two-way: renaming, adding or deleting shapes, frames and connectors inside the frame updates the code, and applying the code updates the shapes. Positions and colours stay on the canvas only, and shapes without a Mermaid form are written as rectangles. Styling lines (classDef, class, style, click) are kept; linkStyle lines and comments are dropped when the code is rewritten.',
+  sequence:
+    'Two-way: renaming participants, adding or deleting participants, messages and notes, and moving a message up or down (its order) updates the code; a rounded box is an actor. Applying the code rebuilds the layout and keeps colours. Blocks (loop, alt and others), activation and comments stay in the code as written; a renamed block frame renames the block.',
+  class:
+    'Two-way: class titles, members (one per row), new or deleted classes and relations (ends, label, line style, end mark) update the code, and applying the code updates the shapes, keeping moved objects in place. Cardinalities, notes, styling and comments stay in the code as written.',
+  state:
+    'Two-way: state names, new or deleted states (a diamond is a choice, an empty circle a start or end), transitions and composite state titles update the code, and applying the code updates the shapes, keeping moved objects in place. Moving a state into another composite state stays on the canvas only; notes and comments stay in the code.',
+  er: 'Two-way: entity names, attribute rows, new or deleted entities and relationships (ends, cardinality, dashed, label) update the code, and applying the code updates the shapes, keeping moved objects in place. Attribute comments and comments stay in the code as written.',
+};
+export const syncSummary = (kind: LinkKind): string => summaries[kind];
 
-const keyOf = (i: Item, frameId: string) => (i.mermaidNode?.frame === frameId ? i.mermaidNode.id : '');
 const area = (b: Bounds) => b.w * b.h;
-/**
- * The smallest member frame (subgraph) that holds the object, or undefined at the top level. Between two frames of
- * the same size, the one painted first holds the other.
- */
-function parentFrame(item: Item, frames: Item[], items: Item[]): Item | undefined {
-  const box = itemBounds(item, items),
-    order = (i: Item) => items.findIndex(n => n.id === i.id);
-  return frames
-    .filter(
-      f =>
-        f.id !== item.id &&
-        contains(f, box) &&
-        (item.type !== 'frame' || area(f) > area(box) || order(f) < order(item)),
-    )
-    .sort((a, b) => area(a) - area(b) || order(b) - order(a))[0];
-}
 
 /** A text fingerprint of the diagram as the code sees it (no positions or colours), used for change detection. */
 export function shapesSignature(board: Board, frame: Item, members = linkedMembers(board, frame)): string {
@@ -89,6 +86,7 @@ export function shapesSignature(board: Board, frame: Item, members = linkedMembe
       key(parentFrame(m, frames, board.items)),
     ].join('|');
   });
+  if (link.kind === 'sequence') lines.push(...sequenceSignature(members, frame.id));
   return lines.sort().join('\n');
 }
 
@@ -309,7 +307,7 @@ export function codeFromShapes(board: Board, frameId: string): { board: Board; c
   const frame = board.items.find(i => i.id === frameId),
     link = linkOf(frame);
   if (!frame || !link) throw new Error('This frame is not linked to Mermaid code.');
-  if (link.kind !== 'flowchart') throw new Error(`${kindLabels[link.kind]} code is not updated from shapes.`);
+  if (link.kind !== 'flowchart') return patchedFromShapes(board, frame, link);
   const members = linkedMembers(board, frame),
     used = new Set<string>(),
     ids = new Map<string, string>();
@@ -396,20 +394,54 @@ export function codeFromShapes(board: Board, frameId: string): { board: Board; c
   return { board: sealed({ ...board, items }, frameId, code, 'flowchart'), code };
 }
 
+/** Key prefix of an object whose code line was removed (a message to a deleted participant): writers skip it. */
+const DETACHED = 'x:';
 /**
- * Automatic shapes-to-code sync, run on every board change: a linked flowchart whose shapes changed while its code
+ * Shapes to code for sequence, class, state and ER diagrams: the writer of the kind patches the stored code
+ * (mermaid-writeback.ts) and the objects take the keys of the written code. An object whose line went away keeps
+ * a detached key until the next rebuild removes it. Throws when the code would be too long or would not convert.
+ */
+function patchedFromShapes(board: Board, frame: Item, link: MermaidLink): { board: Board; code: string } {
+  const members = linkedMembers(board, frame),
+    active = members.filter(m => !keyOf(m, frame.id).startsWith(DETACHED));
+  const write = writers[link.kind as Exclude<LinkKind, 'flowchart'>];
+  const { code, keys, texts } = write({ code: link.code, frameId: frame.id, members: active, items: board.items });
+  if (code.length > MERMAID_CODE_MAX)
+    throw new Error('The code for these shapes would be longer than 6,000 characters, so it was not updated.');
+  mermaidToNative(code, { x: 0, y: 0 });
+  const memberIds = new Set(members.map(m => m.id));
+  const items = board.items.map(item => {
+    const text = texts?.get(item.id),
+      i = text === undefined ? item : { ...item, text },
+      key = keys.get(i.id),
+      old = keyOf(i, frame.id);
+    if (key) return old === key ? i : { ...i, mermaidNode: { frame: frame.id, id: key } };
+    if (memberIds.has(i.id) && old && !old.startsWith(DETACHED))
+      return { ...i, mermaidNode: { frame: frame.id, id: (DETACHED + old).slice(0, 200) } };
+    if (i.mermaidNode?.frame === frame.id && !memberIds.has(i.id)) {
+      const copy = { ...i };
+      delete copy.mermaidNode;
+      return copy;
+    }
+    return i;
+  });
+  return { board: sealed({ ...board, items }, frame.id, code, link.kind), code };
+}
+
+/**
+ * Automatic shapes-to-code sync, run on every board change: a linked diagram whose shapes changed while its code
  * did not gets new code. Nothing happens when both sides changed (the edit panel asks which side wins).
  */
 export function syncMermaidLinks(board: Board): Board {
   if (!hasLinks(board)) return board;
   let next = board;
-  for (const frame of board.items.filter(i => linkOf(i)?.kind === 'flowchart'))
+  for (const frame of board.items.filter(i => linkOf(i)))
     // A locked frame keeps its code: the badge keeps showing that the shapes changed.
     if (editableIds(next, [frame.id]).includes(frame.id) && linkState(next, frame.id) === 'shapes')
       try {
         next = codeFromShapes(next, frame.id).board;
       } catch {
-        // Too long: the badge keeps showing that the shapes changed.
+        // Too long, or no diagram left: the badge keeps showing that the shapes changed.
       }
   return next;
 }
@@ -421,7 +453,7 @@ const updateLink = (board: Board, frameId: string, change: (l: MermaidLink) => M
 /** Keep edited code without applying it (the link then shows that the code changed). */
 export const storeCode = (board: Board, frameId: string, code: string): Board =>
   updateLink(board, frameId, l => ({ ...l, code: code.slice(0, MERMAID_CODE_MAX) }));
-/** Accept the canvas edits of a code-to-shapes-only diagram as the new shapes state. */
+/** Accept the canvas edits as the new shapes state without changing the code. */
 export function keepShapes(board: Board, frameId: string): Board {
   const frame = board.items.find(i => i.id === frameId)!;
   return updateLink(board, frameId, l => ({ ...l, shapesHash: hashText(shapesSignature(board, frame)) }));

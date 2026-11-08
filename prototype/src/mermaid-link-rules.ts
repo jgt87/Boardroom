@@ -2,6 +2,7 @@
 // validation for parseBoard, and which objects belong to a linked frame. The sync itself is in mermaid-link.ts.
 import type { Board, Item } from './model.ts';
 import { contains, itemBounds } from './interactions.ts';
+import type { Bounds } from './interactions.ts';
 import { isShapeKind } from './shapes.ts';
 
 export const MERMAID_CODE_MAX = 6000;
@@ -65,10 +66,43 @@ export function hashText(text: string): string {
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
+/** The Mermaid key of an object in this linked frame, or '' when it has none. */
+export const keyOf = (i: Item, frameId: string) => (i.mermaidNode?.frame === frameId ? i.mermaidNode.id : '');
+const area = (b: Bounds) => b.w * b.h;
+/**
+ * The smallest member frame (subgraph, composite state or sequence block) that holds the object, or undefined at
+ * the top level. Between two frames of the same size, the one painted first holds the other.
+ */
+export function parentFrame(item: Item, frames: Item[], items: Item[]): Item | undefined {
+  const box = itemBounds(item, items),
+    order = (i: Item) => items.findIndex(n => n.id === i.id);
+  return frames
+    .filter(
+      f =>
+        f.id !== item.id &&
+        contains(f, box) &&
+        (item.type !== 'frame' || area(f) > area(box) || order(f) < order(item)),
+    )
+    .sort((a, b) => area(a) - area(b) || order(b) - order(a))[0];
+}
+
+/**
+ * Objects drawn on the canvas that join a linked diagram of each kind when placed inside its frame: they become
+ * nodes, states, classes, entities, participants or notes when the code is written from the shapes.
+ */
+const adoptable: Record<LinkKind, (i: Item) => boolean> = {
+  flowchart: i => isShapeKind(i.type) || i.type === 'frame',
+  state: i => isShapeKind(i.type),
+  class: i => i.type === 'entity',
+  er: i => i.type === 'entity',
+  sequence: i => i.type === 'rectangle' || i.type === 'roundrect' || i.type === 'note',
+};
+
 /**
  * Objects that make up a linked diagram, all inside its frame: objects created from the code (marked with
- * `mermaidNode.frame`) and, for flowcharts, shapes and frames added on the canvas that no other linked diagram
- * owns. Connectors belong when they are marked, or (flowcharts) join two member objects.
+ * `mermaidNode.frame`) and objects added on the canvas that no other linked diagram owns (see `adoptable`).
+ * Connectors belong when they join two member objects (flowcharts: only then); in other diagrams marked loose
+ * connectors inside the frame belong too, and in sequence diagrams every loose connector there (a message).
  */
 export function linkedMembers(board: Board, frame: Item): Item[] {
   const link = linkOf(frame);
@@ -78,7 +112,7 @@ export function linkedMembers(board: Board, frame: Item): Item[] {
     if (i.id === frame.id || i.type === 'arrow' || linked.has(i.id)) return false;
     const mine = i.mermaidNode?.frame === frame.id,
       free = !i.mermaidNode || !linked.has(i.mermaidNode.frame);
-    if (!mine && !(link.kind === 'flowchart' && free && (isShapeKind(i.type) || i.type === 'frame'))) return false;
+    if (!mine && !(free && adoptable[link.kind](i))) return false;
     return contains(frame, itemBounds(i, board.items));
   });
   const ids = new Set(nodes.map(n => n.id));
@@ -86,8 +120,11 @@ export function linkedMembers(board: Board, frame: Item): Item[] {
     if (i.type !== 'arrow') return false;
     const bound = !!i.from && !!i.to && ids.has(i.from) && ids.has(i.to);
     if (link.kind === 'flowchart') return bound;
-    if (i.mermaidNode?.frame !== frame.id) return false;
-    return bound || (!i.from && !i.to && contains(frame, itemBounds(i, board.items)));
+    const mine = i.mermaidNode?.frame === frame.id;
+    if (!mine && i.mermaidNode && linked.has(i.mermaidNode.frame)) return false;
+    if (bound) return true;
+    const loose = !i.from && !i.to && contains(frame, itemBounds(i, board.items));
+    return loose && (mine || link.kind === 'sequence');
   });
   return [...nodes, ...arrows];
 }

@@ -146,15 +146,17 @@ test('divergence: code edited, shapes edited, or both, and the two ways to resol
   assert.equal(syncMermaidLinks(empty), empty);
 });
 
-test('sequence diagrams sync from code to shapes only', () => {
+test('sequence diagrams sync both ways (decision R6c-Q2)', () => {
   let b = linked('sequenceDiagram\n  Alice->>Bob: Hi\n  Bob-->>Alice: Hello');
   const id = frameOf(b).id;
   assert.equal(linkOf(frameOf(b))!.kind, 'sequence');
   b = setItem(b, byKey(b, 'p:Alice').id, { text: 'Alicia', fill: '#d0ebff' });
-  assert.equal(syncMermaidLinks(b), b, 'no code rewrite');
   assert.equal(linkState(b, id), 'shapes');
-  assert.throws(() => codeFromShapes(b, id), /not updated from shapes/);
-  assert.equal(linkState(keepShapes(b, id), id), 'synced');
+  assert.equal(linkState(keepShapes(b, id), id), 'synced', 'shape edits can still be accepted without a rewrite');
+  b = syncMermaidLinks(b);
+  assert.match(linkOf(frameOf(b))!.code, /participant Alice as Alicia\n {2}participant Bob\n {2}Alice->>Bob: Hi/);
+  assert.equal(byKey(b, 'p:Alice:end').text, 'Alicia', 'the bottom box shows the new name too');
+  assert.equal(linkState(b, id), 'synced');
   const r = rebuildFromCode(
     b,
     id,

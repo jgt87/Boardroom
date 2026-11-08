@@ -59,12 +59,16 @@ const statements = (code: string) => {
   out.push(current);
   return out;
 };
-const codeLines = (code: string) =>
+const codeLines = (code: string) => numberedLines(code).map(l => l.text);
+/**
+ * Code lines without comments or blank lines, each with `at`, its index in `code.split('\n')`. The parsers record
+ * these indexes so the shapes-to-code writers (mermaid-writeback.ts) can rewrite lines in place.
+ */
+export const numberedLines = (code: string) =>
   code
-    .replace(/%%.*$/gm, '')
-    .split(/\n/)
-    .map(l => l.trim())
-    .filter(Boolean);
+    .split('\n')
+    .map((raw, at) => ({ text: raw.replace(/%%.*$/, '').trim(), at }))
+    .filter(l => l.text);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** The diagram type named on the first line, or null when it cannot be converted. */
@@ -284,6 +288,16 @@ export type Keys = Record<string, string>;
 export type Converted = { items: Item[]; notes: string[]; keys: Keys };
 /** Key of the n-th edge between two Mermaid ids (n counts from 0 in code order). */
 export const edgeKey = (from: string, to: string, n: number) => `${from}>${to}#${n}`;
+/** The key of each edge in code order, or null for an edge with an end that is not drawn. */
+export function edgeKeys(edges: { from: string; to: string }[], drawn: (id: string) => boolean): (string | null)[] {
+  const seen = new Map<string, number>();
+  return edges.map(e => {
+    if (!drawn(e.from) || !drawn(e.to)) return null;
+    const n = seen.get(`${e.from}>${e.to}`) ?? 0;
+    seen.set(`${e.from}>${e.to}`, n + 1);
+    return edgeKey(e.from, e.to, n);
+  });
+}
 
 /** Lay out nodes in ranks, wrap groups in frames, and bind elbow connectors to the created objects. */
 function buildLayered(
@@ -346,20 +360,19 @@ function buildLayered(
     ids.set(g.id, frame.id);
   }
   const keys: Keys = {},
-    seen = new Map<string, number>();
+    edgeKeyList = edgeKeys(edges, id => ids.has(id));
   for (const [key, id] of ids) keys[id] = key;
   const lines: Item[] = edges
-    .filter(e => ids.has(e.from) && ids.has(e.to))
-    .map(e => {
+    .map((e, k) => ({ e, key: edgeKeyList[k] }))
+    .filter((x): x is { e: GEdge; key: string } => x.key !== null)
+    .map(({ e, key }) => {
       const connector: ConnectorFormat = { path: 'elbow' };
       if (e.dash) connector.dash = e.dash;
       if (e.width) connector.width = e.width;
       if (e.startHead && e.startHead !== 'none') connector.startHead = e.startHead;
       if (e.endHead !== undefined && e.endHead !== 'arrow') connector.endHead = e.endHead;
-      const n = seen.get(`${e.from}>${e.to}`) ?? 0,
-        id = crypto.randomUUID();
-      seen.set(`${e.from}>${e.to}`, n + 1);
-      keys[id] = edgeKey(e.from, e.to, n);
+      const id = crypto.randomUUID();
+      keys[id] = key;
       return {
         id,
         type: 'arrow' as const,
@@ -401,6 +414,7 @@ function flowchartItems(code: string, origin: Point): Converted {
 }
 
 // ---- Sequence diagrams -------------------------------------------------------------------------
+/** `at` is the code line of the step; `arrow` and `activation` keep the arrow as written (`-x`, `+`). */
 export type SequenceMessage = {
   kind: 'message';
   from: string;
@@ -408,44 +422,68 @@ export type SequenceMessage = {
   text: string;
   dashed: boolean;
   head: ConnectorHead;
+  at: number;
+  arrow: string;
+  activation: string;
 };
-export type SequenceNote = { kind: 'note'; over: string[]; side: 'over' | 'left' | 'right'; text: string };
-export type SequenceBlock = { kind: 'block'; title: string; depth: number; start: number; end: number };
+export type SequenceNote = { kind: 'note'; over: string[]; side: 'over' | 'left' | 'right'; text: string; at: number };
+export type SequenceBlock = {
+  kind: 'block';
+  title: string;
+  depth: number;
+  start: number;
+  end: number;
+  /** The line that opens the block and its keyword (loop, alt, …). */
+  at: number;
+  keyword: string;
+};
+/**
+ * A line that opens, divides (else, and, option) or closes a block, with the number of steps before it. `block` is
+ * null for a participant `box`, which is not drawn.
+ */
+export type SequenceMark = { at: number; role: 'open' | 'else' | 'end'; steps: number; block: SequenceBlock | null };
+/** `at` is the last declaration line of a participant (none when it is only named in messages). */
+export type SequenceParticipant = { id: string; label: string; actor: boolean; at?: number };
 export type ParsedSequence = {
-  participants: { id: string; label: string; actor: boolean }[];
+  participants: SequenceParticipant[];
   steps: (SequenceMessage | SequenceNote)[];
   blocks: SequenceBlock[];
+  marks: SequenceMark[];
   notes: string[];
 };
 const PARTICIPANT_MAX = 40,
   STEP_MAX = 300;
+const sequenceMessage = /^([^\s:+-][^:]*?)\s*(--?>>|--?>|--?x|--?\))\s*([+-]?)\s*([^\s:+-][^:]*?)\s*:(.*)$/;
+const sequenceNote = /^note\s+(over|left of|right of)\s+([^:]+):(.*)$/i;
 export function parseSequence(code: string): ParsedSequence {
-  const lines = codeLines(code);
-  if (!/^sequenceDiagram\b/.test(lines.shift() ?? '')) throw new Error('This is not a Mermaid sequence diagram.');
-  const participants: ParsedSequence['participants'] = [],
+  const lines = numberedLines(code);
+  if (!/^sequenceDiagram\b/.test(lines.shift()?.text ?? '')) throw new Error('This is not a Mermaid sequence diagram.');
+  const participants: SequenceParticipant[] = [],
     steps: ParsedSequence['steps'] = [],
     blocks: SequenceBlock[] = [],
-    open: SequenceBlock[] = [];
+    marks: SequenceMark[] = [],
+    open: (SequenceBlock | null)[] = [];
   let skipped = 0;
-  const who = (id: string, label?: string, actor = false) => {
+  const who = (id: string, label?: string, actor = false, at?: number) => {
     const p = participants.find(x => x.id === id);
     if (p) {
       if (label) p.label = label;
+      if (at !== undefined) p.at = at;
       return;
     }
     if (participants.length >= PARTICIPANT_MAX)
       throw new Error('Sequence diagrams with more than 40 participants cannot be converted.');
-    participants.push({ id, label: label ?? id, actor });
+    participants.push({ id, label: label ?? id, actor, ...(at !== undefined ? { at } : {}) });
   };
-  for (const line of lines) {
+  for (const { text: line, at } of lines) {
     const decl = /^(participant|actor)\s+(.+?)(?:\s+as\s+(.+))?$/i.exec(line);
     if (decl) {
-      who(decl[2].trim(), decl[3] ? cleanLabel(decl[3]) : undefined, decl[1].toLowerCase() === 'actor');
+      who(decl[2].trim(), decl[3] ? cleanLabel(decl[3]) : undefined, decl[1].toLowerCase() === 'actor', at);
       continue;
     }
-    const msg = /^([^\s:+-][^:]*?)\s*(--?>>|--?>|--?x|--?\))\s*([+-]?)\s*([^\s:+-][^:]*?)\s*:(.*)$/.exec(line);
+    const msg = sequenceMessage.exec(line);
     if (msg) {
-      const [, from, arrow, , to, text] = msg;
+      const [, from, arrow, activation, to, text] = msg;
       who(from.trim());
       who(to.trim());
       if (steps.length < STEP_MAX)
@@ -456,10 +494,13 @@ export function parseSequence(code: string): ParsedSequence {
           text: cleanLabel(text),
           dashed: arrow.startsWith('--'),
           head: arrow.endsWith('>>') || arrow.endsWith('x') ? 'arrow' : arrow.endsWith(')') ? 'open' : 'none',
+          at,
+          arrow,
+          activation,
         });
       continue;
     }
-    const note = /^note\s+(over|left of|right of)\s+([^:]+):(.*)$/i.exec(line);
+    const note = sequenceNote.exec(line);
     if (note) {
       const over = note[2]
         .split(',')
@@ -473,55 +514,77 @@ export function parseSequence(code: string): ParsedSequence {
           over,
           side: side === 'over' ? 'over' : side.startsWith('left') ? 'left' : 'right',
           text: cleanLabel(note[3]),
+          at,
         });
       continue;
     }
     const block = /^(loop|alt|opt|par|critical|break|rect)\b\s*(.*)$/i.exec(line);
     if (block) {
-      const b = {
-        kind: 'block' as const,
-        title: `${block[1].toLowerCase()}${block[2] && block[1].toLowerCase() !== 'rect' ? ' ' + cleanLabel(block[2]) : ''}`,
-        depth: open.length,
+      const keyword = block[1].toLowerCase();
+      const b: SequenceBlock = {
+        kind: 'block',
+        title: `${keyword}${block[2] && keyword !== 'rect' ? ' ' + cleanLabel(block[2]) : ''}`,
+        depth: open.filter(Boolean).length,
         start: steps.length,
         end: steps.length,
+        at,
+        keyword,
       };
       open.push(b);
       blocks.push(b);
+      marks.push({ at, role: 'open', steps: steps.length, block: b });
+      continue;
+    }
+    // A participant box is not drawn, but its `end` must not close a block.
+    if (/^box\b/i.test(line)) {
+      open.push(null);
+      marks.push({ at, role: 'open', steps: steps.length, block: null });
+      skipped++;
       continue;
     }
     if (/^end$/i.test(line)) {
-      const b = open.pop();
+      if (!open.length) {
+        skipped++;
+        continue;
+      }
+      const b = open.pop()!;
       if (b) b.end = steps.length;
-      else skipped++;
+      marks.push({ at, role: 'end', steps: steps.length, block: b });
       continue;
     }
-    if (/^(else|and|option)\b/i.test(line)) continue;
-    if (/^(autonumber|activate|deactivate|title|box|links?|create|destroy)\b/i.test(line)) {
+    if (/^(else|and|option)\b/i.test(line)) {
+      if (open.length) marks.push({ at, role: 'else', steps: steps.length, block: open[open.length - 1] });
+      continue;
+    }
+    if (/^(autonumber|activate|deactivate|title|links?|create|destroy)\b/i.test(line)) {
       skipped++;
       continue;
     }
     skipped++;
   }
-  for (const b of open) b.end = steps.length;
+  for (const b of open) if (b) b.end = steps.length;
   if (!participants.length) throw new Error('This sequence diagram has no participants to convert.');
   const notes: string[] = [];
   if (skipped)
     notes.push(
       `${plural(skipped, 'line was', 'lines were')} not converted (activation, styling or unsupported syntax).`,
     );
-  return { participants, steps, blocks: blocks.filter(b => b.end > b.start), notes };
+  return { participants, steps, blocks: blocks.filter(b => b.end > b.start), marks, notes };
 }
 
-const SEQ_COL = 230,
+/** Sequence layout: column pitch, participant box size and row pitch (the writer reads message rows back). */
+export const SEQ_COL = 230,
   SEQ_BOX_W = 170,
   SEQ_BOX_H = 60,
-  SEQ_ROW = 64;
+  SEQ_ROW = 64,
+  /** Gap between the participant boxes and the first message row. */
+  SEQ_TOP = 50;
 function sequenceItems(code: string, origin: Point): Converted {
   const seq = parseSequence(code),
     pad = seq.blocks.length ? 40 : 0;
   const centre = (id: string) =>
     origin.x + pad + seq.participants.findIndex(p => p.id === id) * SEQ_COL + SEQ_BOX_W / 2;
-  const rowY = (k: number) => origin.y + SEQ_BOX_H + 50 + k * SEQ_ROW;
+  const rowY = (k: number) => origin.y + SEQ_BOX_H + SEQ_TOP + k * SEQ_ROW;
   const bottomY = rowY(seq.steps.length) + 10;
   const tops: Item[] = [],
     bottoms: Item[] = [],
@@ -595,14 +658,41 @@ function sequenceItems(code: string, origin: Point): Converted {
 }
 
 // ---- Class diagrams ----------------------------------------------------------------------------
+/**
+ * A class with the lines that define it: `raw` is the name as first written (with any `~generic~`), `named` a
+ * label given as `class Id["Label"]`, `declAt` the last `class` line (with `declOpen` when it opens a member block
+ * that `blockEnd` closes), and `memberAt`/`memberInBlock` the line of each member and whether it sits in a block.
+ */
+export type ParsedClassBox = {
+  id: string;
+  label: string;
+  members: string[];
+  raw: string;
+  named?: string;
+  declAt?: number;
+  declOpen?: boolean;
+  blockEnd?: number;
+  memberAt: number[];
+  memberInBlock: boolean[];
+};
+/** A relation as drawn plus how it was written: line, arrow, the two names in written order and cardinalities. */
+export type ClassRelation = GEdge & {
+  at: number;
+  arrow: string;
+  left: string;
+  right: string;
+  cards: [string, string];
+};
 export type ParsedClass = {
   direction: Direction;
-  classes: { id: string; label: string; members: string[] }[];
-  relations: GEdge[];
+  classes: ParsedClassBox[];
+  relations: ClassRelation[];
   notes: string[];
 };
 const classRelation =
-  /^([\w.~]+)\s*(?:"[^"]*"\s*)?(<\|--|<\|\.\.|\*--|o--|<--|<\.\.|--\|>|\.\.\|>|--\*|--o|-->|\.\.>|--|\.\.)\s*(?:"[^"]*"\s*)?([\w.~]+)\s*(?::\s*(.*))?$/;
+  /^([\w.~]+)\s*(?:("[^"]*")\s*)?(<\|--|<\|\.\.|\*--|o--|<--|<\.\.|--\|>|\.\.\|>|--\*|--o|-->|\.\.>|--|\.\.)\s*(?:("[^"]*")\s*)?([\w.~]+)\s*(?::\s*(.*))?$/;
+/** The label a class gets from its name alone (`Square~Shape~` reads `Square<Shape>`). */
+export const classDefaultLabel = (raw: string) => raw.replace(/~(.*)~$/, '<$1>');
 const headOf = (mark: string): ConnectorHead =>
   mark.includes('|')
     ? 'open'
@@ -612,27 +702,35 @@ const headOf = (mark: string): ConnectorHead =>
         ? 'arrow'
         : 'none';
 export function parseClassDiagram(code: string): ParsedClass {
-  const lines = codeLines(code);
-  if (!/^classDiagram/.test(lines.shift() ?? '')) throw new Error('This is not a Mermaid class diagram.');
-  const classes: ParsedClass['classes'] = [],
-    relations: GEdge[] = [];
+  const lines = numberedLines(code);
+  if (!/^classDiagram/.test(lines.shift()?.text ?? '')) throw new Error('This is not a Mermaid class diagram.');
+  const classes: ParsedClassBox[] = [],
+    relations: ClassRelation[] = [];
   let direction: Direction = 'TB',
     skipped = 0,
-    inside: ParsedClass['classes'][number] | null = null;
+    inside: ParsedClassBox | null = null;
   const cls = (raw: string) => {
     const id = raw.replace(/~.*~$/, '');
     let c = classes.find(x => x.id === id);
     if (!c) {
       if (classes.length >= 200) throw new Error('Class diagrams with more than 200 classes cannot be converted.');
-      c = { id, label: raw.replace(/~(.*)~$/, '<$1>'), members: [] };
+      c = { id, label: classDefaultLabel(raw), members: [], raw, memberAt: [], memberInBlock: [] };
       classes.push(c);
     }
     return c;
   };
-  for (const line of lines) {
+  const addMember = (c: ParsedClassBox, text: string, at: number, block: boolean) => {
+    if (c.members.length >= 60) return;
+    c.members.push(text.slice(0, 200));
+    c.memberAt.push(at);
+    c.memberInBlock.push(block);
+  };
+  for (const { text: line, at } of lines) {
     if (inside) {
-      if (line === '}') inside = null;
-      else if (!/^<<.*>>$/.test(line) && inside.members.length < 60) inside.members.push(line.slice(0, 200));
+      if (line === '}') {
+        inside.blockEnd = at;
+        inside = null;
+      } else if (!/^<<.*>>$/.test(line)) addMember(inside, line, at, true);
       continue;
     }
     const dir = /^direction\s+(TB|TD|BT|LR|RL)$/i.exec(line);
@@ -640,21 +738,26 @@ export function parseClassDiagram(code: string): ParsedClass {
       direction = (dir[1].toUpperCase() === 'TD' ? 'TB' : dir[1].toUpperCase()) as Direction;
       continue;
     }
-    const decl = /^class\s+([\w~]+)(?:\s*\[.*\])?\s*(\{)?\s*(\})?$/.exec(line);
+    const decl = /^class\s+([\w~]+)(?:\s*\[(.*)\])?\s*(\{)?\s*(\})?$/.exec(line);
     if (decl) {
       const c = cls(decl[1]);
-      if (decl[2] && !decl[3]) inside = c;
+      c.declAt = at;
+      c.declOpen = !!decl[3] && !decl[4];
+      if (decl[2] !== undefined) {
+        c.named = cleanLabel(decl[2]);
+        c.label = c.named || classDefaultLabel(c.raw);
+      }
+      if (c.declOpen) inside = c;
       continue;
     }
     const member = /^([\w~]+)\s*:\s*(.+)$/.exec(line);
     if (member && !classRelation.test(line)) {
-      const c = cls(member[1]);
-      if (c.members.length < 60) c.members.push(member[2].trim().slice(0, 200));
+      addMember(cls(member[1]), member[2].trim(), at, false);
       continue;
     }
     const rel = classRelation.exec(line);
     if (rel) {
-      const [, a, arrow, b, label] = rel,
+      const [, a, cardL, arrow, cardR, b, label] = rel,
         dashed = arrow.includes('..'),
         body = dashed ? '..' : '--',
         [left, right] = arrow.split(body);
@@ -663,22 +766,19 @@ export function parseClassDiagram(code: string): ParsedClass {
       // Put the "parent" end (the decorated side) first so it ranks above.
       const leftHead = headOf(left),
         rightHead = headOf(right);
-      const edge: GEdge =
-        rightHead !== 'none' && leftHead === 'none'
-          ? {
-              from: b.replace(/~.*~$/, ''),
-              to: a.replace(/~.*~$/, ''),
-              label: '',
-              startHead: rightHead,
-              endHead: 'none',
-            }
-          : {
-              from: a.replace(/~.*~$/, ''),
-              to: b.replace(/~.*~$/, ''),
-              label: '',
-              startHead: leftHead,
-              endHead: 'none',
-            };
+      const swapped = rightHead !== 'none' && leftHead === 'none';
+      const edge: ClassRelation = {
+        from: (swapped ? b : a).replace(/~.*~$/, ''),
+        to: (swapped ? a : b).replace(/~.*~$/, ''),
+        label: '',
+        startHead: swapped ? rightHead : leftHead,
+        endHead: 'none',
+        at,
+        arrow,
+        left: a.replace(/~.*~$/, ''),
+        right: b.replace(/~.*~$/, ''),
+        cards: [cardL ?? '', cardR ?? ''],
+      };
       if (rightHead !== 'none' && leftHead !== 'none') edge.endHead = rightHead;
       edge.label = cleanLabel(label ?? '');
       if (dashed) edge.dash = 'dashed';
@@ -717,19 +817,35 @@ function classItems(code: string, origin: Point): Converted {
 }
 
 // ---- State diagrams ----------------------------------------------------------------------------
+/**
+ * A state with the lines that name it: `labelAt` is the last line giving its description (`form` says whether as
+ * `Id : text` or `state "text" as Id`), `declAt` the last other `state Id …` line.
+ */
+export type ParsedStateNode = {
+  id: string;
+  label: string;
+  kind: 'state' | 'start' | 'end' | 'choice' | 'bar';
+  group?: string;
+  labelAt?: number;
+  form?: 'desc' | 'alias';
+  declAt?: number;
+};
 export type ParsedState = {
   direction: Direction;
-  states: { id: string; label: string; kind: 'state' | 'start' | 'end' | 'choice' | 'bar'; group?: string }[];
-  transitions: { from: string; to: string; label: string }[];
+  states: ParsedStateNode[];
+  transitions: { from: string; to: string; label: string; at: number }[];
   groups: Subgraph[];
+  /** The line that opens each composite state (by id) and the line that closes it. */
+  groupLines: Map<string, { at: number; endAt?: number }>;
   notes: string[];
 };
 export function parseStateDiagram(code: string): ParsedState {
-  const lines = codeLines(code);
-  if (!/^stateDiagram/.test(lines.shift() ?? '')) throw new Error('This is not a Mermaid state diagram.');
+  const lines = numberedLines(code);
+  if (!/^stateDiagram/.test(lines.shift()?.text ?? '')) throw new Error('This is not a Mermaid state diagram.');
   const states: ParsedState['states'] = [],
     transitions: ParsedState['transitions'] = [],
     groups: Subgraph[] = [],
+    groupLines: ParsedState['groupLines'] = new Map(),
     stack: string[] = [];
   let direction: Direction = 'TB',
     skipped = 0,
@@ -752,7 +868,7 @@ export function parseStateDiagram(code: string): ParsedState {
     state(id, { kind: source ? 'start' : 'end', label: '' });
     return id;
   };
-  for (const line of lines) {
+  for (const { text: line, at } of lines) {
     if (inNote) {
       if (/^end\s+note$/i.test(line)) inNote = false;
       continue;
@@ -765,40 +881,45 @@ export function parseStateDiagram(code: string): ParsedState {
     const comp = /^state\s+(?:"([^"]*)"\s+as\s+)?([\w-]+)\s*\{$/.exec(line);
     if (comp) {
       const id = comp[2];
-      if (!groups.some(g => g.id === id)) groups.push({ id, title: comp[1] ?? id, parent: scope() ?? null });
+      if (!groups.some(g => g.id === id)) {
+        groups.push({ id, title: comp[1] ?? id, parent: scope() ?? null });
+        groupLines.set(id, { at });
+      }
       stack.push(id);
       continue;
     }
     if (line === '}') {
-      if (stack.length) stack.pop();
-      else skipped++;
+      const id = stack.pop();
+      const g = id === undefined ? undefined : groupLines.get(id);
+      if (g && g.endAt === undefined) g.endAt = at;
+      if (id === undefined) skipped++;
       continue;
     }
     const alias = /^state\s+"([^"]*)"\s+as\s+([\w-]+)$/.exec(line);
     if (alias) {
-      state(alias[2], { label: cleanLabel(alias[1]) });
+      state(alias[2], { label: cleanLabel(alias[1]), labelAt: at, form: 'alias' });
       continue;
     }
     const special = /^state\s+([\w-]+)\s*<<(choice|fork|join)>>$/.exec(line);
     if (special) {
-      state(special[1], { kind: special[2] === 'choice' ? 'choice' : 'bar', label: '' });
+      state(special[1], { kind: special[2] === 'choice' ? 'choice' : 'bar', label: '', declAt: at });
       continue;
     }
     const plain = /^state\s+([\w-]+)$/.exec(line);
     if (plain) {
-      state(plain[1]);
+      state(plain[1], { declAt: at });
       continue;
     }
     const tr = /^(\[\*\]|[\w-]+)\s*-->\s*(\[\*\]|[\w-]+)\s*(?::\s*(.*))?$/.exec(line);
     if (tr) {
       const from = endpoint(tr[1], true),
         to = endpoint(tr[2], false);
-      transitions.push({ from, to, label: cleanLabel(tr[3] ?? '') });
+      transitions.push({ from, to, label: cleanLabel(tr[3] ?? ''), at });
       continue;
     }
     const described = /^([\w-]+)\s*:\s*(.+)$/.exec(line);
     if (described) {
-      state(described[1], { label: cleanLabel(described[2]) });
+      state(described[1], { label: cleanLabel(described[2]), labelAt: at, form: 'desc' });
       continue;
     }
     if (/^note\b/i.test(line)) {
@@ -815,7 +936,7 @@ export function parseStateDiagram(code: string): ParsedState {
   const notes: string[] = [];
   if (skipped)
     notes.push(`${plural(skipped, 'line was', 'lines were')} not converted (notes, concurrency or styling).`);
-  return { direction, states: kept, transitions, groups, notes };
+  return { direction, states: kept, transitions, groups, groupLines, notes };
 }
 function stateItems(code: string, origin: Point): Converted {
   const s = parseStateDiagram(code);
@@ -842,46 +963,74 @@ const cardinality: Record<string, ConnectorHead> = {
   '}o': 'zero-many',
   'o{': 'zero-many',
 };
+/**
+ * An entity with the lines that define it: `blockAt`/`blockEnd` its attribute block, `loneAt` lines that only name
+ * it, and per row its line and how its keys and comment were written (`rowKeys`, `rowComment`).
+ */
+export type ParsedErEntity = {
+  id: string;
+  label: string;
+  rows: EntityRow[];
+  aliased?: boolean;
+  blockAt?: number;
+  blockEnd?: number;
+  loneAt: number[];
+  rowAt: number[];
+  rowKeys: string[];
+  rowComment: string[];
+};
 export type ParsedEr = {
-  entities: { id: string; label: string; rows: EntityRow[] }[];
-  relations: GEdge[];
+  entities: ParsedErEntity[];
+  relations: (GEdge & { at: number })[];
   notes: string[];
 };
 export function parseErDiagram(code: string): ParsedEr {
-  const lines = codeLines(code);
-  if (!/^erDiagram\b/.test(lines.shift() ?? '')) throw new Error('This is not a Mermaid ER diagram.');
-  const entities: ParsedEr['entities'] = [],
-    relations: GEdge[] = [];
+  const lines = numberedLines(code);
+  if (!/^erDiagram\b/.test(lines.shift()?.text ?? '')) throw new Error('This is not a Mermaid ER diagram.');
+  const entities: ParsedErEntity[] = [],
+    relations: ParsedEr['relations'] = [];
   let skipped = 0,
-    inside: ParsedEr['entities'][number] | null = null;
+    inside: ParsedErEntity | null = null;
   const entity = (raw: string) => {
     const m = /^([\w-]+)(?:\["?([^"\]]*)"?\])?$/.exec(raw.replace(/^"|"$/g, ''));
     const id = m ? m[1] : raw;
     let e = entities.find(x => x.id === id);
     if (!e) {
       if (entities.length >= 200) throw new Error('ER diagrams with more than 200 entities cannot be converted.');
-      e = { id, label: m?.[2] || id, rows: [] };
+      e = { id, label: id, rows: [], loneAt: [], rowAt: [], rowKeys: [], rowComment: [] };
       entities.push(e);
+    }
+    // An alias names the entity wherever it is given, not only where the entity is first mentioned.
+    if (m?.[2]) {
+      e.label = m[2];
+      e.aliased = true;
     }
     return e;
   };
-  for (const line of lines) {
+  for (const { text: line, at } of lines) {
     if (inside) {
       if (line === '}') {
+        inside.blockEnd = at;
         inside = null;
         continue;
       }
-      const attr = /^([\w()[\]-]+)\s+([\w-]+)(?:\s+((?:PK|FK|UK)(?:\s*,\s*(?:PK|FK|UK))*))?(?:\s+"[^"]*")?$/.exec(line);
+      const attr = /^([\w()[\]-]+)\s+([\w-]+)(?:\s+((?:PK|FK|UK)(?:\s*,\s*(?:PK|FK|UK))*))?(?:\s+("[^"]*"))?$/.exec(
+        line,
+      );
       if (attr && inside.rows.length < 60) {
         const row: EntityRow = { name: attr[2].slice(0, 200), type: attr[1].slice(0, 100) };
         if (attr[3]) row.key = attr[3].split(',')[0].trim() as EntityKey;
         inside.rows.push(row);
+        inside.rowAt.push(at);
+        inside.rowKeys.push(attr[3] ?? '');
+        inside.rowComment.push(attr[4] ?? '');
       } else skipped++;
       continue;
     }
     const block = /^("?[\w-]+"?(?:\[[^\]]*\])?)\s*\{$/.exec(line);
     if (block) {
       inside = entity(block[1]);
+      inside.blockAt = at;
       continue;
     }
     const rel = /^("?[\w-]+"?)\s*(\|\||\|o|\}\||\}o)(--|\.\.)(\|\||o\||\|\{|o\{)\s*("?[\w-]+"?)\s*:\s*(.*)$/.exec(line);
@@ -895,12 +1044,13 @@ export function parseErDiagram(code: string): ParsedEr {
         startHead: cardinality[rel[2]],
         endHead: cardinality[rel[4]],
         ...(rel[3] === '..' ? { dash: 'dashed' as const } : {}),
+        at,
       });
       continue;
     }
-    const lone = /^("?[\w-]+"?)$/.exec(line);
+    const lone = /^("?[\w-]+"?(?:\[[^\]]*\])?)$/.exec(line);
     if (lone && !/^(direction|title)$/i.test(line)) {
-      entity(lone[1]);
+      entity(lone[1]).loneAt.push(at);
       continue;
     }
     skipped++;
