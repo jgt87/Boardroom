@@ -16,7 +16,19 @@ import {
   swimlaneLayout,
 } from './specs-swimlane';
 import type { Rect, SwimAxis, SwimCell, SwimSection, SwimlaneData } from './specs-swimlane';
-import { addSection, patchSection, relayoutSwimlane, resizeSection, setSwimOrientation } from './swimlane';
+import {
+  addSection,
+  moveSection,
+  patchSection,
+  relayoutSwimlane,
+  removeSection,
+  resizeSection,
+  sectionContentCount,
+  setSwimOrientation,
+  withoutSection,
+} from './swimlane';
+import { askChoice } from './choice-prompt';
+import { usePopup } from './popup';
 import './widgets-swimlane.css';
 
 const colorLabels = ['Rose', 'Peach', 'Butter', 'Mint', 'Sky', 'Lavender', 'Grey'];
@@ -70,6 +82,7 @@ function InlineTitle({
 
 function SwimlaneRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
   const [editing, setEditing] = useState<Editing>(null),
+    [activeLane, setActiveLane] = useState<string | null>(null),
     [drag, setDrag] = useState<Drag>(null),
     lastPress = useRef<{ key: string; at: number } | null>(null);
   if (!swimData(item)?.lanes) return null;
@@ -242,6 +255,12 @@ function SwimlaneRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
           className="swim-lane-header"
           data-lane={c.section.id}
           {...startEdit('lanes', c.section.id)}
+          // The canvas captures the pointer on press, so no click reaches the header: show its bar on press
+          // (the press still selects the swimlane; a second press renames, as before).
+          onPointerDown={e => {
+            setActiveLane(c.section.id);
+            startEdit('lanes', c.section.id).onPointerDown(e);
+          }}
         >
           <rect {...box(c.header)} fill={c.section.color ?? headerFill} />
           {laneText(c)}
@@ -376,7 +395,123 @@ function SwimlaneRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
             />
           );
         })()}
+      {activeLane &&
+        ctx.selected &&
+        !item.locked &&
+        !editing &&
+        (() => {
+          const k = l.lanes.findIndex(c => c.section.id === activeLane);
+          if (k < 0) return null;
+          const c = l.lanes[k];
+          return (
+            <LaneBar
+              key={activeLane}
+              item={item}
+              ctx={ctx}
+              lane={c.section}
+              index={k}
+              count={l.lanes.length}
+              horizontal={horizontal}
+              // Just above the swimlane: the bar is drawn with the swimlane, so objects inside it would cover it.
+              at={{ x: horizontal ? 0 : c.header.x, y: -46 / z }}
+              zoom={z}
+              onClose={() => setActiveLane(null)}
+            />
+          );
+        })()}
     </g>
+  );
+}
+
+/**
+ * The bar for the lane whose header was clicked (decision R6b-Q2, 2026-11-08): move the lane earlier or later,
+ * set its colour, or delete it (asking about its objects). Kept at screen size whatever the zoom; closes on Esc or
+ * a press outside it, like other pop-ups.
+ */
+function LaneBar({
+  item,
+  ctx,
+  lane,
+  index,
+  count,
+  horizontal,
+  at,
+  zoom,
+  onClose,
+}: {
+  item: Item;
+  ctx: WidgetCtx;
+  lane: SwimSection;
+  index: number;
+  count: number;
+  horizontal: boolean;
+  at: { x: number; y: number };
+  zoom: number;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  usePopup(true, ref, onClose, { closeOnScroll: false });
+  const title = lane.title || `Lane ${index + 1}`;
+  const remove = async () => {
+    const next = withoutSection(ctx.board, item.id, 'lanes', lane.id);
+    const how = await askAboutContents(sectionContentCount(ctx.board, item.id, next), `“${title}”`);
+    if (!how) return;
+    onClose();
+    ctx.update(b => removeSection(b, item.id, 'lanes', lane.id, how === 'keep').board);
+  };
+  const W = 228,
+    H = 40;
+  return (
+    <foreignObject x={at.x} y={at.y} width={W / zoom} height={H / zoom}>
+      <div
+        ref={ref}
+        className="swim-lane-bar floating"
+        role="toolbar"
+        aria-label={`Lane ${title}`}
+        style={{ transform: `scale(${1 / zoom})`, transformOrigin: '0 0', width: W, height: H }}
+      >
+        <button
+          className="icon-button"
+          aria-label={`Move lane ${title} ${horizontal ? 'up' : 'left'}`}
+          disabled={index === 0}
+          onPointerDown={stopEvent}
+          onClick={() => ctx.update(b => moveSection(b, item.id, 'lanes', lane.id, -1))}
+        >
+          <ArrowUp size={15} />
+        </button>
+        <button
+          className="icon-button"
+          aria-label={`Move lane ${title} ${horizontal ? 'down' : 'right'}`}
+          disabled={index === count - 1}
+          onPointerDown={stopEvent}
+          onClick={() => ctx.update(b => moveSection(b, item.id, 'lanes', lane.id, 1))}
+        >
+          <ArrowDown size={15} />
+        </button>
+        <select
+          aria-label={`Lane ${title} colour`}
+          value={lane.color ?? ''}
+          onPointerDown={stopEvent}
+          onChange={e => ctx.update(b => patchSection(b, item.id, 'lanes', lane.id, { color: e.target.value || null }))}
+        >
+          <option value="">No colour</option>
+          {swimColors.map((c, j) => (
+            <option key={c} value={c}>
+              {colorLabels[j]}
+            </option>
+          ))}
+        </select>
+        <button
+          className="icon-button"
+          aria-label={`Delete lane ${title}`}
+          disabled={count === 1}
+          onPointerDown={stopEvent}
+          onClick={() => void remove()}
+        >
+          <Trash2 size={15} />
+        </button>
+      </div>
+    </foreignObject>
   );
 }
 
@@ -485,6 +620,24 @@ function SectionRows({
   );
 }
 
+/**
+ * Deleting lanes or phases that hold objects asks what to do with them (decision R6b-Q3, 2026-11-08): delete them
+ * too, or keep them on the board where they are. Resolves to null on Cancel.
+ */
+async function askAboutContents(count: number, what: string): Promise<'delete' | 'keep' | null> {
+  if (!count) return 'delete';
+  const objects = `${count} ${count === 1 ? 'object' : 'objects'}`;
+  const how = await askChoice(
+    `Delete ${what}`,
+    `${what} holds ${objects}. What should happen to ${count === 1 ? 'it' : 'them'}?`,
+    [
+      { id: 'delete', label: `Delete the ${objects} too`, detail: 'Undo brings them back' },
+      { id: 'keep', label: `Keep the ${objects} on the board`, detail: 'They stay where they are' },
+    ],
+  );
+  return how === 'delete' || how === 'keep' ? how : null;
+}
+
 function SwimlaneEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClose: () => void }) {
   const d = swimData(item);
   const [title, setTitle] = useState(item.text),
@@ -506,17 +659,22 @@ function SwimlaneEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; on
     const lost = [...d.lanes, ...(d.phases ?? [])]
       .filter(s => ![...lanes, ...phases].some(x => x.id === s.id))
       .map(s => s.title || 'Untitled');
-    let removed = 0;
-    ctx.update(b => {
-      const r = relayoutSwimlane(b, item.id, next, { text: title.slice(0, 200) });
-      removed = r.removed;
-      return r.board;
-    });
-    if (lost.length)
-      ctx.display(
-        `Deleted ${lost.join(', ')}${removed ? ` with ${removed} ${removed === 1 ? 'object' : 'objects'}` : ''}. Undo restores the deleted content.`,
-      );
-    onClose();
+    void (async () => {
+      const count = lost.length ? sectionContentCount(ctx.board, item.id, next) : 0;
+      const how = await askAboutContents(count, lost.length === 1 ? `“${lost[0]}”` : `${lost.length} lanes and phases`);
+      if (!how) return;
+      let removed = 0;
+      ctx.update(b => {
+        const r = relayoutSwimlane(b, item.id, next, { text: title.slice(0, 200) }, how === 'keep');
+        removed = r.removed;
+        return r.board;
+      });
+      if (lost.length)
+        ctx.display(
+          `Deleted ${lost.join(', ')}${removed ? ` with ${removed} ${removed === 1 ? 'object' : 'objects'}` : how === 'keep' && count ? `; its objects stay on the board` : ''}. Undo restores it.`,
+        );
+      onClose();
+    })();
   };
   return (
     <Dialog

@@ -1,7 +1,19 @@
 // Swimlane diagrams (gap E6) in the browser: create from the tools gallery, add a lane, drop a sticky
 // into a lane, move the swimlane with its contents, rename and resize a lane on the canvas, reorder
 // lanes in the editor, undo, and persistence across a reload.
-import { test, expect, openApp, openTools, chooseTool, savedBoard, waitForSave, item, mouseDrag } from './helpers';
+import {
+  test,
+  expect,
+  openApp,
+  openTools,
+  chooseTool,
+  savedBoard,
+  waitForSave,
+  item,
+  mouseDrag,
+  seed,
+  fit,
+} from './helpers';
 import type { Page } from '@playwright/test';
 
 const pool = async (page: Page) => (await savedBoard(page)).items.find(i => i.type === 'swimlane');
@@ -149,4 +161,57 @@ test('switching orientation and adding a phase from the selection bar keep the s
   }
   expect(title).toBe('Lane 2');
   await expect(swim.locator('.swim-phase-header')).toHaveCount(2);
+});
+
+test('lane bar moves and deletes a lane (asking about its objects); resizing carries contents (R6b)', async ({
+  page,
+}) => {
+  await seed(
+    page,
+    `const s = { ...m.createItem('swimlane', 0, 0), id: 'pool', text: 'Orders', h: 404 };
+     s.data = { orientation: 'horizontal', lanes: [
+       { id: 'a', title: 'Sales', size: 120 }, { id: 'b', title: 'Ops', size: 120 }, { id: 'c', title: 'Finance', size: 120 }] };
+     const n = { ...m.createItem('note', 100, 190), id: 'n', w: 60, h: 60, text: 'In Ops' };
+     const f = { ...m.createItem('note', 100, 310), id: 'f', w: 60, h: 60, text: 'In Finance' };
+     return { version: 1, title: 'Swim', items: [s, n, f] };`,
+  );
+  await fit(page);
+  const swim = item(page, 'pool');
+  await swim.locator('.swim-lane-header[data-lane="b"]').click();
+  const bar = page.getByRole('toolbar', { name: 'Lane Ops' });
+  await expect(bar).toBeVisible();
+  // Move Ops down: its sticky moves with it into the third place.
+  await bar.getByRole('button', { name: 'Move lane Ops down' }).click();
+  await waitForSave(page, b => b.items[0].data.lanes.map((l: { id: string }) => l.id).join() === 'a,c,b', 'moved');
+  expect(
+    laneTitleOf(
+      await pool(page),
+      (await savedBoard(page)).items.find(i => i.id === 'n'),
+    ),
+  ).toBe('Ops');
+  // Delete Ops: it holds a sticky, so the app asks; keep it on the board.
+  await bar.getByRole('button', { name: 'Delete lane Ops' }).click();
+  const prompt = page.getByRole('dialog').filter({ hasText: 'Delete “Ops”' });
+  await expect(prompt).toContainText('holds 1 object');
+  await prompt.getByRole('button', { name: /Keep the 1 object on the board/ }).click();
+  await waitForSave(page, b => b.items[0].data.lanes.length === 2, 'lane deleted');
+  expect((await savedBoard(page)).items.some(i => i.id === 'n')).toBe(true);
+
+  // Resize the pool taller in Properties: Finance (now the second lane) moves down, with its sticky.
+  await page.getByRole('button', { name: 'Properties', exact: true }).click();
+  const before = (await savedBoard(page)).items.find(i => i.id === 'f')!.y;
+  const height = page
+    .getByRole('complementary', { name: 'Properties' })
+    .getByRole('spinbutton', { name: 'H', exact: true });
+  const h = Number(await height.inputValue());
+  await height.fill(String(h + 100));
+  await height.press('Enter');
+  await waitForSave(page, b => b.items.find(i => i.id === 'f')!.y > before, 'sticky carried');
+  const after = await savedBoard(page);
+  expect(
+    laneTitleOf(
+      after.items[0],
+      after.items.find(i => i.id === 'f'),
+    ),
+  ).toBe('Finance');
 });

@@ -45,7 +45,7 @@ import {
 import type { ChartData } from '../src/specs-charts.ts';
 import { docShortcut } from '../src/doc-tools.ts';
 import { nextItemStatus, validateItemStatus, withItemStatus, boardStatuses } from '../src/board-settings.ts';
-import { docBlocks, pdfFileName, pdfSafe } from '../src/doc-pdf.ts';
+import { docBlocks, pdfFileName, pdfSafe, pdfUnicodeSafe } from '../src/doc-pdf.ts';
 import { templateItems, templateNames } from '../src/board-tools.ts';
 import { filterTemplates, templateCatalog, starterNames } from '../src/starter-templates.ts';
 import {
@@ -400,6 +400,10 @@ test('doc PDF layout blocks and safe text', () => {
   });
   assert.equal(pdfSafe('“Café” – done…'), '"Café" - done...');
   assert.equal(pdfSafe('日本'), '??');
+  // With the embedded Unicode font (Q17): Greek, Cyrillic, Latin Extended and typographic marks stay; CJK and
+  // emoji still become "?"; ballot boxes keep their plain stand-ins.
+  assert.equal(pdfUnicodeSafe('Ζεύς Москва Łódź “ok” – € →'), 'Ζεύς Москва Łódź “ok” – € →');
+  assert.equal(pdfUnicodeSafe('日本 🎉 ☐'), '?? ? [ ]');
   assert.equal(pdfFileName('Plan: Q1/Q2?'), 'Plan Q1 Q2.pdf');
   assert.equal(pdfFileName('  '), 'doc.pdf');
 });

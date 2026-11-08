@@ -16,7 +16,6 @@ import {
   mindPalette,
   mindColorNames,
   mindStyleOf,
-  mindLabelLines,
   MIND_NODE_W,
   MIND_NODE_H,
   moveMindBranch,
@@ -28,6 +27,9 @@ import {
   setMindTopic,
 } from './mindmap-style';
 import './r5-canvas.css';
+import { TopicLabel } from './mind-label';
+import { retextTopic, toggleTopicStyle, topicStyleKey } from './mind-rich';
+import type { ToggleKey } from './rich-text';
 
 /** Web link field for the chosen topic: commits on Enter or blur; keys never reach the topic editor. */
 function TopicLink({ value, onCommit }: { value: string; onCommit: (link: string) => boolean }) {
@@ -110,6 +112,16 @@ export function MindmapCanvasEditor({
   const scale = style.autoLayout === false ? item.w / frozenView.current.w : Math.min(item.w / vbW, item.h / vbH),
     offX = style.autoLayout === false ? (minX - 8 - frozenView.current.x) * scale : (item.w - vbW * scale) / 2,
     offY = style.autoLayout === false ? (minY - 8 - frozenView.current.y) * scale : (item.h - vbH * scale) / 2;
+  /**
+   * Toggle a style over the topic text the textarea has selected (decision R5-Q4). The text does not change, so
+   * the textarea keeps its selection by itself.
+   */
+  const formatTopic = (key: ToggleKey) => {
+    const el = input.current;
+    if (!el || el.selectionStart === el.selectionEnd) return;
+    const [start, end] = [el.selectionStart, el.selectionEnd];
+    setNodes(latest.current.map(n => (n.id === active ? toggleTopicStyle(n, start, end, key) : n)));
+  };
   const finish = () => {
     if (done.current) return;
     done.current = true;
@@ -353,18 +365,12 @@ export function MindmapCanvasEditor({
                     strokeWidth={n.id === active ? 2 : 1}
                   />
                   {n.id !== active && (
-                    <text
+                    <TopicLabel
+                      node={n}
                       x={q.x + 12}
-                      y={q.y + 29 - (mindLabelLines(n.text).length - 1) * 8}
+                      y={q.y}
                       fill={n.parent || n.shape === 'underline' ? '#25252c' : '#ffffff'}
-                      fontSize={mindLabelLines(n.text).length > 2 ? 11 : 14}
-                    >
-                      {mindLabelLines(n.text).map((line, k) => (
-                        <tspan key={k} x={q.x + 12} dy={k ? 16 : 0}>
-                          {line}
-                        </tspan>
-                      ))}
-                    </text>
+                    />
                   )}
                 </g>
               )
@@ -386,8 +392,46 @@ export function MindmapCanvasEditor({
             height: MIND_NODE_H * scale,
             fontSize: Math.max(8, 14 * scale),
           }}
-          onChange={e => setNodes(nodes.map(n => (n.id === active ? { ...n, text: e.target.value } : n)))}
+          onChange={e => setNodes(nodes.map(n => (n.id === active ? retextTopic(n, e.target.value) : n)))}
+          onKeyDown={e => {
+            // Ctrl+B / I / U / Shift+X: format the selected words (decision R5-Q4).
+            const key = topicStyleKey(e);
+            if (!key) return;
+            e.preventDefault();
+            e.stopPropagation();
+            formatTopic(key);
+          }}
         />
+      )}
+      {chosen && p && (
+        // The same formatting as buttons; pressing them keeps the textarea's selection (the editor's mousedown
+        // handler prevents the focus change).
+        <div
+          className="mind-format-bar floating"
+          role="toolbar"
+          aria-label="Topic text formatting"
+          style={{ left: offX + (p.x - minX + 8) * scale, top: offY + (p.y - minY + 8) * scale - 34 }}
+        >
+          {(
+            [
+              ['bold', 'Bold (Ctrl+B)', <b key="b">B</b>],
+              ['italic', 'Italic (Ctrl+I)', <i key="i">I</i>],
+              ['underline', 'Underline (Ctrl+U)', <u key="u">U</u>],
+              ['strike', 'Strikethrough (Ctrl+Shift+X)', <s key="s">S</s>],
+            ] as const
+          ).map(([key, label, glyph]) => (
+            <button
+              key={key}
+              type="button"
+              className="icon-button"
+              aria-label={label}
+              title={label}
+              onClick={() => formatTopic(key)}
+            >
+              {glyph}
+            </button>
+          ))}
+        </div>
       )}
       {nodes
         .filter(n => nodes.some(c => c.parent === n.id) && positions.has(n.id))

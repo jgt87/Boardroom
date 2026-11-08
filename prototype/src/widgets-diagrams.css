@@ -300,6 +300,19 @@
   color: var(--ink);
   outline: none;
 }
+/* Topic formatting buttons (R5-Q4), just above the topic being edited; the surface comes from .floating. */
+.mind-format-bar {
+  position: absolute;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+}
+.mind-format-bar .icon-button {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+}
 .mind-canvas-hint {
   position: absolute;
   left: 8px;

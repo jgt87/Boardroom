@@ -317,3 +317,38 @@ test('the cross-functional flowchart template places every step inside its lane'
   );
   assert.deepEqual(new Set(moveIds(b, [p.id])).size, b.items.length);
 });
+
+test('resizing a swimlane moves each object with its lane, keeping its offset inside it (R6b-Q1)', async () => {
+  const { carrySwimlaneContents } = await import('../src/swimlane.ts');
+  const p = pool(),
+    sales = note('s', 100, 60),
+    ops = note('o', 100, 160),
+    fin = note('f', 100, 270),
+    prev = board(p, sales, ops, fin);
+  // Make the pool 90 px taller: the lanes grow, so the later lanes start lower.
+  const grown = { ...p, h: p.h + 90 };
+  const next = fitSwimlanes(carrySwimlaneContents(board(grown, sales, ops, fin), prev));
+  const oldL = swimlaneLayout(p),
+    newL = swimlaneLayout(fitSwimlaneItem(grown));
+  const shift = (k: number) => newL.lanes[k].start - oldL.lanes[k].start;
+  const y = (id: string) => next.items.find(i => i.id === id)!.y;
+  assert.equal(y('s'), 60 + shift(0));
+  assert.equal(y('o'), 160 + shift(1));
+  assert.equal(y('f'), 270 + shift(2));
+  assert.ok(shift(2) > shift(1) && shift(1) > 0, 'later lanes move further');
+  // Nothing moves when only the position changed, or when an object is locked.
+  assert.equal(carrySwimlaneContents(board({ ...p, x: 50 }, sales), board(p, sales)).items[1], sales);
+  const locked = { ...ops, locked: true };
+  assert.equal(carrySwimlaneContents(board(grown, locked), board(p, locked)).items[1], locked);
+});
+
+test('removing a lane with objects can keep them on the board (R6b-Q3)', async () => {
+  const { sectionContentCount, withoutSection } = await import('../src/swimlane.ts');
+  const p = pool(),
+    b = board(p, note('o', 100, 160), note('s', 100, 60));
+  assert.equal(sectionContentCount(b, 'pool', withoutSection(b, 'pool', 'lanes', 'l1')), 1);
+  const deleted = removeSection(b, 'pool', 'lanes', 'l1');
+  assert.deepEqual([deleted.removed, deleted.board.items.some(i => i.id === 'o')], [1, false]);
+  const kept = removeSection(b, 'pool', 'lanes', 'l1', true);
+  assert.deepEqual([kept.removed, kept.board.items.find(i => i.id === 'o')?.y], [0, 160]);
+});

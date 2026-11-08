@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Decided questions: medium group
+
+- Kanban boards whose columns come from a single-choice field can now give each column a colour and a card limit
+  (Fields → "Kanban columns"), shared by every view of the same data.
+- Exporting a Doc as PDF keeps Greek, Cyrillic and accented letters: a font that has them is loaded only when you
+  export. Chinese, Japanese and emoji still show as "?".
+- Docs offer four highlight colours (yellow, green, blue, pink) from the Highlight button.
+- Mind map topics take bold, italic, underline and strikethrough on single words: select words while editing a
+  topic and press Ctrl+B / I / U / Shift+X, or use the small bar above the topic.
+- Swimlanes: resizing a swimlane now moves the objects along with their lanes; clicking a lane header shows a bar to
+  move, colour or delete that lane; deleting a lane or phase that holds objects asks whether to delete them too or
+  keep them on the board.
+- Org charts already had free named fields per person ("Add field"), so that decision needed no change.
+
 ### Menus, pop-ups and notices work the same everywhere
 
 - Menus close when you click outside them, press Esc, Tab away, scroll or resize the window; Esc puts the focus back

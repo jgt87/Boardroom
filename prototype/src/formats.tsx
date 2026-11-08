@@ -130,7 +130,6 @@ import {
   mindLayout,
   mindBranchPath,
   mindStyleOf,
-  mindLabelLines,
   MIND_NODE_W,
   MIND_COL,
   MIND_ROW,
@@ -146,6 +145,7 @@ import {
   mindColorNames,
 } from './mindmap-style';
 import type { MindStyle } from './mindmap-style';
+import { TopicLabel } from './mind-label';
 import { convertToLinked } from './mermaid-link';
 
 export const starters: Record<string, string> = {
@@ -300,18 +300,12 @@ export function MindPreview({
                   </text>
                 </g>
               )}
-              <text
+              <TopicLabel
+                node={n}
                 x={p.x + 12}
-                y={p.y + 29 - (mindLabelLines(n.text).length - 1) * 8}
+                y={p.y}
                 fill={n.parent || n.shape === 'underline' ? '#25252c' : '#ffffff'}
-                fontSize={mindLabelLines(n.text).length > 2 ? 11 : 14}
-              >
-                {mindLabelLines(n.text).map((line, k) => (
-                  <tspan key={k} x={p.x + 12} dy={k ? 16 : 0}>
-                    {line}
-                  </tspan>
-                ))}
-              </text>
+              />
             </g>
           )
         );

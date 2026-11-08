@@ -230,6 +230,16 @@ test('Doc Markdown: highlight, colour and mention render safely and strip to pla
   assert.equal(mentionMarkdown(' Ada [x]\nLee '), '@[Ada x Lee]');
 });
 
+test('coloured Doc highlights render as marks with that colour and read as plain text (R6a-Q2)', () => {
+  const html = renderMarkdown('A {mark:#C3F3C8}green **bold**{/mark} and ==yellow== word');
+  assert.match(html, /<mark class="doc-mark" style="background:#c3f3c8">green <strong>bold<\/strong><\/mark>/);
+  assert.match(html, /<mark>yellow<\/mark>/);
+  // Only six-digit hex colours: anything else stays literal text, never a style.
+  assert.doesNotMatch(renderMarkdown('{mark:red}x{/mark}'), /style=/);
+  assert.doesNotMatch(renderMarkdown('{mark:#c3f3c8;x:y}x{/mark}'), /<mark/);
+  assert.equal(plain('A {mark:#c3f3c8}green{/mark} and ==yellow=='), 'A green and yellow');
+});
+
 test('turning the object Bold off clears per-word bold and keeps other word styles and links (R6a-Q3)', async () => {
   const { withoutWordBold, withRichText: rich, activeSpans: active } = await import('../src/rich-text.ts');
   const base = { ...createItem('text', 0, 0), text: 'one two three' };

@@ -265,6 +265,7 @@ function validateItem(i: Item, groups: Set<string>): void {
     throw new Error('An object refers to a missing group.');
   if (i.locked !== undefined && typeof i.locked !== 'boolean') throw new Error('Invalid lock state.');
   validateSpans(i);
+  if (i.type === 'mindmap') for (const n of i.nodes ?? []) validateSpans(n);
   if (i.type === 'image' && (typeof i.assetId !== 'string' || !i.assetId || i.assetId.length > 100))
     throw new Error('An image is missing its file reference.');
   if (

@@ -94,6 +94,34 @@ test('Mind-map double-click edits inline and Shift+Enter preserves node count', 
   await input.press('Escape');
   await waitForSave(page, b => b.items[0].nodes.length === 1 && b.items[0].nodes[0].text.includes('\n'), 'multiline');
 });
+test('Mind-map topics take per-word bold and italic from keys and the format bar (R5-Q4)', async ({ page }) => {
+  await seed(
+    page,
+    `return {version:1,title:'Mind map',items:[{...m.createItem('mindmap',0,0),id:'m',nodes:[{id:'root',parent:null,text:'Plan launch'}]}]};`,
+  );
+  await fit(page);
+  await item(page, 'm').dblclick();
+  const input = page.locator('.mind-canvas-input');
+  await expect(input).toBeVisible();
+  // Select "Plan" and press Ctrl+B; select "launch" and use the Italic button.
+  await input.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(0, 4));
+  await input.press('Control+b');
+  await input.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(5, 11));
+  await page
+    .getByRole('toolbar', { name: 'Topic text formatting' })
+    .getByRole('button', { name: /^Italic/ })
+    .click();
+  await expect(input).toBeFocused();
+  await input.press('Escape');
+  await waitForSave(page, b => (b.items[0].nodes[0].spans ?? []).length === 2, 'topic styled');
+  expect((await savedBoard(page)).items[0].nodes[0].spans).toEqual([
+    { start: 0, end: 4, bold: true },
+    { start: 5, end: 11, italic: true },
+  ]);
+  // The board draws the label with those styles.
+  await expect(item(page, 'm').locator('tspan[font-weight="700"]')).toHaveText('Plan');
+  await expect(item(page, 'm').locator('tspan[font-style="italic"]')).toHaveText('launch');
+});
 test('Org chart and story map have editable child objects on canvas', async ({ page }) => {
   await seed(page, `return {version:1,title:'Org',items:[{...m.createItem('orgchart',0,0),id:'o'}]};`);
   await fit(page);

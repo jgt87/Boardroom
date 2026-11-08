@@ -4,7 +4,7 @@ import type { WidgetCtx } from './widget-types';
 import { mentionMarkdown, renderMarkdown } from './markdown';
 import { cleanMentionName, isSafeHref } from './rich-text';
 import { mentionMatches, mentionQuery } from './mentions';
-import { LinkPopover, MentionMenu, SwatchRow, mentionPeople, textColors } from './rich-editing';
+import { LinkPopover, MentionMenu, SwatchRow, highlightColors, mentionPeople, textColors } from './rich-editing';
 import { canvasControl } from './canvas-fields';
 import { useLatest } from './use-latest';
 import { filterSlash, docTemplates, calloutLabels, DOC_MAX, docShortcut, emojiQuery } from './doc-tools';
@@ -46,7 +46,7 @@ export function markdownFrom(node: Node): string {
       .replace(/([\\`*_[\]~])/g, '\\$1')
       .replace(/\+(?=\+)/g, '\\+')
       .replace(/=(?==)/g, '\\=')
-      .replace(/\{(?=\/?color)/g, '\\{');
+      .replace(/\{(?=\/?(color|mark))/g, '\\{');
   if (!(node instanceof HTMLElement)) return '';
   if (node.classList.contains('doc-callout-title')) return '';
   const children = () => Array.from(node.childNodes).map(markdownFrom).join('');
@@ -55,8 +55,13 @@ export function markdownFrom(node: Node): string {
     return name ? mentionMarkdown(name) : '';
   }
   switch (node.tagName) {
-    case 'MARK':
-      return wrapInline('==', '==', children());
+    case 'MARK': {
+      // The default yellow stays `==text==`; any other highlight colour is `{mark:#rrggbb}text{/mark}` (R6a-Q2).
+      const color = hexColor(node.style.backgroundColor);
+      return color && color !== DEFAULT_HIGHLIGHT
+        ? wrapInline(`{mark:${color}}`, '{/mark}', children())
+        : wrapInline('==', '==', children());
+    }
     case 'FONT':
     case 'SPAN': {
       const color =
@@ -136,6 +141,8 @@ export function markdownFrom(node: Node): string {
 
 /** Colour the browser's highlight command uses before the words become <mark> elements. */
 const HIGHLIGHT_MARKER = '#fff27b';
+/** The default highlight (plain `==text==`), the first of the highlight palette. */
+const DEFAULT_HIGHLIGHT = highlightColors[0].value;
 
 /** Top-level elements that count as Doc blocks; loose text and inline elements are wrapped in paragraphs. */
 const BLOCK_TAGS = new Set([
@@ -249,6 +256,7 @@ export function RichDocEditor({
     [link, setLink] = useState<{ top: number; initial: string; hasLink: boolean } | null>(null),
     [mention, setMention] = useState<{ start: number; names: string[]; top: number; active: number } | null>(null),
     [palette, setPalette] = useState(false),
+    [highlightPalette, setHighlightPalette] = useState(false),
     savedRange = useRef<Range | null>(null),
     popoverOpen = useRef(false),
     // Block selection (track L): the selected top-level blocks, and the selection to restore after a save.
@@ -597,20 +605,28 @@ export function RichDocEditor({
       a = r && anchorOf(r);
     if (a) unwrap(a);
   };
-  /** Highlight the selection, or remove the highlight it touches. */
-  const toggleHighlight = () => {
+  /**
+   * Highlight the selection in `color` (one of the highlight palette), or remove the highlights it touches
+   * (undefined). A new colour replaces the old one, since highlights cannot nest in Markdown.
+   */
+  const setHighlight = (color: string | undefined) => {
+    setHighlightPalette(false);
     const r = currentRange();
     if (!r || locked) return;
-    const marks = touching(r, 'mark');
-    if (marks.length) return marks.forEach(unwrap);
+    touching(r, 'mark').forEach(unwrap);
+    if (!color) return;
     if (r.collapsed) return display('Select text to highlight it.');
     document.execCommand('styleWithCSS', false, 'true');
     document.execCommand('hiliteColor', false, HIGHLIGHT_MARKER);
     document.execCommand('styleWithCSS', false, 'false');
-    // The browser marks the words with a background colour; store them as <mark> (==text==).
+    // The browser marks the words with a background colour; store them as <mark> in the chosen colour.
     editor.current?.querySelectorAll<HTMLElement>('span').forEach(span => {
       if (hexColor(span.style.backgroundColor) !== HIGHLIGHT_MARKER) return;
       const mark = document.createElement('mark');
+      if (color !== DEFAULT_HIGHLIGHT) {
+        mark.className = 'doc-mark';
+        mark.style.background = color;
+      }
       mark.append(...Array.from(span.childNodes));
       span.replaceWith(mark);
     });
@@ -922,9 +938,25 @@ export function RichDocEditor({
           >
             <s>S</s>
           </button>
-          <button disabled={locked} aria-label="Highlight document text" title="Highlight" onClick={toggleHighlight}>
-            <mark>H</mark>
-          </button>
+          <span className="doc-palette-anchor">
+            <button
+              disabled={locked}
+              aria-label="Highlight document text"
+              aria-expanded={highlightPalette}
+              title="Highlight"
+              onClick={() => {
+                setPalette(false);
+                setHighlightPalette(p => !p);
+              }}
+            >
+              <mark>H</mark>
+            </button>
+            {highlightPalette && (
+              <span className="doc-palette">
+                <SwatchRow label="Highlight colour" colors={highlightColors} onPick={setHighlight} />
+              </span>
+            )}
+          </span>
           <span className="doc-palette-anchor">
             <button
               disabled={locked}

@@ -74,7 +74,7 @@ import { recordVisit } from './activity';
 import { BASE_LAYER, assignNewToLayer, inLockedLayer, sortByLayer } from './layers';
 import { applyGridLayouts, gridOwner } from './grid-canvas';
 import { applyMindBounds } from './mindmap-bounds';
-import { fitSwimlanes } from './swimlane';
+import { carrySwimlaneContents, fitSwimlanes } from './swimlane';
 import {
   privateIds,
   detachComments,
@@ -390,7 +390,10 @@ function useBoardCore() {
   const normalize = (input: Board): Board => {
     const next = applyGridLayouts(applyLayouts(syncRecordCards(stripRotation(input), boardRef.current)));
     // A linked flowchart whose shapes changed gets its code rewritten in the same undo step.
-    return syncMermaidLinks(normalizeText(fitSwimlanes(applyMindBounds(next, boardRef.current))));
+    // A resized swimlane carries its contents along with their lanes (decision R6b-Q1).
+    return syncMermaidLinks(
+      normalizeText(fitSwimlanes(carrySwimlaneContents(applyMindBounds(next, boardRef.current), boardRef.current))),
+    );
   };
   const normalizeText = (next: Board): Board => {
     let changed = false;

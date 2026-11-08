@@ -19,6 +19,7 @@ import {
   ruleOps,
   schemaOf,
   setRecordSchema,
+  withColumnSetting,
 } from './record-schema';
 import { numericFieldValue } from './record-formula';
 import { CanvasField, canvasControl } from './canvas-fields';
@@ -330,13 +331,15 @@ export function RecordFields({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       b.items.find(i => i.id === item.id)?.locked ? b : setRecordSchema(b, item.datasetId!, next, rename),
     );
   const setColumn = (status: string, patch: { color?: string; limit?: number }) => {
-    const current = { ...schema.columns?.[status], ...patch };
-    for (const k of ['color', 'limit'] as const) if (current[k] === undefined) delete current[k];
-    const columns = { ...schema.columns, [status]: current };
-    if (!Object.keys(current).length) delete columns[status];
-    const next: typeof schema = { ...schema, columns };
-    if (!Object.keys(columns).length) delete next.columns;
+    const next: typeof schema = { ...schema, columns: withColumnSetting(schema.columns, status, patch) };
+    if (!next.columns) delete next.columns;
     write(next);
+  };
+  /** Column colour or capacity for one option of a single-select field (decision R4-Q1). */
+  const setOptionColumn = (field: RecordField, option: string, patch: { color?: string; limit?: number }) => {
+    const next: RecordField = { ...field, optionSettings: withColumnSetting(field.optionSettings, option, patch) };
+    if (!next.optionSettings) delete next.optionSettings;
+    write({ ...schema, fields: schema.fields.map(x => (x.id === field.id ? next : x)) });
   };
   const setField = (field: RecordField) =>
     write({ ...schema, fields: schema.fields.map(x => (x.id === field.id ? field : x)) });
@@ -519,6 +522,31 @@ export function RecordFields({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                     })
                   }
                 />
+              )}
+              {f.type === 'select' && (
+                <details className="record-option-columns">
+                  <summary>Kanban columns: {f.name}</summary>
+                  {f.options!.map(option => (
+                    <div className="record-schema-row" key={option}>
+                      <span>{option}</span>
+                      <ColorMenu
+                        label={`Column colour: ${f.name} ${option}`}
+                        value={f.optionSettings?.[option]?.color ?? '#f4f4f6'}
+                        board={ctx.board}
+                        onPick={c => setOptionColumn(f, option, { color: hex.test(c) ? c : undefined })}
+                      />
+                      <CanvasField
+                        label={`Column capacity: ${f.name} ${option}`}
+                        value={String(f.optionSettings?.[option]?.limit ?? '')}
+                        maxLength={6}
+                        onCommit={value => {
+                          const limit = Math.round(Number(value));
+                          setOptionColumn(f, option, { limit: value.trim() && limit > 0 ? limit : undefined });
+                        }}
+                      />
+                    </div>
+                  ))}
+                </details>
               )}
               <button
                 disabled={!k}

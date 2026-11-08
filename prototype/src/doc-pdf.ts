@@ -97,6 +97,67 @@ export function pdfSafe(text: string): string {
     .join('')
     .replace(/\t/g, '    ');
 }
+/**
+ * Code points the embedded Unicode font (Liberation Sans, from pdfjs-dist) draws: Latin-1, Latin Extended-A and B,
+ * IPA, spacing modifiers and combining accents, Greek and Coptic, Cyrillic, general punctuation, currency signs,
+ * letterlike symbols and arrows (decision Q17, 2026-11-08). CJK and emoji are not in the font.
+ */
+const unicodeRanges: [number, number][] = [
+  [0x20, 0x7e],
+  [0xa0, 0x24f],
+  [0x250, 0x36f],
+  [0x370, 0x3ff],
+  [0x400, 0x52f],
+  [0x2000, 0x206f],
+  [0x20a0, 0x20cf],
+  [0x2100, 0x214f],
+  [0x2190, 0x21ff],
+];
+/** Text the embedded Unicode font can show; other characters become "?" (like `pdfSafe` does for Latin-1). */
+export function pdfUnicodeSafe(text: string): string {
+  return [...text]
+    .map(ch => {
+      const c = ch.codePointAt(0)!;
+      return ch === '\n' || unicodeRanges.some(([lo, hi]) => c >= lo && c <= hi) ? ch : (replacements[ch] ?? '?');
+    })
+    .join('')
+    .replace(/\t/g, '    ');
+}
+
+/** jsPDF font family name for the embedded Unicode font. */
+export const UNICODE_FONT = 'LiberationSans';
+/**
+ * Embed Liberation Sans (regular, bold, italic) into `pdf`. The font files are separate assets fetched from this
+ * app only when a Doc is exported, so the app itself does not grow. Returns false when they cannot be loaded; the
+ * export then falls back to the built-in Latin-1 fonts. Browser only.
+ */
+async function embedUnicodeFont(pdf: {
+  addFileToVFS: (name: string, data: string) => void;
+  addFont: (file: string, family: string, style: string) => void;
+}): Promise<boolean> {
+  try {
+    const files = await Promise.all([
+      import('pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf?url'),
+      import('pdfjs-dist/standard_fonts/LiberationSans-Bold.ttf?url'),
+      import('pdfjs-dist/standard_fonts/LiberationSans-Italic.ttf?url'),
+    ]);
+    const styles = ['normal', 'bold', 'italic'];
+    for (const [k, mod] of files.entries()) {
+      const res = await fetch(mod.default);
+      if (!res.ok) return false;
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      const name = `LiberationSans-${styles[k]}.ttf`;
+      pdf.addFileToVFS(name, btoa(binary));
+      pdf.addFont(name, UNICODE_FONT, styles[k]);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Safe download name for a Doc PDF. */
 export function pdfFileName(title: string): string {
   const base = [...title]
@@ -118,9 +179,12 @@ export async function docPdf(title: string, md: string): Promise<{ blob: Blob; p
     width = W - M * 2;
   let y = M,
     replaced = false;
+  // Unicode text (Greek, Cyrillic, accented Latin) with the embedded font; Latin-1 when it cannot be loaded.
+  // Code blocks keep the built-in monospaced font, which is Latin-1 only.
+  const unicode = await embedUnicodeFont(pdf);
   pdf.setProperties({ title: pdfSafe(title) });
-  const fit = (s: string) => {
-    const safe = pdfSafe(s);
+  const fit = (s: string, mono: boolean) => {
+    const safe = unicode && !mono ? pdfUnicodeSafe(s) : pdfSafe(s);
     if (safe !== s.replace(/\t/g, '    ') && /\?/.test(safe)) replaced = true;
     return safe;
   };
@@ -129,11 +193,12 @@ export async function docPdf(title: string, md: string): Promise<{ blob: Blob; p
     size: number,
     opts: { font?: string; style?: string; indent?: number; gap?: number },
   ) => {
-    pdf.setFont(opts.font ?? 'helvetica', opts.style ?? 'normal');
+    const mono = opts.font === 'courier';
+    pdf.setFont(mono ? 'courier' : unicode ? UNICODE_FONT : 'helvetica', opts.style ?? 'normal');
     pdf.setFontSize(size);
     const lh = size * 1.35,
       x = M + (opts.indent ?? 0),
-      lines: string[] = pdf.splitTextToSize(fit(text), width - (opts.indent ?? 0));
+      lines: string[] = pdf.splitTextToSize(fit(text, mono), width - (opts.indent ?? 0));
     for (const line of lines) {
       if (y + lh > H - M) {
         pdf.addPage();

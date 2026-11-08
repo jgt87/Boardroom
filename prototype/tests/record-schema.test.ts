@@ -67,3 +67,32 @@ test('custom schemas and values survive clipboard remapping', () => {
   pasted.datasets![id][0].values!.n = 'bad';
   assert.throws(() => parseBoard(pasted));
 });
+
+test('single-select options carry Kanban column colour and capacity, cleaned when options change (R4-Q1)', async () => {
+  const { withColumnSetting } = await import('../src/record-schema.ts');
+  const field = { id: 'pri', name: 'Priority', type: 'select' as const, options: ['High', 'Low'] };
+  let settings = withColumnSetting(undefined, 'High', { color: '#ffd6d6', limit: 3 });
+  assert.deepEqual(settings, { High: { color: '#ffd6d6', limit: 3 } });
+  // Clearing both values removes the entry and then the whole map.
+  settings = withColumnSetting(settings, 'High', { color: undefined, limit: undefined });
+  assert.equal(settings, undefined);
+  const schema = { ...defaultSchema, fields: [{ ...field, optionSettings: { High: { color: '#ffd6d6', limit: 3 } } }] };
+  validateRecordSchema(schema);
+  assert.throws(() =>
+    validateRecordSchema({ ...schema, fields: [{ ...field, optionSettings: { Gone: { limit: 1 } } }] }),
+  );
+  assert.throws(() =>
+    validateRecordSchema({ ...schema, fields: [{ ...field, optionSettings: { High: { color: 'red' } } }] }),
+  );
+  assert.throws(() =>
+    validateRecordSchema({
+      ...schema,
+      fields: [{ id: 't', name: 'Text', type: 'text' as const, optionSettings: {} }],
+    }),
+  );
+  // Removing an option from the list drops its settings instead of refusing the change.
+  const board = { ...newBoard(), datasets: { d: [] }, recordSchemas: { d: schema } };
+  const next = setRecordSchema(board, 'd', { ...schema, fields: [{ ...schema.fields[0], options: ['Low'] }] });
+  assert.equal(next.recordSchemas!.d.fields[0].optionSettings, undefined);
+  parseBoard(next);
+});

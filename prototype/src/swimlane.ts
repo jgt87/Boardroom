@@ -82,13 +82,15 @@ export function fitSwimlanes(board: Board): Board {
 /**
  * Apply new swimlane data (same lane and phase ids where they survive) and carry the contents along:
  * each object keeps its offset within its lane and phase. Objects in a removed lane, or in a removed
- * phase while other phases remain, are deleted. Locked objects stay where they are.
+ * phase while other phases remain, are deleted, or with `keep` (decision R6b-Q3: the person chose to keep
+ * them) left where they are on the board. Locked objects stay where they are.
  */
 export function relayoutSwimlane(
   board: Board,
   id: string,
   next: SwimlaneData,
   patch: Partial<Pick<Item, 'text'>> = {},
+  keep = false,
 ): { board: Board; removed: number } {
   const old = fitSwimlaneItem(editableSwimlane(board, id)),
     oldL = swimlaneLayout(old),
@@ -149,8 +151,75 @@ export function relayoutSwimlane(
       return d ? { ...i, x: i.x + d.dx, y: i.y + d.dy } : i;
     }),
   };
-  if (gone.length) out = removeItems(out, gone);
-  return { board: out, removed: gone.length };
+  if (gone.length && !keep) out = removeItems(out, gone);
+  return { board: out, removed: keep ? 0 : gone.length };
+}
+
+/** Objects a new swimlane layout would delete (those in removed lanes or phases), for asking first. */
+export function sectionContentCount(board: Board, id: string, next: SwimlaneData): number {
+  return relayoutSwimlane(board, id, next).removed;
+}
+
+/**
+ * After a swimlane was resized (its box changed between `prev` and `next`), move each object with its lane and
+ * phase so it keeps its offset inside them (decision R6b-Q1, 2026-11-08). Run with the board's other per-change
+ * fixes, so a resize stays one undo step. Locked objects, connectors with both ends attached and swimlanes whose
+ * lanes changed in the same step (relayoutSwimlane already moved those contents) are left alone.
+ */
+export function carrySwimlaneContents(next: Board, prev: Board): Board {
+  let out = next;
+  for (const s of next.items) {
+    if (s.type !== 'swimlane') continue;
+    const before = prev.items.find(i => i.id === s.id && i.type === 'swimlane');
+    if (!before || (before.w === s.w && before.h === s.h) || before.data !== s.data) continue;
+    const oldS = fitSwimlaneItem(before),
+      newS = fitSwimlaneItem(s),
+      oldL = swimlaneLayout(oldS),
+      newL = swimlaneLayout(newS),
+      h = oldL.orientation === 'horizontal';
+    if (oldL.orientation !== newL.orientation) continue;
+    const laneById = new Map(newL.lanes.map(c => [c.section.id, c])),
+      phaseById = new Map(newL.phases.map(c => [c.section.id, c])),
+      movable = new Set(
+        editableIds(
+          next,
+          swimlaneMembers(prev, s.id).map(m => m.id),
+        ),
+      );
+    const moves = new Map<string, { dx: number; dy: number }>();
+    for (const m of swimlaneMembers(prev, s.id)) {
+      if (!movable.has(m.id) || (m.type === 'arrow' && m.from && m.to)) continue;
+      const b = itemBounds(m, prev.items),
+        cx = b.x + b.w / 2 - oldS.x,
+        cy = b.y + b.h / 2 - oldS.y,
+        main = h ? cy : cx,
+        cross = h ? cx : cy,
+        lane = oldL.lanes[cellIndexAt(oldL.lanes, main)],
+        target = laneById.get(lane.section.id);
+      if (!target) continue;
+      const newMain = target.start + (main - lane.start);
+      let newCross = (h ? newL.body.x : newL.body.y) + (cross - (h ? oldL.body.x : oldL.body.y));
+      if (oldL.phases.length) {
+        const phase = oldL.phases[cellIndexAt(oldL.phases, cross)],
+          to = phaseById.get(phase.section.id);
+        if (to) newCross = to.start + (cross - phase.start);
+      }
+      const nx = newS.x + (h ? newCross : newMain),
+        ny = newS.y + (h ? newMain : newCross),
+        dx = nx - (oldS.x + cx),
+        dy = ny - (oldS.y + cy);
+      if (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) moves.set(m.id, { dx, dy });
+    }
+    if (moves.size)
+      out = {
+        ...out,
+        items: out.items.map(i => {
+          const d = moves.get(i.id);
+          return d ? { ...i, x: i.x + d.dx, y: i.y + d.dy } : i;
+        }),
+      };
+  }
+  return out;
 }
 
 const listOf = (d: SwimlaneData, axis: SwimAxis) => (axis === 'lanes' ? d.lanes : (d.phases ?? []));
@@ -202,19 +271,20 @@ export function removeSection(
   id: string,
   axis: SwimAxis,
   sectionId: string,
+  keep = false,
 ): { board: Board; removed: number } {
+  return relayoutSwimlane(board, id, withoutSection(board, id, axis, sectionId), {}, keep);
+}
+/** The swimlane data without one lane or phase (a swimlane always keeps at least one lane). */
+export function withoutSection(board: Board, id: string, axis: SwimAxis, sectionId: string): SwimlaneData {
   const d = swimData(editableSwimlane(board, id)),
     list = listOf(d, axis),
     k = sectionIndex(list, sectionId, axis);
   if (axis === 'lanes' && list.length === 1) throw new Error('A swimlane needs at least one lane.');
-  return relayoutSwimlane(
-    board,
-    id,
-    withList(
-      d,
-      axis,
-      list.filter((_, j) => j !== k),
-    ),
+  return withList(
+    d,
+    axis,
+    list.filter((_, j) => j !== k),
   );
 }
 /** Move a lane or phase one place earlier (-1) or later (+1), carrying its objects along. */

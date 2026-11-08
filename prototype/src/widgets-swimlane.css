@@ -81,3 +81,23 @@
     order: 9;
   }
 }
+
+/* Lane bar (R6b-Q2): shown beside the header of the lane that was clicked; the surface comes from .floating. */
+.swim-lane-bar {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+}
+.swim-lane-bar .icon-button {
+  width: 28px;
+  height: 28px;
+}
+.swim-lane-bar select {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  font-size: 12px;
+}

@@ -96,3 +96,24 @@ test('Timeline groups rows under headings', async ({ page }) => {
   await w.getByRole('button', { name: /Bo \(1\)/ }).click();
   await expect(w.locator('.timeline-body [data-record="b"]')).toHaveCount(0);
 });
+
+test('a Kanban with a single-select column field uses the option colours and capacities (R4-Q1)', async ({ page }) => {
+  await seed(
+    page,
+    `return {version:1,title:'Options',
+items:[{...m.createItem('kanban',0,0),id:'w',w:1250,h:700,datasetId:'d',recordGroup:'pri'}],
+recordSchemas:{d:{statuses:['Not started','Complete'],fields:[
+{id:'pri',name:'Priority',type:'select',options:['High','Low'],optionSettings:{High:{color:'#ffd6d6',limit:1}}}]}},
+datasets:{d:[
+{id:'a',title:'Alpha',status:'Not started',assignee:'',start:'',end:'',values:{pri:'High'}},
+{id:'b',title:'Beta',status:'Not started',assignee:'',start:'',end:'',values:{pri:'High'}},
+{id:'c',title:'Gamma',status:'Complete',assignee:'',start:'',end:'',values:{pri:'Low'}}]}};`,
+  );
+  await fit(page);
+  const w = item(page, 'w');
+  const high = w.locator('[data-record-status="High"]');
+  await expect(high).toHaveCSS('background-color', 'rgb(255, 214, 214)');
+  // Capacity 1 with two High cards: flagged; Low has no limit.
+  await expect(high.locator('.kanban-col-title')).toHaveAttribute('data-over-capacity', 'true');
+  await expect(w.locator('[data-record-status="Low"] .kanban-col-title')).not.toHaveAttribute('data-over-capacity');
+});

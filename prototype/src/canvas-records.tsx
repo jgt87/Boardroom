@@ -639,7 +639,7 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                       )
               }
               recordAction={recordAction}
-              columnSettings={group ? undefined : schema.columns}
+              columnSettings={group ? group.optionSettings : schema.columns}
               capacity={schema.capacity}
               lanes={groupField ? kanbanLanes() : undefined}
               laneOf={groupField ? groupOf : undefined}

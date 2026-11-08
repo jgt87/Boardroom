@@ -182,7 +182,13 @@ test('doc: link, highlight, colour and mention round-trip through Markdown', asy
 
   await selectText(editor, 'Intro');
   await doc.getByRole('button', { name: 'Highlight document text' }).click();
+  await doc.getByRole('button', { name: 'Highlight colour: Yellow' }).click();
   await expect(editor.locator('mark')).toHaveText('Intro');
+  // A second highlight colour (R6a-Q2).
+  await selectText(editor, 'and');
+  await doc.getByRole('button', { name: 'Highlight document text' }).click();
+  await doc.getByRole('button', { name: 'Highlight colour: Green' }).click();
+  await expect(editor.locator('mark.doc-mark')).toHaveText('and');
 
   await selectText(editor, 'here');
   await doc.getByRole('button', { name: 'Document text colour', exact: true }).click();
@@ -200,13 +206,15 @@ test('doc: link, highlight, colour and mention round-trip through Markdown', asy
   await waitForSave(page, b => (b.items[0].data.markdown as string).includes('@[Ada Lovelace]'), 'doc saved');
   const md = (await savedBoard(page)).items[0].data.markdown as string;
   expect(md).toContain('==Intro==');
+  expect(md).toContain('{mark:#c3f3c8}and{/mark}');
   expect(md).toContain('[text](https://example.org/page)');
   expect(md).toContain('{color:#d92d20}here{/color}');
   expect(md).toContain('@[Ada Lovelace]');
 
   await page.reload();
   await trapOpen(page);
-  await expect(editor.locator('mark')).toHaveText('Intro');
+  await expect(editor.locator('mark:not(.doc-mark)')).toHaveText('Intro');
+  await expect(editor.locator('mark.doc-mark')).toHaveCSS('background-color', 'rgb(195, 243, 200)');
   await expect(editor.locator('span.doc-color')).toHaveText('here');
   await expect(editor.locator('span.doc-color')).toHaveCSS('color', 'rgb(217, 45, 32)');
   await expect(editor.locator('.doc-mention')).toHaveText('@Ada Lovelace');

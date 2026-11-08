@@ -52,6 +52,23 @@ export function renderMarkdown(md: string): string {
           return `<mark>${this.parser.parseInline(token.tokens)}</mark>`;
         },
       },
+      // `{mark:#rrggbb}text{/mark}` is a highlight in another colour (decision R6a-Q2, 2026-11-08); `==text==`
+      // stays the default yellow. Only six-digit hex colours are accepted.
+      {
+        name: 'colorMark',
+        level: 'inline',
+        start: (src: string) => src.indexOf('{mark:'),
+        tokenizer(this: any, src: string) {
+          const m = /^\{mark:(#[0-9a-fA-F]{6})\}([\s\S]+?)\{\/mark\}/.exec(src);
+          return m
+            ? { type: 'colorMark', raw: m[0], color: m[1].toLowerCase(), tokens: this.lexer.inlineTokens(m[2]) }
+            : undefined;
+        },
+        renderer(this: any, token: any) {
+          const color = /^#[0-9a-f]{6}$/.test(token.color) ? token.color : '#fff27a';
+          return `<mark class="doc-mark" style="background:${color}">${this.parser.parseInline(token.tokens)}</mark>`;
+        },
+      },
       // `{color:#rrggbb}text{/color}` is coloured text; only six-digit hex colours are accepted.
       {
         name: 'textColor',
@@ -152,6 +169,7 @@ export function plain(text: string): string {
     .replace(/\+\+(.+?)\+\+/g, '$1')
     .replace(/==(.+?)==/g, '$1')
     .replace(/\{color:#[0-9a-fA-F]{6}\}([\s\S]*?)\{\/color\}/g, '$1')
+    .replace(/\{mark:#[0-9a-fA-F]{6}\}([\s\S]*?)\{\/mark\}/g, '$1')
     .replace(/@\[([^[\]\n]{1,80})\]/g, '@$1')
     .replace(/<[^>]*>/g, '')
     .trim();

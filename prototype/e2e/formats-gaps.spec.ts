@@ -196,3 +196,24 @@ test('Template search, categories and saving a frame as a template', async ({ pa
     .click();
   await waitForSave(page, b => b.items.length === count + 2, 'selection template inserted');
 });
+
+test('Doc PDF export embeds a Unicode font: Greek and Cyrillic are kept (Q17)', async ({ page }) => {
+  await seed(
+    page,
+    `const d = { ...m.createItem('doc', 0, 0), id: 'doc', text: 'Ελληνικά' };
+     d.data = { markdown: '# Привет\\n\\nΚαλημέρα, Łódź – €5' };
+     return { ...m.newBoard(), title: 'Unicode', items: [d] };`,
+  );
+  await fit(page);
+  await selectViaLayers(page, 'Ελληνικά');
+  const download = page.waitForEvent('download');
+  await page.locator('.selection-bar .widget-action', { hasText: 'Export as PDF' }).click();
+  const file = await download;
+  const bytes = (await import('node:fs')).readFileSync((await file.path())!).toString('latin1');
+  expect(bytes.startsWith('%PDF-')).toBe(true);
+  expect(bytes).toContain('LiberationSans');
+  // Nothing had to be replaced, so the notice does not mention "?".
+  const notice = page.getByRole('status').filter({ hasText: 'Exported' });
+  await expect(notice).toBeVisible();
+  await expect(notice).not.toContainText('replaced');
+});

@@ -29,6 +29,11 @@ export type RecordField = {
   hideLabel?: boolean;
   /** Conditional colours: the first matching rule colours the value. */
   rules?: NumberColorRule[];
+  /**
+   * Single-select fields: Kanban column colour and capacity per option, used when the field is a Kanban's column
+   * field (decision R4-Q1, 2026-11-08). Kept on the field, so every view of the dataset shares them.
+   */
+  optionSettings?: Record<string, RecordColumnSettings>;
 };
 export const ruleOps = ['gt', 'gte', 'lt', 'lte', 'eq'] as const;
 export type NumberColorRule = { op: (typeof ruleOps)[number]; value: number; color: string };
@@ -104,8 +109,38 @@ function validateNumberDisplay(f: RecordField): void {
         throw new Error('Colour rules need a comparison, a number and a #rrggbb colour.');
   }
 }
-/** Kanban status column settings: a header colour and an optional capacity. */
+/** Kanban column settings (a status, or a single-select option): a header colour and an optional capacity. */
 export type RecordColumnSettings = { color?: string; limit?: number };
+/** Column settings keyed by column name; every key must be one of `names`. */
+function validateColumnSettings(settings: unknown, names: readonly string[]): void {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('Invalid column settings.');
+  for (const [name, c] of Object.entries(settings as Record<string, RecordColumnSettings>))
+    if (
+      !names.includes(name) ||
+      !c ||
+      typeof c !== 'object' ||
+      Array.isArray(c) ||
+      Object.keys(c).some(k => k !== 'color' && k !== 'limit') ||
+      (c.color !== undefined && (typeof c.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(c.color))) ||
+      (c.limit !== undefined && (!Number.isInteger(c.limit) || c.limit < 1 || c.limit > 100000))
+    )
+      throw new Error('Column colours need #rrggbb values and capacities whole numbers above 0.');
+}
+/**
+ * Set or clear (undefined) a column's colour or capacity in a settings map; empty entries and an empty map are
+ * removed, so older schemas keep their shape.
+ */
+export function withColumnSetting(
+  settings: Record<string, RecordColumnSettings> | undefined,
+  column: string,
+  patch: RecordColumnSettings,
+): Record<string, RecordColumnSettings> | undefined {
+  const current: RecordColumnSettings = { ...settings?.[column], ...patch };
+  for (const k of ['color', 'limit'] as const) if (current[k] === undefined) delete current[k];
+  const next = { ...settings, [column]: current };
+  if (!Object.keys(current).length) delete next[column];
+  return Object.keys(next).length ? next : undefined;
+}
 /** A named filter/sort/group configuration shared by every view of the dataset. */
 export type SavedRecordView = { id: string; name: string; config: RecordViewConfig };
 export type RecordSchema = {
@@ -206,21 +241,12 @@ export function validateRecordSchema(schema: RecordSchema): void {
       new Set(schema.hiddenBuiltIns).size !== schema.hiddenBuiltIns.length)
   )
     throw new Error('Invalid hidden columns.');
-  if (schema.columns !== undefined) {
-    if (!schema.columns || typeof schema.columns !== 'object' || Array.isArray(schema.columns))
-      throw new Error('Invalid column settings.');
-    for (const [status, c] of Object.entries(schema.columns))
-      if (
-        !schema.statuses.includes(status) ||
-        !c ||
-        typeof c !== 'object' ||
-        Array.isArray(c) ||
-        Object.keys(c).some(k => k !== 'color' && k !== 'limit') ||
-        (c.color !== undefined && (typeof c.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(c.color))) ||
-        (c.limit !== undefined && (!Number.isInteger(c.limit) || c.limit < 1 || c.limit > 100000))
-      )
-        throw new Error('Column colours need #rrggbb values and capacities whole numbers above 0.');
-  }
+  if (schema.columns !== undefined) validateColumnSettings(schema.columns, schema.statuses);
+  for (const f of schema.fields)
+    if (f.optionSettings !== undefined) {
+      if (f.type !== 'select') throw new Error('Only single-select fields have column settings.');
+      validateColumnSettings(f.optionSettings, f.options ?? []);
+    }
   if (schema.views !== undefined) {
     if (!Array.isArray(schema.views) || schema.views.length > 20) throw new Error('Use up to 20 saved views.');
     const viewIds = new Set<string>(),
@@ -420,6 +446,17 @@ function cleanSchema(schema: RecordSchema, rename?: { from: string; to: string }
     if (Object.keys(columns).length) next.columns = columns;
     else delete next.columns;
   }
+  // Option settings follow the options: an option that was removed or renamed in the list loses its settings.
+  next.fields = schema.fields.map(f => {
+    if (!f.optionSettings) return f;
+    const kept = Object.fromEntries(
+      Object.entries(f.optionSettings).filter(([o]) => f.type === 'select' && f.options?.includes(o)),
+    );
+    const copy = { ...f };
+    if (Object.keys(kept).length) copy.optionSettings = kept;
+    else delete copy.optionSettings;
+    return copy;
+  });
   if (schema.views)
     next.views = schema.views.map(v => ({
       ...v,

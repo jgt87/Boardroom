@@ -148,6 +148,12 @@ export type MindNode = {
   color?: string;
   shape?: MindNodeShape;
   link?: string;
+  /**
+   * Per-word styles in the topic text (decision R5-Q4, 2026-11-08): the same model as text objects, used only
+   * while `spansFor` is the hash of `text`.
+   */
+  spans?: import('./rich-text.ts').TextSpan[];
+  spansFor?: string;
 };
 /** Fonts offered for text (gap D14). Values are font ids; `fontStack` maps them to CSS font stacks. */
 export const fontFamilies = [
