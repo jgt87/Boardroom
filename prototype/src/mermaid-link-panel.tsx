@@ -8,7 +8,6 @@ import { copyText } from './use-deep-links';
 import { MermaidPreview } from './formats';
 import {
   codeFromShapes,
-  keepShapes,
   kindLabels,
   linkOf,
   linkState,
@@ -71,7 +70,6 @@ function LinkPanel({ id }: { id: string }) {
     external = dirty && base.current !== link.code,
     codeSide = dirty || doc === 'code' || doc === 'both',
     shapeSide = doc === 'shapes' || doc === 'both' || external,
-    flow = link.kind === 'flowchart',
     shapes = linkedMembers(board, frame).filter(m => m.type !== 'arrow').length;
   const close = () => setMermaidLinkId(null);
   const attempt = (action: () => void) => {
@@ -97,11 +95,6 @@ function LinkPanel({ id }: { id: string }) {
       update(r.board);
       display('Code updated from the shapes.');
     });
-  const keep = () =>
-    attempt(() => {
-      update(keepShapes(boardRef.current, id));
-      display('Shape edits kept. Rebuilding from code later replaces them, except positions.');
-    });
   const unlink = () =>
     attempt(() => {
       update(unlinkMermaid(boardRef.current, id));
@@ -117,7 +110,7 @@ function LinkPanel({ id }: { id: string }) {
         : codeSide
           ? 'The code has changes that are not applied to the shapes yet.'
           : shapeSide
-            ? `Shapes were edited on the canvas. ${kindLabels[link.kind]} code is not updated from shapes.`
+            ? 'Shapes were edited on the canvas and the code was not updated from them (a locked frame or code that would be too long). Update the code from the shapes, or rebuild the shapes from the code.'
             : 'Code and shapes are in sync.';
   return (
     <aside
@@ -157,19 +150,14 @@ function LinkPanel({ id }: { id: string }) {
       <div className="link-actions">
         {codeSide && shapeSide ? (
           <>
-            {flow ? (
-              <button onClick={fromShapes}>Update code from shapes</button>
-            ) : (
-              <button onClick={keep}>Keep shape edits</button>
-            )}
+            <button onClick={fromShapes}>Update code from shapes</button>
             <button className="primary" onClick={rebuild}>
               Rebuild shapes from code
             </button>
           </>
         ) : shapeSide || doc === 'empty' ? (
           <>
-            {!flow && doc !== 'empty' && <button onClick={keep}>Keep shape edits</button>}
-            {flow && doc !== 'empty' && <button onClick={fromShapes}>Update code from shapes</button>}
+            {doc !== 'empty' && <button onClick={fromShapes}>Update code from shapes</button>}
             <button className="primary" onClick={rebuild}>
               Rebuild shapes from code
             </button>
