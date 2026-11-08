@@ -106,6 +106,7 @@ export const kindIcons: Record<string, typeof Layers3> = {
   reactions: PartyPopper,
   'import:markdown': FileDown,
   'import:pptx': Presentation,
+  'import:pdfslides': Presentation,
   'import:table': FileSpreadsheet,
   'import:grid': Grid3x3,
   'import:drawio': Workflow,
@@ -446,7 +447,12 @@ export function ToolGallery({
       { label: 'Video', kind: 'video', description: '' },
       { label: 'PDF', kind: 'pdf', description: '' },
       { label: 'Markdown as Doc', kind: 'import:markdown', description: 'A .md file becomes an editable Doc' },
-      { label: 'PowerPoint as Slides', kind: 'import:pptx', description: 'Slide titles and text from a .pptx file' },
+      {
+        label: 'PowerPoint as Slides',
+        kind: 'import:pptx',
+        description: 'Slides with their text, pictures and layout from a .pptx file',
+      },
+      { label: 'PDF as Slides', kind: 'import:pdfslides', description: 'Each page of a PDF becomes an image slide' },
       { label: 'Word as Doc', kind: 'import:docx', description: 'Headings, lists and text from a .docx file' },
       {
         label: 'OpenDocument or RTF as Doc',

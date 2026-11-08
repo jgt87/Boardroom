@@ -161,7 +161,18 @@ export type Camera = { x: number; y: number; z: number };
 import { noticeDuration, type NoticeAction, type NoticeKind } from './notices';
 /** Which import the shared document file chooser was opened for. */
 type DocImportKind =
-  'markdown' | 'pptx' | 'docx' | 'odt' | 'odp' | 'table' | 'grid' | 'drawio' | 'vsdx' | 'stickies' | 'whiteboard';
+  | 'markdown'
+  | 'pptx'
+  | 'pdfslides'
+  | 'docx'
+  | 'odt'
+  | 'odp'
+  | 'table'
+  | 'grid'
+  | 'drawio'
+  | 'vsdx'
+  | 'stickies'
+  | 'whiteboard';
 export type Gesture =
   | {
       mode: 'move' | 'resize' | 'pan' | 'draw' | 'create' | 'marquee' | 'endpoint' | 'bend' | 'lasso' | 'rotate';
@@ -1355,21 +1366,40 @@ function useBoardCore() {
         note = doc.truncated
           ? 'The document was shortened to 60,000 characters.'
           : `Imported ${file.name}. Images and page layout are not imported.`;
+      } else if (/\.pdf$/i.test(file.name)) {
+        // PDF as Slides (R4-Q2): one image slide per page; the page images are stored like other images.
+        const { PDF_SLIDES_MAX_BYTES, pdfSlidesNote } = await import('./deck-media');
+        if (file.size > PDF_SLIDES_MAX_BYTES) throw new Error('PDF files up to 50 MB can be imported as slides.');
+        display('Drawing the PDF pages…');
+        const made = await (
+          await import('./deck-import')
+        ).pdfToSlides(new Uint8Array(await file.arrayBuffer()), file.name);
+        for (const [id, asset] of Object.entries(made.assets)) await saveAsset(id, asset);
+        setAssets(a => ({ ...a, ...made.assets }));
+        item = createItem('slides', center.x, center.y);
+        item.data = made.deck;
+        item.text = file.name.replace(/\.pdf$/i, '').slice(0, 200) || 'Imported PDF';
+        note = pdfSlidesNote(made.made, made.capped, made.failed);
       } else if (/\.(pptx|odp)$/i.test(file.name)) {
         const odp = /\.odp$/i.test(file.name);
         let slides;
         if (odp) {
           if (file.size > 20 * 1024 * 1024) throw new Error('OpenDocument files up to 20 MB can be imported.');
           slides = (await import('./opendoc-import')).parseOdp(new Uint8Array(await file.arrayBuffer()));
+          note = `${slides.length} ${slides.length === 1 ? 'slide' : 'slides'} imported. Images and layouts are not imported.`;
         } else {
-          const { parsePptx, PPTX_MAX_BYTES } = await import('./pptx');
+          // Pictures and positions are kept (R4-Q2); pictures are stored before the deck refers to them.
+          const { parsePptxDeck, pptxImportNote, PPTX_MAX_BYTES } = await import('./pptx');
           if (file.size > PPTX_MAX_BYTES) throw new Error('PowerPoint files up to 50 MB can be imported.');
-          slides = parsePptx(new Uint8Array(await file.arrayBuffer()));
+          const deck = parsePptxDeck(new Uint8Array(await file.arrayBuffer()));
+          for (const [id, asset] of Object.entries(deck.assets)) await saveAsset(id, asset);
+          setAssets(a => ({ ...a, ...deck.assets }));
+          slides = deck.slides;
+          note = pptxImportNote(deck);
         }
         item = createItem('slides', center.x, center.y);
         item.data = { slides, current: 0 };
         item.text = file.name.replace(/\.(pptx|odp)$/i, '').slice(0, 200) || 'Imported deck';
-        note = `${slides.length} ${slides.length === 1 ? 'slide' : 'slides'} imported. Images and layouts are not imported.`;
       } else {
         if (file.size > DOC_FILE_MAX) throw new Error('Markdown files up to 1 MB can be imported.');
         const doc = docFromMarkdown(await file.text(), file.name);
@@ -1467,6 +1497,7 @@ function useBoardCore() {
     if (
       choice === 'import:markdown' ||
       choice === 'import:pptx' ||
+      choice === 'import:pdfslides' ||
       choice === 'import:docx' ||
       choice === 'import:odt' ||
       choice === 'import:odp' ||
@@ -1483,21 +1514,23 @@ function useBoardCore() {
         docImportFile.current.accept =
           choice === 'import:pptx'
             ? '.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation'
-            : choice === 'import:docx'
-              ? '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-              : choice === 'import:odt'
-                ? '.odt,.rtf,application/vnd.oasis.opendocument.text,application/rtf,text/rtf'
-                : choice === 'import:odp'
-                  ? '.odp,application/vnd.oasis.opendocument.presentation'
-                  : choice === 'import:drawio'
-                    ? '.drawio,.xml,application/xml,text/xml'
-                    : choice === 'import:vsdx'
-                      ? '.vsdx,application/vnd.ms-visio.drawing.main+xml'
-                      : choice === 'import:whiteboard'
-                        ? '.json,application/json'
-                        : choice === 'import:table' || choice === 'import:grid' || choice === 'import:stickies'
-                          ? '.csv,.tsv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                          : '.md,.markdown,text/markdown,text/plain';
+            : choice === 'import:pdfslides'
+              ? '.pdf,application/pdf'
+              : choice === 'import:docx'
+                ? '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                : choice === 'import:odt'
+                  ? '.odt,.rtf,application/vnd.oasis.opendocument.text,application/rtf,text/rtf'
+                  : choice === 'import:odp'
+                    ? '.odp,application/vnd.oasis.opendocument.presentation'
+                    : choice === 'import:drawio'
+                      ? '.drawio,.xml,application/xml,text/xml'
+                      : choice === 'import:vsdx'
+                        ? '.vsdx,application/vnd.ms-visio.drawing.main+xml'
+                        : choice === 'import:whiteboard'
+                          ? '.json,application/json'
+                          : choice === 'import:table' || choice === 'import:grid' || choice === 'import:stickies'
+                            ? '.csv,.tsv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                            : '.md,.markdown,text/markdown,text/plain';
         docImportFile.current.click();
       }
       return;

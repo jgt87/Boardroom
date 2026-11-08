@@ -7,6 +7,7 @@ import type { GridData } from './grid.ts';
 import { expandLinked, remapMermaidNode } from './mermaid-link-rules.ts';
 import { editableIds } from './arrange.ts';
 import { copyPlacedDots } from './chip-rules.ts';
+import { deckAssetIds } from './slide-elements.ts';
 
 export const CLIP_FORMAT = 'boardroom-objects';
 export type ClipPayload = {
@@ -59,7 +60,12 @@ export function copySelection(
   const media: Record<string, ImageAsset> = {};
   let used = 0;
   // Shown pictures and media first; the kept originals of converted SVG/BMP images (gap R2-Q3) use what is left.
-  for (const id of [...items.map(i => i.assetId), ...items.map(i => i.originalAssetId)])
+  for (const id of [
+    ...items.map(i => i.assetId),
+    // Pictures and videos placed on Slides slides (R4-Q2).
+    ...items.flatMap(i => (i.type === 'slides' ? deckAssetIds(i.data) : [])),
+    ...items.map(i => i.originalAssetId),
+  ])
     if (id && assets[id] && !media[id]) {
       const size = assets[id].data.length;
       if (used + size > assetBudget) continue;

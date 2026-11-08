@@ -4,6 +4,7 @@
 import type { Board, Crop, ImageAdjust, ImageAsset, Item } from './model.ts';
 import { createItem } from './model.ts';
 import { editableIds } from './arrange.ts';
+import { deckAssetIds } from './slide-elements.ts';
 import {
   assetByteLimit,
   imageMimes,
@@ -42,9 +43,16 @@ export function downloadableAsset(
   if (original && originalImageMimes.includes(original.mime)) return original;
   return item.assetId ? assets[item.assetId] : undefined;
 }
-/** Asset ids an item refers to: its picture or media file and, for converted images, the original file. */
-export const itemAssetIds = (i: Pick<Item, 'assetId' | 'originalAssetId'>): string[] =>
-  [i.assetId, i.originalAssetId].filter((id): id is string => !!id);
+/**
+ * Asset ids an item refers to: its picture or media file, for converted images the original file, and for Slides
+ * decks the pictures and videos placed on their slides (R4-Q2).
+ */
+export const itemAssetIds = (
+  i: Pick<Item, 'assetId' | 'originalAssetId'> & { type?: string; data?: unknown },
+): string[] =>
+  [i.assetId, i.originalAssetId, ...(i.type === 'slides' ? deckAssetIds(i.data) : [])].filter(
+    (id): id is string => !!id,
+  );
 /** The image type of a file from its MIME type, or from its extension when the type is missing. */
 export function imageTypeOf(file: { type: string; name?: string }): string {
   const t = file.type === 'image/x-ms-bmp' ? 'image/bmp' : file.type;

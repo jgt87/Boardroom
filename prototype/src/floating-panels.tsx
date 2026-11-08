@@ -22,6 +22,7 @@ import { setNoteEmoji, convertNote } from './notes';
 import { EmojiPicker, ConvertPanel } from './note-extras';
 import { SearchPanel } from './search-panel';
 import { PresentationPanel, PresentOverlay } from './presentation';
+import { useImageDeck } from './use-image-deck';
 import { TalktrackPanel, PhotoboothPanel, StickiesPanel } from './capture-panels';
 import { placeNotes } from './sticky-detect';
 import { validateDiagram } from './diagram-validation';
@@ -88,6 +89,7 @@ import { MermaidLinkPanel } from './mermaid-link-panel';
 import { PinnedComments } from './pinned-comments';
 
 export function FloatingPanels() {
+  const imageDeck = useImageDeck();
   const {
     authorName,
     setAuthorName,
@@ -572,6 +574,7 @@ export function FloatingPanels() {
               display('Frames are now ordered by position.');
             }}
             onStart={startPresenting}
+            onImageDeck={() => void imageDeck([])}
             onHide={(id, hidden) => run(b => setHiddenSlide(b, id, hidden))}
             onNotes={(id, notes) => run(b => setFrameNotes(b, id, notes))}
             onShow={f => {
@@ -593,6 +596,7 @@ export function FloatingPanels() {
       {presenting && (
         <PresentOverlay
           board={board}
+          assets={assets}
           start={presenting.start}
           size={size}
           onCamera={setCamera}

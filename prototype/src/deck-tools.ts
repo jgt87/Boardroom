@@ -1,6 +1,7 @@
 // Slides from frames and deck PDF export (gap G13).
 // framesToDeck is pure; deckPdf runs in the browser (jsPDF, real text, one landscape page per slide).
-import type { Board, Item } from './model.ts';
+import type { Board, ImageAsset, Item } from './model.ts';
+import { usesElements } from './slide-elements.ts';
 import { createItem } from './model.ts';
 import {
   newSlide,
@@ -51,14 +52,36 @@ export function deckItemFor(board: Board, frameIds: string[]): Item | null {
 }
 
 /** PDF of a deck: one landscape A4 page per slide with its title and text (browser only). */
-export async function deckPdf(title: string, deck: DeckData): Promise<Blob> {
+export async function deckPdf(
+  title: string,
+  deck: DeckData,
+  assets: Record<string, Pick<ImageAsset, 'data' | 'mime'>> = {},
+): Promise<Blob> {
   const { jsPDF } = await import('jspdf');
   const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' }),
     W = pdf.internal.pageSize.getWidth(),
     M = 56;
   pdf.setProperties({ title: pdfSafe(title) });
-  deck.slides.forEach((s, k) => {
+  for (const [k, s] of deck.slides.entries()) {
     if (k) pdf.addPage();
+    // Slides with positioned pictures and text boxes (R4-Q2) are drawn as one picture of the slide.
+    if (s.elements?.length) {
+      const PH = pdf.internal.pageSize.getHeight(),
+        h = (W * 9) / 16,
+        png = await slidePng(s, undefined, assets),
+        data = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result));
+          r.onerror = () => reject(new Error('The slide could not be drawn.'));
+          r.readAsDataURL(png);
+        });
+      pdf.addImage(data, 'PNG', 0, (PH - h) / 2, W, h);
+      pdf.setFontSize(9);
+      pdf.setTextColor(140);
+      pdf.text(`${k + 1} / ${deck.slides.length}`, W - M, PH - 24, { align: 'right' });
+      pdf.setTextColor(0);
+      continue;
+    }
     if (/^#[0-9a-f]{6}$/i.test(s.background) && s.background.toLowerCase() !== '#ffffff') {
       pdf.setFillColor(s.background);
       pdf.rect(0, 0, W, pdf.internal.pageSize.getHeight(), 'F');
@@ -83,7 +106,7 @@ export async function deckPdf(title: string, deck: DeckData): Promise<Blob> {
     pdf.setTextColor(140);
     pdf.text(`${k + 1} / ${deck.slides.length}`, W - M, pdf.internal.pageSize.getHeight() - 24, { align: 'right' });
     pdf.setTextColor(0);
-  });
+  }
   return pdf.output('blob');
 }
 
@@ -156,10 +179,64 @@ const textBlock = (
     .join('');
 
 /**
+ * Positioned elements of a slide (R4-Q2) as SVG: pictures embedded from their data: URLs (images only; a video
+ * shows as a dark box with its name) and text boxes wrapped to their width.
+ */
+export function elementsSvg(
+  s: Pick<Slide, 'elements'>,
+  assets: Record<string, Pick<ImageAsset, 'data' | 'mime'>>,
+  ink = '#25252c',
+): string {
+  const W = SLIDE_PNG_W,
+    H = SLIDE_PNG_H;
+  return (s.elements ?? [])
+    .map(e => {
+      const x = Math.round(e.x * W),
+        y = Math.round(e.y * H),
+        w = Math.round(e.w * W),
+        h = Math.round(e.h * H);
+      if (e.kind === 'image') {
+        const a = e.assetId ? assets[e.assetId] : undefined;
+        return a && /^data:image\/(png|jpeg|gif|webp);base64,/.test(a.data)
+          ? `<image x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet" href="${a.data}"/>`
+          : `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#e5e5eb"/>`;
+      }
+      if (e.kind === 'video')
+        return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#25252c"/>${textBlock(
+          wrapText(e.alt || 'Video', 36, w - 48, 1),
+          x + w / 2,
+          y + h / 2 + 12,
+          36,
+          'font-family="Arial, Helvetica, sans-serif" fill="#ffffff"',
+          1.2,
+          'middle',
+        )}`;
+      const size = Math.max(10, Math.round(((e.size ?? 3) / 100) * W)),
+        anchor = e.align === 'center' ? 'middle' : e.align === 'right' ? 'end' : 'start',
+        tx = anchor === 'middle' ? x + w / 2 : anchor === 'end' ? x + w : x,
+        lines = wrapText(e.text ?? '', size, w, Math.max(1, Math.floor(h / (size * 1.2)) || 1));
+      return textBlock(
+        lines,
+        tx,
+        y + size,
+        size,
+        `font-family="Arial, Helvetica, sans-serif" fill="${e.color ?? ink}"${e.bold ? ' font-weight="700"' : ''}`,
+        1.2,
+        anchor,
+      );
+    })
+    .join('');
+}
+
+/**
  * The slide as a standalone SVG (1920×1080) in the same layouts as the canvas: text, poll bars, scale tallies,
  * the word cloud and open-ended answers. Pure, so it can be tested and drawn to a canvas through a data: URL.
  */
-export function slideSvg(s: Slide, page?: { index: number; count: number }): string {
+export function slideSvg(
+  s: Slide,
+  page?: { index: number; count: number },
+  assets: Record<string, Pick<ImageAsset, 'data' | 'mime'>> = {},
+): string {
   const W = SLIDE_PNG_W,
     H = SLIDE_PNG_H,
     M = 115,
@@ -167,6 +244,8 @@ export function slideSvg(s: Slide, page?: { index: number; count: number }): str
     ink = isDark(bg) ? '#ffffff' : '#25252c',
     font = `font-family="Arial, Helvetica, sans-serif" fill="${ink}"`,
     parts: string[] = [`<rect width="${W}" height="${H}" fill="${bg}"/>`];
+  // A blank slide with positioned elements (R4-Q2) draws only them, as on the canvas.
+  if (usesElements(s)) s = { ...s, layout: 'blank', title: '' };
   const heading = (y = M + 84) => {
     const lines = wrapText(s.title, 84, W - M * 2, 2);
     parts.push(textBlock(lines, M, y, 84, `${font} font-weight="700"`, 1.2));
@@ -314,6 +393,7 @@ export function slideSvg(s: Slide, page?: { index: number; count: number }): str
       break;
     }
   }
+  parts.push(elementsSvg(s, assets, ink));
   if (page)
     parts.push(
       textBlock([`${page.index + 1} / ${page.count}`], W - 48, H - 36, 26, `${font} opacity="0.5"`, 1.3, 'end'),
@@ -334,10 +414,14 @@ export function slidePngName(title: string, index: number, count: number): strin
 }
 
 /** Draw a slide to a PNG (browser only). The SVG goes through a data: URL, which keeps the canvas untainted. */
-export async function slidePng(s: Slide, page?: { index: number; count: number }): Promise<Blob> {
+export async function slidePng(
+  s: Slide,
+  page?: { index: number; count: number },
+  assets: Record<string, Pick<ImageAsset, 'data' | 'mime'>> = {},
+): Promise<Blob> {
   const img = new Image();
   img.decoding = 'async';
-  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(slideSvg(s, page));
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(slideSvg(s, page, assets));
   await img.decode();
   const canvas = document.createElement('canvas');
   canvas.width = SLIDE_PNG_W;
@@ -349,11 +433,15 @@ export async function slidePng(s: Slide, page?: { index: number; count: number }
 }
 
 /** Every slide as a PNG, packed into one ZIP (browser only). */
-export async function deckPngZip(title: string, deck: DeckData): Promise<Blob> {
+export async function deckPngZip(
+  title: string,
+  deck: DeckData,
+  assets: Record<string, Pick<ImageAsset, 'data' | 'mime'>> = {},
+): Promise<Blob> {
   const { zipSync } = await import('fflate');
   const files: Record<string, Uint8Array> = {};
   for (let k = 0; k < deck.slides.length; k++) {
-    const blob = await slidePng(deck.slides[k], { index: k, count: deck.slides.length });
+    const blob = await slidePng(deck.slides[k], { index: k, count: deck.slides.length }, assets);
     files[slidePngName(title, k, deck.slides.length)] = new Uint8Array(await blob.arrayBuffer());
   }
   return new Blob([zipSync(files, { level: 0 }) as BlobPart], { type: 'application/zip' });

@@ -703,7 +703,7 @@ function VideoEditor({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
  * player has focus: J or ← back 10 s, L or → forward 10 s, K or space play/pause, < and > slower and faster.
  * The trim window and the cut-out ranges are enforced whichever way the time changes.
  */
-function VideoPlayer({
+export function VideoPlayer({
   item,
   src,
   onStop,

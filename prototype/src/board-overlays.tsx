@@ -28,12 +28,14 @@ import { isShapeKind } from './shapes';
 import { makeCustomShape, addCustomShape, loadCustomShapes, storeCustomShapes } from './custom-shapes';
 import { PropertiesInspector } from './inspector';
 import { DeckPresenter } from './widgets-activities';
+import { useImageDeck } from './use-image-deck';
 import { ReactionLayer } from './collab-extras';
 import { copyText, objectLink } from './use-deep-links';
 import { linkOf, unlinkMermaid } from './mermaid-link';
 
 export function BoardOverlays() {
-  const app = useApp();
+  const app = useApp(),
+    imageDeck = useImageDeck();
   const {
     library,
     dashboard,
@@ -210,6 +212,11 @@ export function BoardOverlays() {
                 display(`Created a deck with ${(deck.data as { slides: unknown[] }).slides.length} slides.`);
               },
             } as MenuEntry,
+            {
+              // R4-Q2: each selected frame drawn as a picture on its own slide.
+              label: 'Turn frames into image slides',
+              run: () => void imageDeck(selected),
+            } as MenuEntry,
           ]
         : []),
       ...(types.some(t => t.type !== 'frame')
@@ -379,7 +386,7 @@ export function BoardOverlays() {
           onColorPicked={app.rememberColor}
         />
       )}
-      <DeckPresenter board={board} update={update} boardRef={boardRef} />
+      <DeckPresenter board={board} update={update} boardRef={boardRef} assets={app.assets} />
       <ReactionLayer />
     </>
   );

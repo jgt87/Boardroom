@@ -23,7 +23,9 @@ import {
   FileDown,
   Code2,
   Undo2,
+  Images,
 } from 'lucide-react';
+import { useImageDeck } from './use-image-deck';
 import { InsertShapeOnLine } from './insert-shape-menu';
 import { isCallout, resetCalloutTail } from './diagram-extras';
 import { GifControls, ImageAdjustControls } from './image-tools';
@@ -73,6 +75,7 @@ function coreActions(item: Item, ctx: WidgetCtx): WidgetAction[] {
 }
 
 export function SelectionBars() {
+  const imageDeck = useImageDeck();
   const {
     allShapes,
     assets,
@@ -547,6 +550,14 @@ export function SelectionBars() {
                 }
               >
                 <StickyNote size={17} />
+              </button>
+              <button
+                className="icon-button"
+                aria-label="Make an image slide from this frame"
+                title="New Slides deck with this frame as an image slide"
+                onClick={() => void imageDeck([selectedItem.id])}
+              >
+                <Images size={17} />
               </button>
               {linkOf(selectedItem) && (
                 <button
