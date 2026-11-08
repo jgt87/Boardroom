@@ -8,6 +8,7 @@ import type { WidgetSpec } from './widget-types.ts';
 import { presetSize } from './frame-presets.ts';
 import { validateItemStatus } from './board-settings.ts';
 import { validCuts, validRate } from './media-playback.ts';
+import { docSearchText, validateDocThreads, type DocThread } from './doc-rich.ts';
 
 // ---- URLs ------------------------------------------------------------------------------------
 /** Normalise a user-entered web address to an https URL, or throw a readable error. */
@@ -445,8 +446,21 @@ export const mediaSpecs: WidgetSpec[] = [
       const d = dataOf(i);
       if (typeof d.markdown !== 'string' || d.markdown.length > 60000) fail('Invalid doc content.');
       validateItemStatus(d);
+      // Comment threads anchored to Doc text (R4-Q4).
+      try {
+        validateDocThreads(d.comments);
+      } catch (e) {
+        fail((e as Error).message);
+      }
     },
-    searchText: i => i.data?.markdown ?? '',
+    // Date chips read as dates and comment markers are left out; the comments themselves are searchable too.
+    searchText: i =>
+      [
+        docSearchText(String(i.data?.markdown ?? '')),
+        ...((Array.isArray(i.data?.comments) ? i.data.comments : []) as DocThread[]).flatMap(t =>
+          t.messages.map(m => m.text),
+        ),
+      ].join('\n'),
   },
   {
     kind: 'wireframe',

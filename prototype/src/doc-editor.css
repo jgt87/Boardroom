@@ -1,0 +1,242 @@
+/* Richer Doc editor (R4-Q4): date chips, comment highlights and threads, the selected-blocks bar. */
+.doc-date {
+  display: inline;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--hover);
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.doc-comment {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, var(--primary) 55%, transparent);
+}
+.doc-comment.doc-comment-resolved {
+  background: transparent;
+  border-bottom: 1px dashed var(--border-strong);
+}
+.doc-comment.doc-comment-active {
+  background: color-mix(in srgb, var(--primary) 26%, transparent);
+}
+.doc-object-link {
+  color: var(--primary);
+}
+.canvas-doc-object .canvas-doc-tools {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.canvas-doc-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.doc-comments-toggle[aria-pressed='true'] {
+  background: var(--selected);
+}
+
+/* Popovers inside the Doc (date picker, comment composer) share the link popover look. */
+.doc-popover {
+  flex-wrap: wrap;
+}
+.doc-popover input[type='date'] {
+  flex: 1;
+}
+.doc-popover textarea,
+.doc-thread-reply textarea {
+  flex-basis: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font: inherit;
+  resize: vertical;
+}
+.doc-comment-quote,
+.doc-thread-quote q {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.doc-comment-quote {
+  flex-basis: 100%;
+  font-style: italic;
+}
+.doc-primary {
+  background: var(--primary);
+  color: var(--on-primary);
+  border: 1px solid var(--primary);
+}
+
+/* The side list of threads. */
+.doc-comments-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 240px;
+  max-width: 70%;
+  overflow: auto;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  font:
+    12px Arial,
+    sans-serif;
+  color: var(--ink);
+  scrollbar-gutter: stable;
+}
+.doc-comments-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.doc-comments-panel h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.doc-comments-panel h4 {
+  margin: 16px 0 4px;
+  font-size: 12px;
+}
+.doc-comments-empty {
+  margin: 4px 0;
+  color: var(--muted);
+}
+.doc-thread-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.doc-thread {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.doc-thread.active {
+  box-shadow: inset 3px 0 0 var(--primary);
+  padding-left: 8px;
+}
+.doc-thread.resolved .doc-thread-messages {
+  color: var(--muted);
+}
+.doc-thread-quote {
+  display: block;
+  width: 100%;
+  margin: 0 0 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.doc-thread-quote.detached {
+  cursor: default;
+}
+.doc-thread-flag {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--hover);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+.doc-thread-messages {
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+}
+.doc-thread-messages li + li {
+  margin-top: 6px;
+}
+.doc-thread-messages small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.doc-thread-messages p {
+  margin: 2px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.doc-thread-reply {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.doc-thread-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+.doc-comments-panel button:not(.doc-thread-quote) {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.doc-comments-panel .doc-danger {
+  color: var(--danger);
+}
+.doc-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.doc-comments-panel .doc-icon-button {
+  width: 24px;
+  padding: 0;
+}
+
+/* The bar for selected blocks: along the bottom of the Doc while blocks are selected. */
+.doc-block-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  background: var(--selected);
+  font:
+    12px Arial,
+    sans-serif;
+  color: var(--ink);
+}
+.doc-block-bar span {
+  margin-right: auto;
+}
+.doc-block-bar button {
+  height: 24px;
+  min-width: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.doc-block-bar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (hover: hover) {
+  .doc-block-bar button:not(:disabled):hover,
+  .doc-comments-panel button:not(.doc-thread-quote):hover {
+    background: var(--hover);
+  }
+  .doc-thread-quote:hover q {
+    color: var(--ink);
+  }
+}

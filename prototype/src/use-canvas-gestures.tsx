@@ -26,6 +26,8 @@ import { canTailTarget, moveConnectorLabel, pointOnCalloutTail, setCalloutTail }
 import { expandGroups, editableIds, moveIds, duplicateItems } from './arrange';
 import { adoptIntoContainers, insertionPreview } from './autolayout';
 import { canCopyToRecords, copyToRecords, recordDropAt } from './record-canvas';
+import { canDropIntoDoc, dropIntoDoc } from './doc-rich';
+import { docDropAt } from './doc-drop';
 import { adoptGridObjects, detachGridObjects, gridDropAt } from './grid-canvas';
 import { stackNext, simplify, strokeFromPoints, eraseAt, eraseAlong, nearestAlong } from './board-tools';
 import { pressureOf, settlePressure } from './pen-pressure';
@@ -76,6 +78,7 @@ export function useCanvasGestures(core: BoardCore) {
     longPress = useRef<{ id: number; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null>(null);
   const {
     setDropLine,
+    library,
     display,
     board,
     boardRef,
@@ -568,16 +571,25 @@ export function useCanvasGestures(core: BoardCore) {
         const next = transformed(g, p, e.shiftKey, e.altKey);
         setDraft(next.board);
         setGuides(next.guides);
-        const drop =
-          g.mode === 'move' ? recordDropAt(document.elementsFromPoint(e.clientX, e.clientY), e.clientX) : null;
+        const under = g.mode === 'move' ? document.elementsFromPoint(e.clientX, e.clientY) : [];
+        const drop = g.mode === 'move' ? recordDropAt(under, e.clientX) : null;
         const target =
           drop && canCopyToRecords(g.board, g.ids, drop) ? g.board.items.find(i => i.id === drop.targetId) : null;
+        // Over an open Doc (R4-Q4): the line shows the block boundary the objects' text would go in at.
+        const docDrop = !target && g.mode === 'move' && !g.duplicate ? docDropAt(under, e.clientY) : null,
+          doc =
+            docDrop && canDropIntoDoc(g.board, g.ids, docDrop)
+              ? g.board.items.find(i => i.id === docDrop.targetId)
+              : null,
+          docY = doc && docDrop ? toWorld(e.clientX, docDrop.lineY).y : 0;
         setDropLine(
           target
             ? { x1: target.x + 12, x2: target.x + target.w - 12, y1: p.y, y2: p.y }
-            : g.mode === 'move'
-              ? (insertionPreview(next.board, g.ids)?.line ?? null)
-              : null,
+            : doc
+              ? { x1: doc.x + 12, x2: doc.x + doc.w - 12, y1: docY, y2: docY }
+              : g.mode === 'move'
+                ? (insertionPreview(next.board, g.ids)?.line ?? null)
+                : null,
         );
       }
     } else if (g.mode === 'marquee')
@@ -740,11 +752,22 @@ export function useCanvasGestures(core: BoardCore) {
       // A sheet released before it tore off springs back onto the pad: nothing is taken.
       if (moved && !(g.peel && !g.peel.live.detached)) {
         const next = transformed(g, final, e.shiftKey, e.altKey).board;
-        const drop =
-          g.mode === 'move' ? recordDropAt(document.elementsFromPoint(e.clientX, e.clientY), e.clientX) : null;
+        const under = g.mode === 'move' ? document.elementsFromPoint(e.clientX, e.clientY) : [];
+        const drop = g.mode === 'move' ? recordDropAt(under, e.clientX) : null;
+        const docDrop = g.mode === 'move' && !g.duplicate ? docDropAt(under, e.clientY) : null;
         if (drop && canCopyToRecords(g.board, g.ids, drop)) {
           update(copyToRecords(g.board, g.ids, drop));
           display('Copied to records');
+        } else if (docDrop && canDropIntoDoc(g.board, g.ids, docDrop)) {
+          // The objects stay where they were; their text and a link to each go into the Doc, as one undo step.
+          const into = dropIntoDoc(g.board, g.ids, docDrop, library.activeId);
+          if (into === g.board) display('The doc is full. Remove some text before adding more.');
+          else {
+            update(into);
+            display(
+              `Added to the doc with a link to the ${g.ids.length === 1 ? 'object' : 'objects'}. Undo removes it.`,
+            );
+          }
         } else {
           const cell = g.mode === 'move' ? gridDropAt(document.elementsFromPoint(e.clientX, e.clientY)) : null;
           const inGrid = cell ? adoptGridObjects(next, g.ids, cell, e.ctrlKey || e.metaKey) : next;

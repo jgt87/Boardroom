@@ -14,7 +14,9 @@ export type DocBlock =
   | { kind: 'table'; rows: string[][] }
   | { kind: 'rule' };
 
-const inline = (s: string) => plain(s.replace(/\+\+(\S(?:[\s\S]*?\S)?)\+\+/g, '$1')).replace(/\\([\\`*_[\]~+])/g, '$1');
+// Backslash escapes of any ASCII punctuation are dropped (text dropped in from board objects escapes more of it).
+const inline = (s: string) =>
+  plain(s.replace(/\+\+(\S(?:[\s\S]*?\S)?)\+\+/g, '$1')).replace(/\\([!-/:-@[-`{-~])/g, '$1');
 
 /** The printable blocks of a Doc, in order. Inline formatting is reduced to plain text. */
 export function docBlocks(md: string): DocBlock[] {

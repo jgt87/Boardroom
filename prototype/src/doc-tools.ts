@@ -34,6 +34,8 @@ export type SlashCommand = {
   list?: 'bullet' | 'number' | 'check';
   callout?: CalloutKind;
   divider?: boolean;
+  /** Open the date picker and insert a date chip (R4-Q4). */
+  date?: boolean;
 };
 export const slashCommands: SlashCommand[] = [
   { id: 'text', label: 'Text', hint: 'Plain paragraph', block: 'p' },
@@ -52,6 +54,7 @@ export const slashCommands: SlashCommand[] = [
   })),
   { id: 'code', label: 'Code', hint: 'Monospaced block', block: 'pre' as const },
   { id: 'divider', label: 'Divider', hint: 'Horizontal line', divider: true },
+  { id: 'date', label: 'Date', hint: 'Insert a date chip', date: true },
 ];
 /** Commands whose label or id contains the query (after the slash). */
 export const filterSlash = (query: string) => {
@@ -152,8 +155,10 @@ export const docShortcutHelp = [
   ['Ctrl+Alt+6', 'Checklist'],
   ['Esc', 'Select the current block'],
   ['Shift+Up/Down', 'Extend the block selection'],
-  ['Alt+Up/Down', 'Move the selected blocks'],
+  ['Alt+Shift+Up/Down', 'Move the selected blocks'],
   ['Delete', 'Delete the selected blocks'],
+  ['Ctrl+C / Ctrl+X', 'Copy or cut the selected blocks as Markdown'],
+  ['/date', 'Insert a date'],
 ] as const;
 
 /** The ":name" being typed right before the caret (at least two characters), or null. */
