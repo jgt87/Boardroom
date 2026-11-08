@@ -18,7 +18,7 @@ import {
   Images,
   LayoutGrid,
 } from 'lucide-react';
-import type { Board, Item } from './model';
+import type { Board, ImageAsset, Item } from './model';
 import { createItem } from './model';
 import type { WidgetView, WidgetCtx } from './widget-types';
 import { validateWidget } from './widget-specs';
@@ -70,6 +70,10 @@ import { FocusView } from './focus-view';
 import './widgets-activities.css';
 import { BrandSwatches } from './brand-kit-panel';
 import { ColorMenu } from './color-menu';
+import { SlideElementsLayer } from './slide-elements-view';
+import type { SlideMedia } from './slide-elements-view';
+import { usesElements } from './slide-elements';
+import { addVideoElement, boardVideos, removeElement, setElementText } from './deck-media';
 
 export const DECK_EVENT = 'boardroom:present-deck';
 /** Ask a canvas deck to show a slide (detail { id, index }), e.g. the one chosen in the slide sorter. */
@@ -152,12 +156,46 @@ function SlideFace({
   edit,
   onChange,
   onRespond,
+  media,
+  playing,
+  onPlaying,
+  onElements,
+  still,
 }: {
+  /** A picture of the slide (thumbnails): videos do not offer to play. */
+  still?: boolean;
   slide: Slide;
   edit: boolean;
   onChange?: (change: Partial<Slide>) => void;
   onRespond?: Respond;
+  /** Assets and board for pictures and videos placed on the slide (R4-Q2); thumbnails leave it out. */
+  media?: SlideMedia;
+  playing?: string | null;
+  onPlaying?: (id: string | null) => void;
+  /** Apply a change to the deck from an element (text edit, remove). */
+  onElements?: Respond;
 }) {
+  const layer = (
+    <SlideElementsLayer
+      slide={slide}
+      media={media}
+      edit={edit}
+      still={still}
+      playing={playing}
+      onPlaying={onPlaying}
+      onText={onElements ? (id, text) => onElements(d => setElementText(d, slide.id, id, text)) : undefined}
+      onRemove={onElements ? id => onElements(d => removeElement(d, slide.id, id)) : undefined}
+    />
+  );
+  if (usesElements(slide))
+    return (
+      <div
+        className={`slide-face slide-layout-blank slide-positioned ${darkBackground(slide.background) ? 'slide-dark' : ''}`}
+        style={{ background: slide.background }}
+      >
+        {layer}
+      </div>
+    );
   const field = (key: 'title' | 'body' | 'body2', label: string, multiline: boolean, className: string) => {
     const value = slide[key] ?? '';
     if (edit)
@@ -355,6 +393,7 @@ function SlideFace({
           </ul>
         </>
       )}
+      {layer}
     </div>
   );
 }
@@ -411,13 +450,15 @@ function useDeckEditing(item: Item, ctx: WidgetCtx, initial: number) {
     });
     setIndex(selected);
   };
-  return { d, current, slide, setIndex, set, locked: !!item.locked };
+  const media: SlideMedia = { assets: ctx.assets, board: ctx.board };
+  return { d, current, slide, setIndex, set, locked: !!item.locked, media };
 }
 type DeckEditing = ReturnType<typeof useDeckEditing>;
 
 /** Add slide, layout, background, duplicate, delete and response controls for the visible slide. */
 function DeckBar({ deck }: { deck: DeckEditing }) {
-  const { d, slide, set, locked } = deck;
+  const { d, slide, set, locked, media } = deck,
+    videos = boardVideos(media.board);
   const add = (choice: string) => {
     if (choice.startsWith('layout:')) set(x => insertSlide(x, newSlide(choice.slice(7) as SlideLayout)));
     else {
@@ -510,13 +551,32 @@ function DeckBar({ deck }: { deck: DeckEditing }) {
           <RotateCcw size={13} />
         </button>
       )}
+      {videos.length > 0 && (
+        <select
+          aria-label="Add a video to this slide"
+          title="Place a board video or Talktrack recording on this slide; it plays while presenting"
+          value=""
+          onChange={e => {
+            const video = videos.find(v => v.id === e.target.value);
+            e.target.value = '';
+            if (video) set(x => addVideoElement(x, slide.id, video));
+          }}
+        >
+          <option value="">+ Video…</option>
+          {videos.map(v => (
+            <option key={v.id} value={v.id}>
+              {(v.text || 'Video').slice(0, 60)}
+            </option>
+          ))}
+        </select>
+      )}
     </fieldset>
   );
 }
 
 /** The editable visible slide. */
 function DeckStage({ deck }: { deck: DeckEditing }) {
-  const { slide, set, locked } = deck;
+  const { slide, set, locked, media } = deck;
   return (
     <div className="canvas-deck-stage" {...canvasControl} onKeyDown={e => e.stopPropagation()}>
       <SlideFace
@@ -525,6 +585,8 @@ function DeckStage({ deck }: { deck: DeckEditing }) {
         edit={!locked}
         onChange={change => set(x => updateSlide(x, slide.id, change))}
         onRespond={locked ? undefined : set}
+        media={media}
+        onElements={locked ? undefined : set}
       />
     </div>
   );
@@ -740,7 +802,7 @@ function SlideSorter({ item, ctx, onClose }: { item: Item; ctx: WidgetCtx; onClo
                   }}
                 >
                   <span className="slide-thumb-face" aria-hidden="true">
-                    <SlideFace slide={s} edit={false} />
+                    <SlideFace slide={s} edit={false} media={deck.media} still />
                   </span>
                   <span className="slide-thumb-caption">
                     <span className="sr-only">Slide </span>
@@ -773,13 +835,17 @@ export function DeckPresenter({
   board,
   update,
   boardRef,
+  assets = {},
 }: {
   board: Board;
   update: (board: Board) => void;
   boardRef: { current: Board };
+  /** Stored pictures and videos placed on slides (R4-Q2). */
+  assets?: Record<string, ImageAsset>;
 }) {
   const [target, setTarget] = useState<{ id: string; index: number } | null>(null),
     [showNotes, setShowNotes] = useState(false),
+    [playing, setPlaying] = useState<string | null>(null),
     close = useRef<HTMLButtonElement>(null),
     opener = useRef<Element | null>(null);
   useEffect(() => {
@@ -807,8 +873,12 @@ export function DeckPresenter({
     if (deck) close.current?.focus();
   }, [!!deck]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!target || !item || !deck) return null;
-  const go = (k: number) => setTarget({ id: item.id, index: Math.max(0, Math.min(deck.slides.length - 1, k)) });
-  const slide = deck.slides[index];
+  const go = (k: number) => {
+    setPlaying(null);
+    setTarget({ id: item.id, index: Math.max(0, Math.min(deck.slides.length - 1, k)) });
+  };
+  const slide = deck.slides[index],
+    firstVideo = slide.elements?.find(e => e.kind === 'video');
   return (
     <div
       className="deck-presenter"
@@ -842,6 +912,10 @@ export function DeckPresenter({
         } else if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.altKey) {
           e.preventDefault();
           setShowNotes(s => !s);
+        } else if ((e.key === 'k' || e.key === 'K') && firstVideo && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          // K starts the slide's first video (the player then takes K for play/pause) or stops the one playing.
+          e.preventDefault();
+          setPlaying(p => (p ? null : firstVideo.id));
         }
         if (e.key !== 'Tab') e.stopPropagation();
       }}
@@ -868,6 +942,9 @@ export function DeckPresenter({
                   });
                 }
           }
+          media={{ assets, board }}
+          playing={playing}
+          onPlaying={setPlaying}
         />
       </div>
       <div className="deck-presenter-bar">
@@ -998,7 +1075,7 @@ export const activityViews: WidgetView[] = [
         icon: <FileDown size={17} />,
         run: () => {
           void import('./deck-tools')
-            .then(m => m.deckPdf(item.text || 'Slides', item.data as DeckData))
+            .then(m => m.deckPdf(item.text || 'Slides', item.data as DeckData, ctx.assets))
             .then(blob => saveBlobFile(blob, pdfFileName(item.text || 'Slides')))
             .catch(() => ctx.display('The deck could not be exported as PDF.'));
         },
@@ -1012,7 +1089,7 @@ export const activityViews: WidgetView[] = [
             k = visibleIndex(item);
           void import('./deck-tools')
             .then(async m => {
-              const blob = await m.slidePng(d.slides[k]);
+              const blob = await m.slidePng(d.slides[k], undefined, ctx.assets);
               saveBlobFile(blob, m.slidePngName(item.text || 'Slides', k, d.slides.length));
               ctx.display(`Slide ${k + 1} exported as PNG.`);
             })
@@ -1027,7 +1104,10 @@ export const activityViews: WidgetView[] = [
             title = item.text || 'Slides';
           void import('./deck-tools')
             .then(async m => {
-              saveBlobFile(await m.deckPngZip(title, d), `${pdfFileName(title).replace(/\.pdf$/i, '')} - slides.zip`);
+              saveBlobFile(
+                await m.deckPngZip(title, d, ctx.assets),
+                `${pdfFileName(title).replace(/\.pdf$/i, '')} - slides.zip`,
+              );
               ctx.display(`${d.slides.length} ${d.slides.length === 1 ? 'slide' : 'slides'} exported as PNG files.`);
             })
             .catch(() => ctx.display('The slides could not be exported as PNG.'));

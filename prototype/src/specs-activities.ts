@@ -4,6 +4,8 @@
 import type { Board, Item, WidgetKind } from './model.ts';
 import type { WidgetSpec } from './widget-types.ts';
 import { validateItemStatus } from './board-settings.ts';
+import { validateSlideElements, elementText } from './slide-elements.ts';
+import type { SlideElement } from './slide-elements.ts';
 
 export const slideLayouts = [
   'title',
@@ -55,6 +57,11 @@ export type Slide = {
   answers?: SlideAnswer[];
   /** Presenter notes, shown only to the presenter (N while presenting the deck). */
   notes?: string;
+  /**
+   * Positioned text boxes, pictures and videos (R4-Q2: PowerPoint layouts, PDF pages, frame images). A blank
+   * slide with elements draws only them; other layouts draw them over their fields. Optional: older decks load.
+   */
+  elements?: SlideElement[];
 };
 export const SLIDE_NOTES_MAX = 2000;
 export type DeckData = { slides: Slide[]; current: number };
@@ -154,6 +161,7 @@ export function validateDeck(d: DeckData): void {
       !hex(s.background)
     )
       fail('Invalid slide.');
+    validateSlideElements(s.elements);
     if (s.options !== undefined) {
       if (
         !Array.isArray(s.options) ||
@@ -410,6 +418,7 @@ export const slideText = (s: Slide) =>
     ...(s.options ?? []).map(o => o.label),
     ...(s.words ?? []).map(w => w.text),
     ...(s.answers ?? []).map(a => a.text),
+    elementText(s),
   ].join(' ');
 
 // ---- Open-ended activity (item 82) --------------------------------------------------------------------

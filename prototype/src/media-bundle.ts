@@ -4,6 +4,7 @@ import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import type { Zippable } from 'fflate';
 import type { Board, ImageAsset } from './model.ts';
 import { assetByteLimit, assetMimes, MAX_MEDIA_BYTES } from './model-ext.ts';
+import { deckAssetIds } from './slide-elements.ts';
 
 export const BUNDLE_FORMAT = 'boardroom-bundle';
 export const BUNDLE_VERSION = 1;
@@ -46,9 +47,11 @@ export function bytesDataUrl(bytes: Uint8Array, mime: string): string {
 const referenced = (board: { items?: unknown }, originals = true) =>
   new Set(
     (Array.isArray(board.items) ? board.items : [])
-      .flatMap((i: { assetId?: unknown; originalAssetId?: unknown }) =>
-        originals ? [i?.assetId, i?.originalAssetId] : [i?.assetId],
-      )
+      .flatMap((i: { assetId?: unknown; originalAssetId?: unknown; type?: unknown; data?: unknown }) => [
+        ...(originals ? [i?.assetId, i?.originalAssetId] : [i?.assetId]),
+        // Pictures and videos placed on Slides slides (R4-Q2).
+        ...(i?.type === 'slides' ? deckAssetIds(i.data) : []),
+      ])
       .filter((id): id is string => typeof id === 'string' && !!id),
   );
 export const limitFor = assetByteLimit;

@@ -18,8 +18,11 @@ import {
   SmilePlus,
   Map as MapIcon,
   ArrowDownWideNarrow,
+  Images,
 } from 'lucide-react';
-import type { Board, Item, FrameFormat } from './model';
+import type { Board, Item, FrameFormat, ImageAsset } from './model';
+import { frameVideos } from './deck-media';
+import { PresentMedia } from './present-media';
 import { slideObjectAt, slideObjects } from './presentation-tools';
 import { reactionChoices, sendReaction } from './collab-extras';
 import { framePresets, presetSize } from './frame-presets';
@@ -135,8 +138,11 @@ export function PresentationPanel({
   onHide,
   onNotes,
   onSort,
+  onImageDeck,
 }: {
   board: Board;
+  /** Make a Slides deck with one image slide per presented frame (R4-Q2). */
+  onImageDeck?: () => void;
   onAdd?: () => void;
   /** Order the frames by their position on the board (track R5). */
   onSort?: () => void;
@@ -255,6 +261,16 @@ export function PresentationPanel({
           {onSort && frames.length > 1 && (
             <button className="add-frame" onClick={onSort} title="Order frames by rows, top to bottom, left to right">
               <ArrowDownWideNarrow size={15} /> Sort by position
+            </button>
+          )}
+          {onImageDeck && (
+            <button
+              className="add-frame"
+              disabled={!slides.length}
+              onClick={onImageDeck}
+              title="New Slides deck with each presented frame as an image slide, in this order"
+            >
+              <Images size={15} /> Image slides from frames
             </button>
           )}
           <button className="primary present-start" disabled={!slides.length} onClick={() => onStart(0)}>
@@ -398,7 +414,10 @@ export function PresentOverlay({
   onStartVote,
   onEndVote,
   onVote,
+  assets = {},
 }: {
+  /** Stored video files, so videos on the current frame can play (R4-Q2). */
+  assets?: Record<string, ImageAsset>;
   board: Board;
   start: number;
   size: { w: number; h: number };
@@ -424,9 +443,14 @@ export function PresentOverlay({
     [popup, setPopup] = useState<Window | null>(null),
     [reacting, setReacting] = useState(false),
     [zoomed, setZoomed] = useState<{ frame: string; item: Item } | null>(null),
+    [playingId, setPlaying] = useState<string | null>(null),
     exit = useRef<HTMLButtonElement>(null);
   const safe = Math.max(0, Math.min(index, frames.length - 1)),
     frame = frames[safe],
+    videos = useMemo(() => (frame ? frameVideos(board, frame) : []), [board, frame]),
+    // A video stops when the slide changes (it is no longer on the current frame).
+    playing = videos.some(v => v.id === playingId) ? playingId : null,
+    videosRef = useLatest(videos),
     next = frames[safe + 1],
     zoom = zoomed && frame && zoomed.frame === frame.id ? zoomed.item : null,
     exitRef = useLatest(onExit),
@@ -487,6 +511,16 @@ export function PresentOverlay({
   );
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      // A playing video's player takes its own keys (J, K, L, arrows); Esc stops it.
+      if ((e.target as HTMLElement).closest?.('.present-media-player')) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          setPlaying(null);
+          exit.current?.focus();
+        }
+        return;
+      }
       if ((e.key === 'Enter' || e.key === ' ') && (e.target as HTMLElement).closest?.('button')) {
         e.stopImmediatePropagation();
         return;
@@ -518,11 +552,15 @@ export function PresentOverlay({
       } else if (plain && (e.key === 'n' || e.key === 'N')) {
         e.stopImmediatePropagation();
         setShowNotes(s => !s);
+      } else if (plain && (e.key === 'k' || e.key === 'K') && videosRef.current.length) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setPlaying(p => (p && videosRef.current.some(v => v.id === p) ? null : videosRef.current[0].id));
       } else e.stopImmediatePropagation();
     };
     addEventListener('keydown', key, true);
     return () => removeEventListener('keydown', key, true);
-  }, [frames.length, exitRef, gridRef, zoomRef]);
+  }, [frames.length, exitRef, gridRef, zoomRef, videosRef]);
   if (zoomed && frame && zoomed.frame !== frame.id) setZoomed(null);
   if (!frame) return null;
   const cam = zoom ? fitFrame(zoom, size, 96) : fitFrame(frame, size),
@@ -592,6 +630,16 @@ export function PresentOverlay({
           </button>
         </span>
       ))}
+      {!grid && (
+        <PresentMedia
+          videos={videos}
+          assets={assets}
+          cam={cam}
+          origin={origin}
+          playing={playing}
+          onPlaying={setPlaying}
+        />
+      )}
       {zoom && <p className="present-zoom-hint">Zoomed in. Click anywhere or press Esc to return to the slide.</p>}
       {showNotes && (
         <aside className="present-notes floating" aria-label="Presenter notes">
