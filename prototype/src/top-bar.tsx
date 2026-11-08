@@ -43,6 +43,7 @@ export function TopBar() {
     docImportFile,
     docImportKind,
     importDrawioShapes,
+    importVisioShapes,
     importWhiteboardFile,
     importDocument,
     importStickies,
@@ -533,6 +534,7 @@ export function TopBar() {
           const f = e.target.files?.[0];
           e.target.value = '';
           if (f && docImportKind.current === 'drawio') void importDrawioShapes(f);
+          else if (f && docImportKind.current === 'vsdx') void importVisioShapes(f);
           else if (f && docImportKind.current === 'stickies') void importStickies(f);
           else if (f && docImportKind.current === 'whiteboard') void importWhiteboardFile(f, true);
           else if (f) void importDocument(f, undefined, docImportKind.current === 'grid' ? 'grid' : undefined);
