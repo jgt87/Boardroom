@@ -109,6 +109,7 @@ export const kindIcons: Record<string, typeof Layers3> = {
   'import:table': FileSpreadsheet,
   'import:grid': Grid3x3,
   'import:drawio': Workflow,
+  'import:vsdx': Workflow,
   'import:whiteboard': FileJson,
   'import:docx': FileText,
   'import:odt': FileText,
@@ -427,6 +428,11 @@ export function ToolGallery({
         kind: 'import:drawio',
         description: 'A .drawio file becomes native shapes and lines',
       },
+      {
+        label: 'Visio as shapes',
+        kind: 'import:vsdx',
+        description: 'A .vsdx file becomes native shapes, text and connectors',
+      },
       { label: 'Mind map', kind: 'mindmap', description: 'Organize connected ideas' },
     ],
     engage: catalog['Engage activities'],
@@ -468,6 +474,11 @@ export function ToolGallery({
         label: 'Draw.io as shapes',
         kind: 'import:drawio',
         description: 'A .drawio file becomes native shapes and lines',
+      },
+      {
+        label: 'Visio as shapes',
+        kind: 'import:vsdx',
+        description: 'A .vsdx file becomes native shapes, text and connectors',
       },
       {
         label: 'Whiteboard JSON (REST export)',

@@ -52,6 +52,7 @@ import { AutoLayoutGapHandle } from './autolayout-gap-handle';
 export function CanvasSurface() {
   const {
     dropDrawio,
+    importVisioShapes,
     dropSpreadsheets,
     importDocument,
     importWhiteboardFile,
@@ -243,13 +244,20 @@ export function CanvasSurface() {
           }
           e.preventDefault();
           const diagrams = files.filter(f => /\.(drawio|xml)$/i.test(f.name));
+          // Visio drawings become native shapes, text and connectors (decision Q18).
+          const visio = files.filter(f => /\.vsdx$/i.test(f.name));
           const documents = files.filter(f => /\.(md|markdown|pptx|docx|odt|odp|rtf|csv|tsv|xlsx)$/i.test(f.name));
           const mermaid = files.filter(f => /\.(mmd|mermaid)$/i.test(f.name));
           const media = files.filter(
             f => /^(video\/|application\/pdf$)/.test(f.type) || /\.(pdf|mp4|webm|mov)$/i.test(f.name),
           );
           const rest = files.filter(
-            f => !diagrams.includes(f) && !documents.includes(f) && !mermaid.includes(f) && !media.includes(f),
+            f =>
+              !diagrams.includes(f) &&
+              !visio.includes(f) &&
+              !documents.includes(f) &&
+              !mermaid.includes(f) &&
+              !media.includes(f),
           );
           const images = rest.filter(
             f => f.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(f.name),
@@ -301,6 +309,12 @@ export function CanvasSurface() {
           }
           // Draw.io files: ask whether they become a draw.io object or native shapes (P2-Q4).
           if (diagrams.length) void dropDrawio(diagrams, toWorld(e.clientX, e.clientY));
+          if (visio.length)
+            void (async () => {
+              const p = toWorld(e.clientX, e.clientY);
+              for (const [k, f] of visio.slice(0, 5).entries())
+                await importVisioShapes(f, { x: p.x + k * 40, y: p.y + k * 40 });
+            })();
           if (images.length) void insertImages(images, toWorld(e.clientX, e.clientY));
         }}
         className={`canvas tool-${tool}`}

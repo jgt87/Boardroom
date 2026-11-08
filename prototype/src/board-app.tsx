@@ -161,7 +161,7 @@ export type Camera = { x: number; y: number; z: number };
 import { noticeDuration, type NoticeAction, type NoticeKind } from './notices';
 /** Which import the shared document file chooser was opened for. */
 type DocImportKind =
-  'markdown' | 'pptx' | 'docx' | 'odt' | 'odp' | 'table' | 'grid' | 'drawio' | 'stickies' | 'whiteboard';
+  'markdown' | 'pptx' | 'docx' | 'odt' | 'odp' | 'table' | 'grid' | 'drawio' | 'vsdx' | 'stickies' | 'whiteboard';
 export type Gesture =
   | {
       mode: 'move' | 'resize' | 'pan' | 'draw' | 'create' | 'marquee' | 'endpoint' | 'bend' | 'lasso' | 'rotate';
@@ -998,6 +998,33 @@ function useBoardCore() {
     }
   }
   /**
+   * A Visio (.vsdx) file as native shapes, text and connectors (decision Q18), every page in a frame named after
+   * it, centred on `at` or the view; one undo step. Loaded on demand.
+   */
+  async function importVisioShapes(file: File, at?: Point) {
+    const center = at ?? toWorld(size.w / 2, size.h / 2);
+    try {
+      const { vsdxToItems, vsdxImportNote, VSDX_MAX_BYTES } = await import('./vsdx-import');
+      if (file.size > VSDX_MAX_BYTES) throw new Error('Visio files up to 50 MB can be imported.');
+      const bytes = new Uint8Array(await file.arrayBuffer()),
+        current = boardRef.current,
+        room = BOARD_OBJECT_LIMIT - current.items.length;
+      if (room <= 0) return display('This prototype supports up to 2,000 objects per board.');
+      const made = vsdxToItems(bytes, center, (t, x, y, f) => createItem(t, x, y, f), room);
+      const latest = boardRef.current;
+      update({
+        ...latest,
+        items: [...latest.items, ...made.items],
+        ...(made.groups.length ? { groups: [...(latest.groups ?? []), ...made.groups] } : {}),
+      });
+      setSelected(made.items.map(i => i.id));
+      setTool('select');
+      display(vsdxImportNote(made));
+    } catch (error) {
+      display((error as Error).message || 'The Visio file could not be imported.', undefined, 'error');
+    }
+  }
+  /**
    * A board exported through another whiteboard's REST API (export-whiteboard.mjs) opens as a new library board;
    * the import message reports what was mapped and what was skipped. Image files in the export are stored first.
    */
@@ -1439,6 +1466,7 @@ function useBoardCore() {
       choice === 'import:odp' ||
       choice === 'import:table' ||
       choice === 'import:drawio' ||
+      choice === 'import:vsdx' ||
       choice === 'import:grid' ||
       choice === 'import:stickies' ||
       choice === 'import:whiteboard'
@@ -1457,11 +1485,13 @@ function useBoardCore() {
                   ? '.odp,application/vnd.oasis.opendocument.presentation'
                   : choice === 'import:drawio'
                     ? '.drawio,.xml,application/xml,text/xml'
-                    : choice === 'import:whiteboard'
-                      ? '.json,application/json'
-                      : choice === 'import:table' || choice === 'import:grid' || choice === 'import:stickies'
-                        ? '.csv,.tsv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                        : '.md,.markdown,text/markdown,text/plain';
+                    : choice === 'import:vsdx'
+                      ? '.vsdx,application/vnd.ms-visio.drawing.main+xml'
+                      : choice === 'import:whiteboard'
+                        ? '.json,application/json'
+                        : choice === 'import:table' || choice === 'import:grid' || choice === 'import:stickies'
+                          ? '.csv,.tsv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                          : '.md,.markdown,text/markdown,text/plain';
         docImportFile.current.click();
       }
       return;
@@ -2127,6 +2157,7 @@ function useBoardCore() {
     insertDrawio,
     dropDrawio,
     importDrawioShapes,
+    importVisioShapes,
     importWhiteboardData,
     importWhiteboardFile,
     importStickies,
