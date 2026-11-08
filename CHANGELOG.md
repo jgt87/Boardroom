@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.0 — 2026-11-08
+
 ### Decided questions: large group
 
 - **Docs:**
