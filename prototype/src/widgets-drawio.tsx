@@ -359,7 +359,7 @@ export const drawioView: WidgetView = {
           });
           if (note) ctx.display(note);
         } catch (error) {
-          ctx.display((error as Error).message);
+          ctx.display((error as Error).message, undefined, 'error');
         }
       },
     },

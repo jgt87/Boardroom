@@ -35,7 +35,7 @@ export function CanvasOrg({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         items: b.items.map(i => (i.id === item.id ? { ...i, data: { ...i.data, nodes: fn(i.data!.nodes) } } : i)),
       }));
     } catch (e) {
-      ctx.display((e as Error).message);
+      ctx.display((e as Error).message, undefined, 'error');
     }
   };
   const chosen = nodes.find(n => n.id === active);
@@ -177,7 +177,7 @@ export function CanvasStory({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         items: b.items.map(i => (i.id === item.id ? { ...i, data: fn(i.data as StoryMap) } : i)),
       }));
     } catch (e) {
-      ctx.display((e as Error).message);
+      ctx.display((e as Error).message, undefined, 'error');
     }
   };
   return (

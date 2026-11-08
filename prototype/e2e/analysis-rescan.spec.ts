@@ -9,7 +9,7 @@ test('shape packs place pack shapes from the Shapes and lines menu', async ({ pa
   await seed(page, empty);
   await page.getByRole('button', { name: 'Shapes and lines', exact: true }).click();
   const menu = page.getByRole('complementary', { name: 'Shapes and lines' });
-  await menu.getByRole('button', { name: /More shapes/ }).click();
+  await menu.getByRole('menuitem', { name: /More shapes/ }).click();
   await menu.getByRole('button', { name: 'BPMN', exact: true }).click();
   await expect(menu.getByRole('button', { name: 'BPMN', exact: true })).toHaveAttribute('aria-pressed', 'true');
   expect(await axeViolations(page)).toEqual([]);
@@ -17,7 +17,7 @@ test('shape packs place pack shapes from the Shapes and lines menu', async ({ pa
   await page.locator('svg.canvas').click({ position: { x: 650, y: 350 } });
   await waitForSave(page, b => b.items.some(i => i.type === 'exclusivegateway'), 'gateway placed');
   await page.getByRole('button', { name: 'Shapes and lines', exact: true }).click();
-  await menu.getByRole('button', { name: /More shapes/ }).click();
+  await menu.getByRole('menuitem', { name: /More shapes/ }).click();
   await menu.getByRole('button', { name: 'Flowchart', exact: true }).click();
   await menu.getByRole('button', { name: 'Document', exact: true }).click();
   await page.locator('svg.canvas').click({ position: { x: 300, y: 300 } });
@@ -196,14 +196,14 @@ test('open-ended responses collect on the canvas and convert to sticky notes', a
 test('reactions float without changing the board; authors label new sticky notes', async ({ page }) => {
   await seed(page, empty);
   await page.getByRole('button', { name: 'Collaborate and review' }).click();
-  await page.getByRole('button', { name: /^Reactions/ }).click();
+  await page.getByRole('menuitem', { name: /^Reactions/ }).click();
   await page.getByRole('button', { name: 'Celebrate', exact: true }).click();
   await expect(page.locator('.reaction-float').first()).toBeAttached();
   await expect(page.locator('[aria-live="polite"]', { hasText: 'Reaction sent: Celebrate' })).toBeAttached();
   expect((await savedBoard(page)).items).toEqual([]);
   await page.getByRole('button', { name: 'Close reactions' }).click();
   await page.getByRole('button', { name: 'Collaborate and review' }).click();
-  await page.getByRole('button', { name: /^Note authors/ }).click();
+  await page.getByRole('menuitem', { name: /^Note authors/ }).click();
   await page.getByRole('textbox', { name: 'Your name on new sticky notes' }).fill('Sam Lee');
   await page.getByRole('checkbox', { name: 'Show authors on sticky notes' }).check();
   await waitForSave(page, b => b.showAuthors === true, 'setting saved');

@@ -6,7 +6,8 @@ import { useLatest } from './use-latest';
 import { deepLinkUrl, parseDeepLink } from './deep-link';
 import { rememberTemplateUse } from './user-templates';
 import { starterUseKey } from './starter-templates';
-import { slideFrames } from './navigation';
+import { describeItem, slideFrames } from './navigation';
+import { announce } from './announce';
 import { parsePenPresets, PEN_PRESETS_KEY, type PenPreset } from './pen-smart';
 import { activityKey, appendActivity, diffActivity, parseActivity } from './activity';
 import {
@@ -157,7 +158,7 @@ export const tools = [
 export type Tool = 'select' | 'hand' | Kind | 'stack' | 'comment';
 export type Camera = { x: number; y: number; z: number };
 /** A one-click follow-up button in the notification. */
-type NoticeAction = { label: string; run: () => void };
+import { noticeDuration, type NoticeAction, type NoticeKind } from './notices';
 /** Which import the shared document file chooser was opened for. */
 type DocImportKind =
   'markdown' | 'pptx' | 'docx' | 'odt' | 'odp' | 'table' | 'grid' | 'drawio' | 'stickies' | 'whiteboard';
@@ -373,12 +374,18 @@ function useBoardCore() {
     noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** One-click follow-ups shown in the notification, e.g. "One sticky per cell" after a grid paste. */
   const [noticeAction, setNoticeAction] = useState<{ message: string; actions: NoticeAction[] } | null>(null);
-  const display = (message: string, action?: NoticeAction | NoticeAction[]) => {
+  const [noticeKind, setNoticeKind] = useState<NoticeKind>('info');
+  /**
+   * Show a notice. `kind: 'error'` (item 148) is announced as an alert and stays at least 8 seconds; the caller
+   * says it is an error, so the wording never has to be guessed.
+   */
+  const display = (message: string, action?: NoticeAction | NoticeAction[], kind: NoticeKind = 'info') => {
     const actions = action ? ([] as NoticeAction[]).concat(action) : [];
     setNotice(message);
+    setNoticeKind(kind);
     setNoticeAction(actions.length ? { message, actions } : null);
     clearTimeout(noticeTimer.current);
-    noticeTimer.current = setTimeout(() => setNotice(''), actions.length ? 8000 : 5000);
+    noticeTimer.current = setTimeout(() => setNotice(''), noticeDuration(kind, actions.length > 0));
   };
   const normalize = (input: Board): Board => {
     const next = applyGridLayouts(applyLayouts(syncRecordCards(stripRotation(input), boardRef.current)));
@@ -428,7 +435,7 @@ function useBoardCore() {
         new Date().toISOString(),
       );
     } catch (error) {
-      display((error as Error).message);
+      display((error as Error).message, undefined, 'error');
       return;
     }
     boardRef.current = next;
@@ -606,7 +613,11 @@ function useBoardCore() {
     setLibrary(lib);
   };
   const storageError = (err: unknown) =>
-    display((err as Error).message || 'Browser storage is full. Delete or export boards to make room.');
+    display(
+      (err as Error).message || 'Browser storage is full. Delete or export boards to make room.',
+      undefined,
+      'error',
+    );
   /** Store a new board, optionally filed under a space, and open it. */
   const openNew = (fresh: Board, space?: string) => {
     let lib = createBoard(localStorage, flushSave(), fresh).library;
@@ -632,7 +643,7 @@ function useBoardCore() {
         const opened = switchTo(localStorage, flushSave(), id, parseBoard);
         showBoard(opened.board, opened.library, target);
       } catch (err) {
-        display((err as Error).message || 'That board could not be opened.');
+        display((err as Error).message || 'That board could not be opened.', undefined, 'error');
       }
     },
     create: (template: TemplateName | null, space?: string) => {
@@ -660,7 +671,7 @@ function useBoardCore() {
         if (id === libraryRef.current.activeId) update({ ...boardRef.current, title: title.slice(0, 200) });
         else commitLibrary(renameBoard(localStorage, libraryRef.current, id, title, parseBoard));
       } catch (err) {
-        display((err as Error).message);
+        display((err as Error).message, undefined, 'error');
       }
     },
     duplicate: (id: string, title?: string) => {
@@ -676,7 +687,7 @@ function useBoardCore() {
       try {
         commitLibrary(setBoardMeta(localStorage, libraryRef.current, id, patch));
       } catch (err) {
-        display((err as Error).message || 'Browser storage is full.');
+        display((err as Error).message || 'Browser storage is full.', undefined, 'error');
       }
     },
     /** Move boards to the trash (gap C1). */
@@ -690,7 +701,7 @@ function useBoardCore() {
         setLibrary(result.library);
         display(ids.length === 1 ? 'Board moved to trash.' : `${ids.length} boards moved to trash.`);
       } catch (err) {
-        display((err as Error).message);
+        display((err as Error).message, undefined, 'error');
       }
     },
     restore: (ids: string[]) => {
@@ -707,7 +718,7 @@ function useBoardCore() {
         commitLibrary(purgeBoards(localStorage, libraryRef.current, ids));
         display(ids.length === 1 ? 'Board deleted permanently.' : `${ids.length} boards deleted permanently.`);
       } catch (err) {
-        display((err as Error).message);
+        display((err as Error).message, undefined, 'error');
       }
     },
     /** Add boards from a library backup without opening them (gap C3). */
@@ -744,7 +755,7 @@ function useBoardCore() {
         );
         return true;
       } catch (err) {
-        display((err as Error).message || 'Browser storage is full.');
+        display((err as Error).message || 'Browser storage is full.', undefined, 'error');
         return false;
       }
     },
@@ -754,7 +765,7 @@ function useBoardCore() {
         commitLibrary(setSpaceInfo(localStorage, libraryRef.current, name, info));
         return true;
       } catch (err) {
-        display((err as Error).message || 'Browser storage is full.');
+        display((err as Error).message || 'Browser storage is full.', undefined, 'error');
         return false;
       }
     },
@@ -795,7 +806,7 @@ function useBoardCore() {
       update(change(boardRef.current));
       after?.();
     } catch (error) {
-      display((error as Error).message);
+      display((error as Error).message, undefined, 'error');
     }
   };
   const toggleLock = () => {
@@ -980,7 +991,7 @@ function useBoardCore() {
       setTool('select');
       display(drawioImportNote(made));
     } catch (error) {
-      display((error as Error).message);
+      display((error as Error).message, undefined, 'error');
     }
   }
   /**
@@ -1013,7 +1024,7 @@ function useBoardCore() {
       if (Object.keys(made.assets).length) setAssets(a => ({ ...a, ...made.assets }));
       if (boardActions.createFrom(made.board)) display(whiteboardImportNote(made.report));
     } catch (error) {
-      display((error as Error).message || 'The whiteboard export could not be imported.');
+      display((error as Error).message || 'The whiteboard export could not be imported.', undefined, 'error');
     }
   }
   /**
@@ -1038,7 +1049,7 @@ function useBoardCore() {
       await importWhiteboardData(raw);
       return true;
     } catch (error) {
-      display((error as Error).message || 'The whiteboard export could not be imported.');
+      display((error as Error).message || 'The whiteboard export could not be imported.', undefined, 'error');
       return true;
     }
   }
@@ -1088,7 +1099,7 @@ function useBoardCore() {
       }
       display(csvStickiesNote(made));
     } catch (error) {
-      display((error as Error).message || 'The file could not be imported.');
+      display((error as Error).message || 'The file could not be imported.', undefined, 'error');
     }
   }
   /**
@@ -1142,7 +1153,7 @@ function useBoardCore() {
       update({ ...boardRef.current, items: [...boardRef.current.items, item] });
       setSelected([item.id]);
     } catch (error) {
-      display((error as Error).message || 'The file could not be added.');
+      display((error as Error).message || 'The file could not be added.', undefined, 'error');
     }
   }
   async function replaceSelectedImage(file: File) {
@@ -1153,7 +1164,7 @@ function useBoardCore() {
       update(replaceImage(boardRef.current, target.id, id, asset, originalId));
       display('Image replaced. Undo restores the previous image.');
     } catch (error) {
-      display((error as Error).message || 'The image could not be replaced.');
+      display((error as Error).message || 'The image could not be replaced.', undefined, 'error');
     }
   }
   const toWorld = (x: number, y: number): Point => {
@@ -1363,7 +1374,7 @@ function useBoardCore() {
       setTool('select');
       display(note);
     } catch (error) {
-      display((error as Error).message || 'The file could not be imported.');
+      display((error as Error).message || 'The file could not be imported.', undefined, 'error');
     }
   }
   const makePlacedItem = (kind: Kind, point: Point): Item => {
@@ -1574,7 +1585,7 @@ function useBoardCore() {
       setEditing(next.note.id);
       fit([source, next.note]);
     } catch (error) {
-      display((error as Error).message);
+      display((error as Error).message, undefined, 'error');
     }
   };
   useEffect(() => {
@@ -1872,8 +1883,9 @@ function useBoardCore() {
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         const target = boardRef.current.items.find(i => i.id === link.object);
-        if (!target) return display('That object is no longer on this board.');
+        if (!target) return display('That object is not on this board any more.');
         showObject(target, !!link.focus);
+        announce(describeItem(target));
       }),
     );
   });
@@ -1985,6 +1997,7 @@ function useBoardCore() {
     normalizeText,
     notice,
     noticeAction,
+    noticeKind,
     noticeTimer,
     openEditor,
     outline,

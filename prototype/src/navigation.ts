@@ -262,6 +262,14 @@ export const frameNotes = (frame: Item): string => (typeof frame.data?.notes ===
 export const isHiddenSlide = (frame: Item): boolean => frame.type === 'frame' && !!frame.data?.skipInPresentation;
 /** Frames shown when presenting: the presentation order without hidden frames. */
 export const slideFrames = (board: Board): Item[] => presentationFrames(board).filter(f => !isHiddenSlide(f));
+/**
+ * Frames a PDF export pages through: the selected frames when any are selected, otherwise every frame in
+ * presentation order, frames hidden from the presentation included (decision Q7, 2026-11-08).
+ */
+export function pdfFrames(board: Board, selected: readonly string[]): Item[] {
+  const chosen = board.items.filter(i => i.type === 'frame' && selected.includes(i.id));
+  return chosen.length ? chosen : presentationFrames(board);
+}
 /** Set or clear (undefined, '' or false) keys of a frame's `data`; an empty `data` is removed. Locked frames refuse. */
 export function setFrameData(board: Board, id: string, patch: Record<string, unknown>): Board {
   const frame = board.items.find(i => i.id === id);

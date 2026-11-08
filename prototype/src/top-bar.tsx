@@ -7,6 +7,7 @@ import { IMAGE_ACCEPT, withAssets } from './images';
 import { setPrivate } from './board-tools';
 import { useApp } from './board-app';
 import { BoardEmoji, BoardMenu, BoardStatusChip, SensitivityChip, useDismiss } from './board-menu';
+import { onMenuKeys } from './popup';
 import { settingsLocked, settingsLockedNote } from './board-modes';
 import {
   addTemplate,
@@ -71,7 +72,11 @@ export function TopBar() {
   const exportRef = useRef<HTMLDivElement>(null),
     newBoardFile = useRef<HTMLInputElement>(null);
   const libraryFiles = useLibraryFiles();
-  useDismiss(menu, exportRef, () => setMenu(false));
+  // The Export menu holds an image-size field, so Tab moves into it instead of closing the menu.
+  useDismiss(menu, exportRef, () => setMenu(false), { focusFirst: true, closeOnTab: false });
+  // Item 143: the Collaborate menu closes on an outside press, Esc (focus back to its button), Tab and scroll.
+  const facilitateRef = useRef<HTMLDivElement>(null);
+  useDismiss(facilitate, facilitateRef, () => setFacilitate(false), { focusFirst: true });
   const {
     exportCsv,
     exportTextCsv,
@@ -143,157 +148,176 @@ export function TopBar() {
             className="icon-button"
             aria-label="Export"
             title="Export this board"
+            aria-haspopup="menu"
             aria-expanded={menu}
             onClick={() => setMenu(m => !m)}
+            onKeyDown={e => {
+              if (e.key === 'ArrowDown' && !menu) {
+                e.preventDefault();
+                setMenu(true);
+              }
+            }}
           >
             <Upload size={17} />
           </button>
           {menu && (
-            <div className="dropdown floating export-menu">
-              <button
-                onClick={() =>
-                  download(JSON.stringify(withAssets(board, assets), null, 2), 'boardroom.json', 'application/json')
-                }
-              >
-                Save board as JSON<span>Editable text backup with media</span>
-              </button>
-              {canEncrypt() && (
+            <div className="dropdown floating export-menu" onKeyDown={onMenuKeys}>
+              <div role="menu" aria-label="Export">
                 <button
-                  onClick={async () => {
+                  role="menuitem"
+                  onClick={() =>
+                    download(JSON.stringify(withAssets(board, assets), null, 2), 'boardroom.json', 'application/json')
+                  }
+                >
+                  Save board as JSON<span>Editable text backup with media</span>
+                </button>
+                {canEncrypt() && (
+                  <button
+                    role="menuitem"
+                    onClick={async () => {
+                      setMenu(false);
+                      const pass = await askPassphrase('Save encrypted backup', true);
+                      if (!pass) return;
+                      try {
+                        const locked = await encryptBackup(JSON.stringify(withAssets(board, assets)), pass);
+                        download(JSON.stringify(locked), 'boardroom-encrypted.json', 'application/json');
+                      } catch (err) {
+                        display((err as Error).message, undefined, 'error');
+                      }
+                    }}
+                  >
+                    Save encrypted backup<span>JSON locked with a passphrase</span>
+                  </button>
+                )}
+                <button role="menuitem" onClick={exportBundle}>
+                  Save board with media<span>Compact .boardroom file for large boards</span>
+                </button>
+                <button role="menuitem" onClick={() => exportSvg()}>
+                  Export as SVG<span>{selected.length ? 'Selected objects only' : 'Whole board'}, vector image</span>
+                </button>
+                <button role="menuitem" onClick={exportHtml}>
+                  Export as web page<span>Read-only HTML copy with pan and zoom</span>
+                </button>
+                <button role="menuitem" onClick={() => exportRaster('image/png', scale)}>
+                  Export as PNG
+                  <span>
+                    {selected.length ? 'Selection' : 'Whole board'}, {scale}× scale
+                  </span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
                     setMenu(false);
-                    const pass = await askPassphrase('Save encrypted backup', true);
-                    if (!pass) return;
-                    try {
-                      const locked = await encryptBackup(JSON.stringify(withAssets(board, assets)), pass);
-                      download(JSON.stringify(locked), 'boardroom-encrypted.json', 'application/json');
-                    } catch (err) {
-                      display((err as Error).message);
-                    }
+                    void copyImage();
                   }}
                 >
-                  Save encrypted backup<span>JSON locked with a passphrase</span>
+                  Copy as image<span>{selected.length ? 'Selection' : 'Whole board'} · Ctrl Shift C</span>
                 </button>
-              )}
-              <button onClick={exportBundle}>
-                Save board with media<span>Compact .boardroom file for large boards</span>
-              </button>
-              <button onClick={() => exportSvg()}>
-                Export as SVG<span>{selected.length ? 'Selected objects only' : 'Whole board'}, vector image</span>
-              </button>
-              <button onClick={exportHtml}>
-                Export as web page<span>Read-only HTML copy with pan and zoom</span>
-              </button>
+                <button role="menuitem" onClick={() => exportRaster('image/jpeg', scale)}>
+                  Export as JPG<span>{selected.length ? 'Selection' : 'Whole board'}, white background</span>
+                </button>
+                <button role="menuitem" onClick={() => exportPdf()}>
+                  Export as PDF
+                  <span>
+                    {selected.some(id => board.items.find(i => i.id === id)?.type === 'frame')
+                      ? 'Selected frames'
+                      : 'One page per slide'}
+                  </span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    setAreaPick(true);
+                  }}
+                >
+                  Export an area<span>Drag over the part of the board to export</span>
+                </button>
+                <button role="menuitem" onClick={() => void printBoard()}>
+                  Print<span>{selected.length ? 'Selected objects only' : 'Whole board'}</span>
+                </button>
+                <button role="menuitem" onClick={exportCsv}>
+                  Export to spreadsheet (CSV)<span>Selected cards, or records</span>
+                </button>
+                <button role="menuitem" onClick={exportTextCsv}>
+                  Export text as CSV
+                  <span>{selected.length ? 'Selection' : 'Whole board'}: notes, shapes, text, cards</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    const made = makeTemplate(board, board.title, crypto.randomUUID(), new Date());
+                    if ('error' in made) return display(made.error);
+                    display(
+                      storeTemplates(addTemplate(loadTemplates(), made))
+                        ? `Saved "${made.name}" to My templates.`
+                        : 'This browser has no room to store the template.',
+                    );
+                  }}
+                >
+                  Save board as template<span>Reuse it from Templates; media not included</span>
+                </button>
+                {selected.length > 0 && (
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMenu(false);
+                      const made = makeSelectionTemplate(
+                        board,
+                        selected,
+                        selectionTemplateName(board, selected),
+                        crypto.randomUUID(),
+                        new Date(),
+                      );
+                      if ('error' in made) return display(made.error);
+                      display(
+                        storeTemplates(addTemplate(loadTemplates(), made))
+                          ? `Saved "${made.name}" (${made.count} object${made.count === 1 ? '' : 's'}) to My templates.`
+                          : 'This browser has no room to store the template.',
+                      );
+                    }}
+                  >
+                    Save selection as template<span>Selected objects and the contents of selected frames</span>
+                  </button>
+                )}
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    file.current?.click();
+                    setMenu(false);
+                  }}
+                >
+                  Import backup<span>JSON or .boardroom; replaces the board</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    newBoardFile.current?.click();
+                    setMenu(false);
+                  }}
+                >
+                  Import as new board<span>Keeps this board; library backups add all their boards</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(false);
+                    void libraryFiles.backupAll();
+                  }}
+                >
+                  Back up all boards<span>Every board, its media and spaces in one file</span>
+                </button>
+              </div>
+              {/* A field is not a menu row (axe aria-required-children), so it sits below the menu. */}
               <label className="export-scale">
-                Image size
+                Image size (PNG and JPG)
                 <select aria-label="Image size" value={scale} onChange={e => setScale(Number(e.target.value))}>
                   <option value={1}>Small (1×)</option>
                   <option value={2}>Medium (2×)</option>
                   <option value={4}>Large (4×)</option>
                 </select>
               </label>
-              <button onClick={() => exportRaster('image/png', scale)}>
-                Export as PNG
-                <span>
-                  {selected.length ? 'Selection' : 'Whole board'}, {scale}× scale
-                </span>
-              </button>
-              <button
-                onClick={() => {
-                  setMenu(false);
-                  void copyImage();
-                }}
-              >
-                Copy as image<span>{selected.length ? 'Selection' : 'Whole board'} · Ctrl Shift C</span>
-              </button>
-              <button onClick={() => exportRaster('image/jpeg', scale)}>
-                Export as JPG<span>{selected.length ? 'Selection' : 'Whole board'}, white background</span>
-              </button>
-              <button onClick={() => exportPdf()}>
-                Export as PDF
-                <span>
-                  {selected.some(id => board.items.find(i => i.id === id)?.type === 'frame')
-                    ? 'Selected frames'
-                    : 'One page per slide'}
-                </span>
-              </button>
-              <button
-                onClick={() => {
-                  setMenu(false);
-                  setAreaPick(true);
-                }}
-              >
-                Export an area<span>Drag over the part of the board to export</span>
-              </button>
-              <button onClick={() => void printBoard()}>
-                Print<span>{selected.length ? 'Selected objects only' : 'Whole board'}</span>
-              </button>
-              <button onClick={exportCsv}>
-                Export to spreadsheet (CSV)<span>Selected cards, or records</span>
-              </button>
-              <button onClick={exportTextCsv}>
-                Export text as CSV
-                <span>{selected.length ? 'Selection' : 'Whole board'}: notes, shapes, text, cards</span>
-              </button>
-              <button
-                onClick={() => {
-                  setMenu(false);
-                  const made = makeTemplate(board, board.title, crypto.randomUUID(), new Date());
-                  if ('error' in made) return display(made.error);
-                  display(
-                    storeTemplates(addTemplate(loadTemplates(), made))
-                      ? `Saved "${made.name}" to My templates.`
-                      : 'This browser has no room to store the template.',
-                  );
-                }}
-              >
-                Save board as template<span>Reuse it from Templates; media not included</span>
-              </button>
-              {selected.length > 0 && (
-                <button
-                  onClick={() => {
-                    setMenu(false);
-                    const made = makeSelectionTemplate(
-                      board,
-                      selected,
-                      selectionTemplateName(board, selected),
-                      crypto.randomUUID(),
-                      new Date(),
-                    );
-                    if ('error' in made) return display(made.error);
-                    display(
-                      storeTemplates(addTemplate(loadTemplates(), made))
-                        ? `Saved "${made.name}" (${made.count} object${made.count === 1 ? '' : 's'}) to My templates.`
-                        : 'This browser has no room to store the template.',
-                    );
-                  }}
-                >
-                  Save selection as template<span>Selected objects and the contents of selected frames</span>
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  file.current?.click();
-                  setMenu(false);
-                }}
-              >
-                Import backup<span>JSON or .boardroom; replaces the board</span>
-              </button>
-              <button
-                onClick={() => {
-                  newBoardFile.current?.click();
-                  setMenu(false);
-                }}
-              >
-                Import as new board<span>Keeps this board; library backups add all their boards</span>
-              </button>
-              <button
-                onClick={() => {
-                  setMenu(false);
-                  void libraryFiles.backupAll();
-                }}
-              >
-                Back up all boards<span>Every board, its media and spaces in one file</span>
-              </button>
             </div>
           )}
         </div>
@@ -322,25 +346,33 @@ export function TopBar() {
         >
           <MonitorPlay size={19} />
         </button>
-        <div className="menu-anchor">
+        <div className="menu-anchor" ref={facilitateRef}>
           <button
             data-tool-anchor="facilitate"
             className={`floating icon-button ${facilitate || facil ? 'active' : ''}`}
             title="Collaborate and review"
             aria-label="Collaborate and review"
+            aria-haspopup="menu"
             aria-expanded={facilitate}
             onClick={() => setFacilitate(v => !v)}
+            onKeyDown={e => {
+              if (e.key === 'ArrowDown' && !facilitate) {
+                e.preventDefault();
+                setFacilitate(true);
+              }
+            }}
           >
             <Users size={19} />
           </button>
           {facilitate && (
             <div
               className="dropdown floating facilitate-menu"
-              onKeyDown={e => {
-                if (e.key === 'Escape') setFacilitate(false);
-              }}
+              role="menu"
+              aria-label="Collaborate and review"
+              onKeyDown={onMenuKeys}
             >
               <button
+                role="menuitem"
                 onClick={() => {
                   setFacil('voting');
                   setFacilitate(false);
@@ -349,6 +381,7 @@ export function TopBar() {
                 Dot voting<span>{board.voting?.active ? 'Session running' : 'Vote on objects'}</span>
               </button>
               <button
+                role="menuitem"
                 onClick={() => {
                   setTimerOn(true);
                   setFacilitate(false);
@@ -357,6 +390,7 @@ export function TopBar() {
                 Timer<span>Countdown for the board</span>
               </button>
               <button
+                role="menuitem"
                 onClick={() => {
                   setFacil('comments');
                   setFacilitate(false);
@@ -365,6 +399,7 @@ export function TopBar() {
                 Comments<span>{(board.comments ?? []).filter(t => !t.resolved).length} open · C to add</span>
               </button>
               <button
+                role="menuitem"
                 onClick={() => {
                   run(b => setPrivate(b, 'all', !b.privateMode?.all));
                   setFacilitate(false);
@@ -374,6 +409,7 @@ export function TopBar() {
                 <span>{board.privateMode?.all ? 'Show sticky-note text again' : 'Hide sticky-note text'}</span>
               </button>
               <button
+                role="menuitem"
                 onClick={() => {
                   setFacil('templates');
                   setFacilitate(false);
@@ -382,6 +418,7 @@ export function TopBar() {
                 Templates<span>Start from a layout</span>
               </button>
               <button
+                role="menuitem"
                 onClick={() => {
                   setFacil('a11y');
                   setFacilitate(false);
@@ -390,6 +427,7 @@ export function TopBar() {
                 Accessibility check<span>Contrast, descriptions, text size</span>
               </button>
               <button
+                role="menuitem"
                 onClick={() => {
                   setFacil('reactions');
                   setFacilitate(false);
@@ -398,6 +436,7 @@ export function TopBar() {
                 Reactions<span>Send a quick emoji reaction</span>
               </button>
               <button
+                role="menuitem"
                 onClick={() => {
                   setFacil('authors');
                   setFacilitate(false);

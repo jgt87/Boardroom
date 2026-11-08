@@ -752,15 +752,28 @@ export function BoardsDashboard({
                     <Download size={15} /> Back up
                   </button>
                 )}
-                <button
-                  className="danger"
-                  onClick={() => {
-                    onDelete(visiblePicked);
-                    setPicked([]);
-                  }}
-                >
-                  <Trash2 size={15} /> Move to trash
-                </button>
+                {confirming === 'trash-bulk' ? (
+                  <span className="board-confirm" role="alert">
+                    <span>
+                      Move {visiblePicked.length} {visiblePicked.length === 1 ? 'board' : 'boards'} to the trash?
+                    </span>
+                    <button
+                      className="danger-button"
+                      onClick={() => {
+                        setConfirming(null);
+                        onDelete(visiblePicked);
+                        setPicked([]);
+                      }}
+                    >
+                      Move to trash
+                    </button>
+                    <button onClick={() => setConfirming(null)}>Keep</button>
+                  </span>
+                ) : (
+                  <button className="danger" onClick={() => setConfirming('trash-bulk')}>
+                    <Trash2 size={15} /> Move to trash
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -921,6 +934,20 @@ export function BoardsDashboard({
                         </button>
                         <button onClick={() => setConfirming(null)}>Keep</button>
                       </div>
+                    ) : confirming === `trash:${b.id}` ? (
+                      <div className="board-confirm" role="alert">
+                        <span>Move to the trash?</span>
+                        <button
+                          className="danger-button"
+                          onClick={() => {
+                            setConfirming(null);
+                            onDelete([b.id]);
+                          }}
+                        >
+                          Move to trash
+                        </button>
+                        <button onClick={() => setConfirming(null)}>Keep</button>
+                      </div>
                     ) : view === 'trash' ? (
                       <div className="board-actions">
                         <button
@@ -981,7 +1008,7 @@ export function BoardsDashboard({
                           className="icon-button danger"
                           aria-label={`Delete ${b.title}`}
                           title="Move to trash"
-                          onClick={() => onDelete([b.id])}
+                          onClick={() => setConfirming(`trash:${b.id}`)}
                         >
                           <Trash2 size={15} />
                         </button>

@@ -48,6 +48,13 @@ test('boards move to the trash, are restored and can be deleted forever', async 
   await openDashboard(page);
   await expect(cards(page)).toHaveCount(2);
   await page.getByRole('button', { name: 'Delete Retro' }).click();
+  // Moving to the trash asks first (Q4); Keep leaves the board where it is.
+  const confirm = page.locator('.board-confirm');
+  await expect(confirm).toContainText('Move to the trash?');
+  await confirm.getByRole('button', { name: 'Keep' }).click();
+  await expect(cards(page)).toHaveCount(2);
+  await page.getByRole('button', { name: 'Delete Retro' }).click();
+  await confirm.getByRole('button', { name: 'Move to trash' }).click();
   await expect(cards(page)).toHaveCount(1);
   expect(await page.evaluate(() => !!localStorage.getItem('boardroom.board.b2'))).toBe(true);
 
@@ -58,9 +65,10 @@ test('boards move to the trash, are restored and can be deleted forever', async 
   await expect(cards(page)).toHaveCount(2);
 
   await page.getByRole('button', { name: 'Delete Retro' }).click();
+  await confirm.getByRole('button', { name: 'Move to trash' }).click();
   await page.getByRole('button', { name: 'Trash (1)' }).click();
   await page.getByRole('button', { name: 'Delete Retro forever' }).click();
-  await page.getByRole('alert').getByRole('button', { name: 'Delete forever' }).click();
+  await confirm.getByRole('button', { name: 'Delete forever' }).click();
   await expect(page.getByText('The trash is empty.')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('boardroom.board.b2'))).toBeNull();
 });

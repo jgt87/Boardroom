@@ -1923,7 +1923,7 @@ const downloadOriginal = (item: Item, ctx: WidgetCtx, what: string) => {
       try {
         saveAssetFile(asset, item.text || what);
       } catch (err) {
-        ctx.display((err as Error).message);
+        ctx.display((err as Error).message, undefined, 'error');
       }
     },
   };

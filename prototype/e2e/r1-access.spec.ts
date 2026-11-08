@@ -144,14 +144,17 @@ test.describe('R1 keyboard and assistive access', () => {
     await page.getByRole('menuitem', { name: 'Copy link to object' }).click();
     await expect(page.getByRole('status')).toContainText('Link copied');
     const link = await page.evaluate(() => navigator.clipboard.readText());
-    expect(link).toMatch(/#board=[\w-]+&item=a$/);
+    // One link format (R4-Q6): object= for every object and frame.
+    expect(link).toMatch(/#board=[\w-]+&object=a$/);
     // Opening a link selects and reveals the object (hash change on the open page).
-    await page.goto(link.replace('item=a', 'item=far'));
+    await page.goto(link.replace('object=a', 'object=far'));
     await expect(announcer(page)).toContainText('Far away');
     await expect(page.locator('.selection-bar').first()).toBeVisible();
     await expect(item(page, 'far')).toBeInViewport();
     expect(new URL(page.url()).hash).toBe('');
-    // A fresh load with a frame link works too.
+    await page.goto('/#object=missing');
+    await expect(page.getByRole('status')).toContainText('not on this board');
+    // Links in the older format still open: a frame link and an item link.
     await page.goto('/#frame=f');
     await expect(announcer(page)).toContainText('Area');
     await page.goto('/#item=missing');

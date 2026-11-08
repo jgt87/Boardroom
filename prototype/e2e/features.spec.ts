@@ -121,7 +121,8 @@ test.describe('feature smoke', () => {
     await expect(add).toHaveCount(2);
     await add.first().dispatchEvent('pointerdown');
     await add.nth(1).dispatchEvent('pointerdown');
-    await expect(page.getByRole('status')).toContainText('All 1 votes are used');
+    // A refused vote is an error notice, announced through the alert region (item 148).
+    await expect(page.getByRole('alert').filter({ hasText: 'All 1 votes are used' })).toBeVisible();
     await page.getByRole('button', { name: 'End vote and keep results' }).click();
     await waitForSave(page, b => !b.voting && b.votingResults?.[0]?.totals?.[0]?.votes === 1, 'results stored');
     await page.getByRole('button', { name: 'Close dot voting' }).click();

@@ -276,6 +276,27 @@ export function applyCrop(board: Board, id: string, crop: Crop | null, asset: Im
     }),
   };
 }
+/**
+ * Square up an image for the circle mask (decision Q13, 2026-11-08): the visible part is cropped to its centred
+ * square and the box becomes a square of the shorter side, keeping its centre, so the circle is a true circle.
+ */
+export function squareForCircle(item: Item, asset: ImageAsset): Item {
+  const c = clampCrop(item.crop ?? FULL_CROP),
+    pw = c.w * asset.width,
+    ph = c.h * asset.height,
+    side = Math.min(pw, ph),
+    crop = clampCrop({
+      x: c.x + (pw - side) / 2 / asset.width,
+      y: c.y + (ph - side) / 2 / asset.height,
+      w: side / asset.width,
+      h: side / asset.height,
+    }),
+    box = Math.min(item.w, item.h);
+  const next: Item = { ...item, x: item.x + (item.w - box) / 2, y: item.y + (item.h - box) / 2, w: box, h: box };
+  if (crop.x === 0 && crop.y === 0 && crop.w === 1 && crop.h === 1) delete next.crop;
+  else next.crop = crop;
+  return next;
+}
 /** Replace the picture while preserving placement (position, width, layer, links and group). */
 export function replaceImage(
   board: Board,

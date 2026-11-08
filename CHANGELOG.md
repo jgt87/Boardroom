@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Menus, pop-ups and notices work the same everywhere
+
+- Menus close when you click outside them, press Esc, Tab away, scroll or resize the window; Esc puts the focus back
+  on the button that opened the menu, and no longer clears your selection. This fixes the Collaborate and review
+  menu, which only closed from inside.
+- Arrow keys wrap around, and Home and End jump, in the main menu, the Export menu, the Collaborate menu and the
+  Shapes and lines menu. ArrowDown on the Export or Collaborate button opens its menu.
+- The Export, Collaborate and Shapes menus are announced as menus to screen readers. The Export menu scrolls inside
+  when the window is short, and its image size field now sits below the list.
+- The Shapes and lines, Emoji and Tools pop-outs close on a click outside them.
+- Editor dialogs and the choice dialog keep Tab inside them and give the focus back when they close.
+- The right-click menu fits short windows: it scrolls inside, and closes when the window is resized.
+- Notices are announced by screen readers from the first one on, and error notices are announced as alerts and stay
+  10 seconds.
+- Tests: the search speed test is steadier (best of five runs, a wider limit on the slower CI machines), and a
+  browser test that hits the CI runner's rare "could not finish loading" start-up failure reloads once.
+
+### Decided questions: small changes
+
+- Moving a board to the trash from the dashboard now asks first, for one board and for a selection.
+- Library backups leave boards in the trash out.
+- Pasting a single line of plain text makes a sticky note, like several lines do.
+- Turning Bold off for a whole text also removes bold from single words in it.
+- PDF export without a selection now includes frames hidden from the presentation.
+- The circle crop squares the picture first, so it is a true circle.
+- For one rotated object, the inspector's W and H are its own width and height, and change it without skewing.
+- Alt+↓ and Alt+↑ move to the next and previous open comment.
+- The command palette finds your recent boards: type a board's name or "board".
+- Links to objects now use one format; links copied earlier still open.
+- Pictures dragged from other https sites are downloaded into the board when the site allows it, instead of
+  becoming a bookmark.
+
 ### Imports from other whiteboards keep more of the board
 
 - Objects now stack front to back in the order they were created on the original board, as closely as the

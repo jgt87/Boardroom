@@ -6,6 +6,7 @@ import type { Board, Item } from '../src/model.ts';
 import { checkAccessibility } from '../src/board-tools.ts';
 import { tagPalette } from '../src/card-tools.ts';
 import { personColors } from '../src/specs-people.ts';
+import { parseDeepLink as parseLink } from '../src/deep-link.ts';
 import {
   addInDirection,
   containerSiblings,
@@ -194,8 +195,11 @@ test('accessibility issues carry a severity and group into Descriptions, Contras
 test('deep links: hash format, parsing and target lookup', () => {
   const note = at('note', 'note-1', 0, 0),
     frame = at('frame', 'frame-1', 0, 0);
-  assert.equal(deepLinkHash(note, 'b1'), '#board=b1&item=note-1');
-  assert.equal(deepLinkHash(frame), '#frame=frame-1');
+  // One written format for objects and frames (R4-Q6), the one deep-link.ts opens.
+  assert.equal(deepLinkHash(note, 'b1'), '#board=b1&object=note-1');
+  assert.equal(deepLinkHash(frame), '#object=frame-1');
+  assert.deepEqual(parseLink(deepLinkHash(note, 'b1')), { board: 'b1', object: 'note-1' });
+  // Older item= / frame= links still parse here.
   assert.deepEqual(parseDeepLink('#board=b1&item=note-1'), { board: 'b1', item: 'note-1' });
   assert.deepEqual(parseDeepLink('frame=frame-1'), { frame: 'frame-1' });
   assert.equal(parseDeepLink(''), undefined);

@@ -313,7 +313,7 @@ export function useCanvasGestures(core: BoardCore) {
       try {
         update(removeChipMark(current, id, chipMark.getAttribute('data-chip-remove') as ChipBadge));
       } catch (error) {
-        display((error as Error).message);
+        display((error as Error).message, undefined, 'error');
       }
       return;
     }

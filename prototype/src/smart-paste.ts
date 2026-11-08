@@ -1,6 +1,7 @@
 // Smart paste and drop of plain text (gap list B1, B2, B6, B7, B8): spreadsheet cells become a Grid, a single
 // web address becomes an embed (allow-listed providers) or a bookmark, Mermaid code becomes a diagram, and
-// other text becomes sticky notes (several lines), a Doc (long prose) or a text object (one line).
+// other text becomes sticky notes (one per line; a single line is one sticky note, decision Q3 2026-11-08) or a
+// Doc (long prose). A web address that is not safe to link stays a plain text object.
 // Pure: no React, no DOM.
 import type { Item, Point } from './model.ts';
 import { createItem } from './model.ts';
@@ -165,6 +166,15 @@ export function textItem(text: string, at: Point): Item {
   return item;
 }
 
+/** A single sticky note holding the text as typed, centred on `at`. */
+export function noteItem(text: string, at: Point): Item {
+  const item = createItem('note', at.x, at.y);
+  item.text = text.trim().slice(0, 6000);
+  item.x -= item.w / 2;
+  item.y -= item.h / 2;
+  return item;
+}
+
 /** A Mermaid diagram object holding the code. */
 export function mermaidItem(code: string, at: Point): Item {
   const item = createItem('mermaid', at.x, at.y);
@@ -251,5 +261,5 @@ export function itemsFromText(text: string, at: Point): { items: Item[]; kind: P
       note: d.truncated ? `Only the first ${DOC_MAX.toLocaleString('en')} characters were pasted.` : undefined,
     };
   }
-  return { items: [textItem(text, at)], kind };
+  return { items: [noteItem(text, at)], kind };
 }

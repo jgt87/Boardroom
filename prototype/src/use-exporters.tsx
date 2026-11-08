@@ -1,6 +1,6 @@
 import { flushSync } from 'react-dom';
 import { selectionBounds } from './interactions';
-import { slideFrames } from './navigation';
+import { pdfFrames } from './navigation';
 import { recordsCsv } from './board-tools';
 import { cardsCsv } from './card-tools';
 import { boardTextCsv } from './csv';
@@ -213,7 +213,7 @@ export function useExporters() {
       const built = buildSvg(area ?? selectionRegion());
       saveBlob(await rasterize(built.svg, built.box, type, scale), `boardroom.${type === 'image/png' ? 'png' : 'jpg'}`);
     } catch (err) {
-      display((err as Error).message);
+      display((err as Error).message, undefined, 'error');
     }
   };
   /** Copy the selection (or the board) as a PNG image (gap B11). Falls back to a download without clipboard access. */
@@ -234,16 +234,14 @@ export function useExporters() {
       saveBlob(blob, 'boardroom.png');
       display('The image could not be put on the clipboard here, so it was downloaded instead.');
     } catch (err) {
-      display((err as Error).message || 'The image could not be copied.');
+      display((err as Error).message || 'The image could not be copied.', undefined, 'error');
     }
   };
   /** PDF with one page per frame (title band included), or one page of a dragged area. */
   const exportPdf = async (area?: Region) => {
     try {
       const { jsPDF } = await import('jspdf'),
-        // Selected frames only when frames are selected; otherwise the slides as presented (hidden frames skipped).
-        chosen = area ? [] : boardRef.current.items.filter(i => i.type === 'frame' && selected.includes(i.id)),
-        frames = area ? [] : chosen.length ? chosen : slideFrames(boardRef.current),
+        frames = area ? [] : pdfFrames(boardRef.current, selected),
         regions = area ? [area] : frames.length ? frames.map(frameExportRegion) : [buildSvg().box];
       let pdf: InstanceType<typeof jsPDF> | null = null;
       for (const r of regions) {
@@ -263,7 +261,7 @@ export function useExporters() {
       if (frames.length)
         display(`PDF exported with ${frames.length} page${frames.length === 1 ? '' : 's'} in presentation order.`);
     } catch (err) {
-      display((err as Error).message || 'The PDF could not be created.');
+      display((err as Error).message || 'The PDF could not be created.', undefined, 'error');
     }
   };
   /**
@@ -295,7 +293,7 @@ export function useExporters() {
       // Browsers without the afterprint event still clean up.
       if (!('onafterprint' in window)) setTimeout(done, 1000);
     } catch (err) {
-      display((err as Error).message || 'The board could not be printed.');
+      display((err as Error).message || 'The board could not be printed.', undefined, 'error');
     }
   };
   /** Portable backup with media stored as files instead of base64 text. */
@@ -305,7 +303,7 @@ export function useExporters() {
       const bytes = encodeBundle(boardRef.current, assets);
       saveBlob(new Blob([bytes as BlobPart], { type: 'application/zip' }), 'board.boardroom');
     } catch (err) {
-      display((err as Error).message || 'The backup could not be created.');
+      display((err as Error).message || 'The backup could not be created.', undefined, 'error');
     }
   };
   const exportCsv = () => {
@@ -369,7 +367,7 @@ export function useExporters() {
         'text/html',
       );
     } catch (err) {
-      display((err as Error).message || 'The HTML copy could not be created.');
+      display((err as Error).message || 'The HTML copy could not be created.', undefined, 'error');
     }
   };
   /** Text of notes, shapes, text, cards and frames as a spreadsheet (gap B5). */

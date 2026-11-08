@@ -41,7 +41,7 @@ export function AutoLayoutGapHandle({ item }: { item: Item }) {
     try {
       update(setLayoutOption(boardRef.current, item.id, { gap: value }));
     } catch (error) {
-      display((error as Error).message);
+      display((error as Error).message, undefined, 'error');
     }
   };
   return (
@@ -84,7 +84,7 @@ export function AutoLayoutGapHandle({ item }: { item: Item }) {
           try {
             update(setLayoutOption(d.base, item.id, { gap: d.next }));
           } catch (error) {
-            display((error as Error).message);
+            display((error as Error).message, undefined, 'error');
           }
         }
       }}

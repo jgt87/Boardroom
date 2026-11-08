@@ -64,7 +64,7 @@ test('Save board as template, then insert and delete it from Templates', async (
      return {...m.newBoard(),title:'Kickoff',items:[a,b,{...m.createItem('arrow',0,0),id:'c',from:'a',to:'b'}]};`,
   );
   await page.getByRole('button', { name: 'Export' }).click();
-  await page.getByRole('button', { name: /^Save board as template/ }).click();
+  await page.getByRole('menuitem', { name: /^Save board as template/ }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Saved "Kickoff" to My templates.' })).toBeVisible();
   await openTools(page, 'Essentials');
   await chooseTool(page, 'Templates');

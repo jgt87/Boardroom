@@ -319,3 +319,36 @@ test('dashboard index entries carry the sensitivity badge', () => {
   lib = saveActive(kv, lib, withSetting(opened.board, 'sensitivity', null));
   assert.equal(lib.boards[0].sensitivity, undefined);
 });
+
+test('Alt+Down / Alt+Up step through open comment threads: pinned first, reading order, wrapping (R1-Q1)', async () => {
+  const { stepThread } = await import('../src/board-tools.ts');
+  const thread = (id: string, x: number, y: number, extra = {}) => ({
+    id,
+    x,
+    y,
+    messages: [{ id, text: id, at: '' }],
+    ...extra,
+  });
+  const b = {
+    version: 1 as const,
+    title: 't',
+    items: [],
+    comments: [
+      thread('low', 0, 500),
+      thread('top', 300, 0),
+      thread('left', 0, 0),
+      thread('done', 0, 100, { resolved: true }),
+      thread('pin', 900, 900, { pinned: true }),
+    ],
+  };
+  const walk = (back: boolean) => {
+    const ids: string[] = [];
+    let at: string | undefined;
+    for (let k = 0; k < 5; k++) ids.push((at = stepThread(b, at, back)!.thread.id));
+    return ids;
+  };
+  assert.deepEqual(walk(false), ['pin', 'left', 'top', 'low', 'pin']);
+  assert.deepEqual(walk(true), ['low', 'top', 'left', 'pin', 'low']);
+  assert.deepEqual([stepThread(b, 'top')!.index, stepThread(b, 'top')!.count], [4, 4]);
+  assert.equal(stepThread({ ...b, comments: [] }, undefined), null);
+});

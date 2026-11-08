@@ -34,7 +34,7 @@ async function importFile(item: Item, ctx: WidgetCtx, file: File) {
     });
     ctx.display(message);
   } catch (error) {
-    ctx.display((error as Error).message || 'The file could not be imported.');
+    ctx.display((error as Error).message || 'The file could not be imported.', undefined, 'error');
   }
 }
 

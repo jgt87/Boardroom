@@ -42,10 +42,12 @@ Tests import source files directly, so pure modules must use `.ts` extensions in
 
 - Copy/paste uses the native `copy`/`cut`/`paste` events with an HTML payload (`clipboard.ts`); keep ids remapped on paste.
 - Board-level overlays (dashboard, context menu, inspector) live in `board-overlays.tsx` and read the app through `useApp()`.
+- Menus and pop-ups get their closing and focus behaviour from `usePopup` in `popup.tsx` (or `useDismiss`, which calls it; rail pop-outs through `AnchoredPanel onDismiss`): outside press, Esc back to the trigger, Tab, scroll and resize. Menu panels use `role="menu"` with `menuitem` rows and `onMenuKeys` for arrows, Home and End. Don't hand-roll another dismissal.
+- Notices: `display(message, action?, kind?)`. Pass `'error'` for failures (caught errors): they go to the always-mounted alert region and stay longer (`notices.ts`).
 - Lock state is enforced through `editableIds`/`moveIds` (`arrange.ts`). New editing actions must respect it.
 - Long-lived effects (key listeners, mount/unmount cleanups) read callback props through `useLatest` (`use-latest.ts`) instead of listing them as dependencies.
 - Widget views share helpers and the editor dialog shell from `widget-kit.tsx`; the basic widgets are split by family (`widgets-cards`, `widgets-grid`, `widgets-graphics`, `widgets-facilitation`), and `widgets-basic.tsx` holds only their registry entries.
-- Security: `vite.config.ts` injects a Content Security Policy (scripts from self only; frames limited to the embed allow-list in `specs-media.ts`). Keep scripts out of `index.html` (the startup message lives in `public/startup.js`) and add new embed providers in both places.
+- Security: `vite.config.ts` injects a Content Security Policy (scripts from self only; frames limited to the embed allow-list in `specs-media.ts`; `connect-src` also allows `https:` so dragged web pictures can be downloaded, decision R2-Q1, which means no other fetch target is blocked by the policy: never send board data anywhere). Keep scripts out of `index.html` (the startup message lives in `public/startup.js`) and add new embed providers in both places.
 - The app is opened over plain HTTP from other devices on the LAN, which is not a secure context: `crypto.randomUUID` (polyfilled in `polyfills.ts`), `navigator.clipboard` and other secure-only APIs are missing there. Guard any new secure-only API with a fallback.
 - Native HTML5 drag-and-drop: always `preventDefault()` in `dragover` based on `dataTransfer.types`, not React state; that state is not updated yet during a real drag.
 - Performance checks in an automated browser tab: background tabs are throttled to 1 frame per second, so time with forced layout (`offsetHeight`), not `requestAnimationFrame`.

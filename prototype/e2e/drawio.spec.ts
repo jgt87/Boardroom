@@ -73,7 +73,8 @@ test('Draw.io import is staged until Save; cancel and invalid files leave the di
   await page
     .getByLabel('Choose Draw.io file')
     .setInputFiles({ name: 'bad.drawio', mimeType: 'application/xml', buffer: Buffer.from('<mxfile>broken') });
-  await expect(page.getByRole('alert')).toContainText(/not a Draw.io|malformed/);
+  // Filtered by text: the app also keeps an (empty) alert region mounted for error notices (item 148).
+  await expect(page.getByRole('alert').filter({ hasText: /not a Draw.io|malformed/ })).toBeVisible();
   expect((await savedBoard(page)).items).toEqual(before.items);
   await page
     .getByLabel('Choose Draw.io file')
@@ -99,7 +100,7 @@ test('Draw.io ignores forged messages, respects locked objects and handles offli
   await page.unroute('https://embed.diagrams.net/**');
   await page.route('https://embed.diagrams.net/**', route => route.abort());
   await item(page, 'diagram').dblclick();
-  await expect(page.getByRole('alert')).toContainText('could not connect', { timeout: 25_000 });
+  await expect(page.getByRole('alert').filter({ hasText: 'could not connect' })).toBeVisible({ timeout: 25_000 });
   await expect(page.getByRole('region', { name: 'Diagram editor unavailable', exact: true })).toBeVisible();
   await expect(page.locator('iframe[title="Draw.io diagram editor"]')).not.toBeVisible();
   await page

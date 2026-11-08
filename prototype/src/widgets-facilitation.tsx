@@ -328,7 +328,7 @@ export function spinnerActions(item: Item, ctx: WidgetCtx): WidgetAction[] {
       try {
         setData(ctx, item.id, change());
       } catch (e) {
-        ctx.display((e as Error).message);
+        ctx.display((e as Error).message, undefined, 'error');
       }
     };
   return [
@@ -486,7 +486,7 @@ export function ScaleRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
               try {
                 setData(ctx, item.id, tallyScale(d, s.id, v));
               } catch (e) {
-                ctx.display((e as Error).message);
+                ctx.display((e as Error).message, undefined, 'error');
               }
             }}
           />

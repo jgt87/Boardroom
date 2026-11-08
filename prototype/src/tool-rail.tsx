@@ -178,6 +178,8 @@ export function ToolRail() {
                   data-tool-anchor={t.id}
                   aria-label={t.id === 'rectangle' ? 'Shapes and lines' : t.label}
                   aria-pressed={tool === t.id}
+                  aria-haspopup={t.id === 'rectangle' ? 'menu' : undefined}
+                  aria-expanded={t.id === 'rectangle' ? shapes : undefined}
                   className={tool === t.id ? 'active' : ''}
                   draggable={!['pen', 'rectangle'].includes(t.id)}
                   onDragStart={e => {
@@ -325,7 +327,7 @@ export function ToolRail() {
         )}
       </div>
       {emojiMenu && (
-        <AnchoredPanel anchor="emoji">
+        <AnchoredPanel anchor="emoji" onDismiss={() => setEmojiMenu(false)}>
           <EmojiPicker
             title="Emoji and stickers"
             allowRemove={false}
@@ -339,7 +341,7 @@ export function ToolRail() {
         </AnchoredPanel>
       )}
       {shapes && (
-        <AnchoredPanel anchor="rectangle">
+        <AnchoredPanel anchor="rectangle" onDismiss={() => setShapes(false)}>
           <aside className="shape-menu floating compact" aria-label="Shapes and lines">
             <div className="shape-menu-list">
               <CompactShapesMenu
@@ -376,7 +378,7 @@ export function ToolRail() {
         </AnchoredPanel>
       )}
       {gallery && (
-        <AnchoredPanel anchor={gallery === 'Formats' ? 'formats' : 'essentials'}>
+        <AnchoredPanel anchor={gallery === 'Formats' ? 'formats' : 'essentials'} onDismiss={() => setGallery(null)}>
           <ToolGallery
             key={gallery}
             initial={gallery}

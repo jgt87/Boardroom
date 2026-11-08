@@ -71,7 +71,7 @@ export function FacilitationActions() {
         `Grouped ${r.clusters.reduce((s, c) => s + c.ids.length, 0)} notes into ${r.clusters.length} cluster frame${r.clusters.length === 1 ? '' : 's'}. Undo restores the layout.`,
       );
     } catch (err) {
-      display((err as Error).message);
+      display((err as Error).message, undefined, 'error');
     }
   };
   const clusterOne = () => {
@@ -83,7 +83,7 @@ export function FacilitationActions() {
       setEditing(r.frameId);
       display('Put the notes in one cluster frame. Type a name for it.');
     } catch (err) {
-      display((err as Error).message);
+      display((err as Error).message, undefined, 'error');
     }
   };
   const toDoc = (by: OutlineBy) => {
@@ -94,7 +94,7 @@ export function FacilitationActions() {
       setOpen(null);
       display('Doc created from the selected notes.');
     } catch (err) {
-      display((err as Error).message);
+      display((err as Error).message, undefined, 'error');
     }
   };
   if (!frame && !onlyFrames && notes.length < 2 && flips.length < 2) return null;
@@ -170,7 +170,7 @@ export function FacilitationActions() {
                       setOpen(null);
                       display(`Made ${copies} ${copies === 1 ? 'copy' : 'copies'} of the frame. Undo removes them.`);
                     } catch (err) {
-                      display((err as Error).message);
+                      display((err as Error).message, undefined, 'error');
                     }
                   }}
                 >

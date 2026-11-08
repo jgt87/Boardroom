@@ -269,6 +269,24 @@ export function threadPoint(board: Board, t: CommentThread): Point {
   const item = t.itemId ? board.items.find(i => i.id === t.itemId) : undefined;
   return item ? { x: item.x + t.x, y: item.y + t.y } : { x: t.x, y: t.y };
 }
+/**
+ * The next (or, with `back`, previous) open comment thread after `currentId`, wrapping around (decision R1-Q1:
+ * Alt+Down / Alt+Up). Pinned threads come first, then reading order (top to bottom, left to right); resolved
+ * threads are skipped. Returns the thread with its 1-based position, or null when there are no open threads.
+ */
+export function stepThread(
+  board: Board,
+  currentId: string | undefined,
+  back = false,
+): { thread: CommentThread; index: number; count: number } | null {
+  const open = (board.comments ?? [])
+    .filter(t => !t.resolved)
+    .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || a.y - b.y || a.x - b.x);
+  if (!open.length) return null;
+  const at = open.findIndex(t => t.id === currentId);
+  const index = at < 0 ? (back ? open.length - 1 : 0) : (at + (back ? -1 : 1) + open.length) % open.length;
+  return { thread: open[index], index: index + 1, count: open.length };
+}
 export function addThread(board: Board, at: Point, text: string, item?: Item): { board: Board; thread: CommentThread } {
   const body = text.trim();
   if (!body) throw new Error('Write a comment first.');

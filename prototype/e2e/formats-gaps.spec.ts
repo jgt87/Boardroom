@@ -171,7 +171,7 @@ test('Template search, categories and saving a frame as a template', async ({ pa
   await fit(page);
   await selectViaLayers(page, 'Sprint board');
   await page.getByRole('button', { name: 'Export', exact: true }).click();
-  await page.getByRole('button', { name: /^Save selection as template/ }).click();
+  await page.getByRole('menuitem', { name: /^Save selection as template/ }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Saved "Sprint board" (2 objects)' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Collaborate and review' }).click();

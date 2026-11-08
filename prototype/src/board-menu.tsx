@@ -3,6 +3,8 @@
 // opens a submenu, Left closes it, Escape or a click outside closes the menu.
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { fitMenu } from './menu-fit';
+import { usePopup, type PopupOptions } from './popup';
+import { menuKeyTarget } from './menu-keys';
 import { Check, ChevronRight, EllipsisVertical } from 'lucide-react';
 import { useApp } from './board-app';
 import { screenToWorld } from './camera';
@@ -86,27 +88,17 @@ type Entry =
   | { kind: 'sep' }
   | { kind: 'field'; node: React.ReactNode };
 
-/** Close a popup on Escape anywhere or a pointer press outside `ref`. */
-export function useDismiss(open: boolean, ref: React.RefObject<HTMLElement | null>, close: () => void) {
-  const closeRef = useRef(close);
-  useEffect(() => {
-    closeRef.current = close;
-  });
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) closeRef.current();
-    };
-    const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeRef.current();
-    };
-    document.addEventListener('pointerdown', down, true);
-    document.addEventListener('keydown', key, true);
-    return () => {
-      document.removeEventListener('pointerdown', down, true);
-      document.removeEventListener('keydown', key, true);
-    };
-  }, [open, ref]);
+/**
+ * Close a popup on Escape, a pointer press outside `ref`, Tab out, scroll, wheel or resize; Escape returns focus
+ * to the trigger. Kept as the name the menus already use; the behaviour lives in popup.tsx (item 142).
+ */
+export function useDismiss(
+  open: boolean,
+  ref: React.RefObject<HTMLElement | null>,
+  close: () => void,
+  options?: PopupOptions,
+) {
+  usePopup(open, ref, close, options);
 }
 
 function MenuList({
@@ -155,10 +147,11 @@ function MenuList({
     ];
     const i = items.indexOf(document.activeElement as HTMLElement);
     if (i < 0) return;
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    const next = menuKeyTarget(e.key, i, items.length);
+    if (next !== null) {
       e.preventDefault();
       e.stopPropagation();
-      items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+      items[next]?.focus();
     } else if (e.key === 'ArrowLeft' && onBack) {
       e.preventDefault();
       e.stopPropagation();

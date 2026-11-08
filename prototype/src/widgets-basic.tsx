@@ -100,7 +100,7 @@ export const basicViews: WidgetView[] = [
               });
               if (note) ctx.display(note);
             } catch (err) {
-              ctx.display((err as Error).message || 'The file could not be imported.');
+              ctx.display((err as Error).message || 'The file could not be imported.', undefined, 'error');
             }
           }),
       },

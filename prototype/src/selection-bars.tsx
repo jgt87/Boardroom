@@ -27,7 +27,7 @@ import {
 import { InsertShapeOnLine } from './insert-shape-menu';
 import { isCallout, resetCalloutTail } from './diagram-extras';
 import { GifControls, ImageAdjustControls } from './image-tools';
-import { adjustImages, downloadableAsset, setGifOptions } from './images';
+import { adjustImages, downloadableAsset, setGifOptions, squareForCircle } from './images';
 import { isAnimatedAsset } from './gif-still';
 import { setStyleField } from './inspector-model';
 import { mindLayoutKinds, mindOutlineMarkdown } from './mindmap-style';
@@ -39,7 +39,8 @@ import { NoteSizeControl } from './sticky-tools';
 import { ConnectorControls, swapConnectorEnds } from './connectors';
 import { isShapeKind, shapeLabels } from './shapes';
 import { BorderControls } from './shape-tools';
-import { reorderZ } from './arrange';
+import { editableIds, reorderZ } from './arrange';
+import { withoutWordBold } from './rich-text';
 import { FrameControls } from './presentation';
 import { FacilitationActions } from './facilitation-actions';
 import { containerOf, moveChild, removeChild } from './autolayout';
@@ -176,7 +177,20 @@ export function SelectionBars() {
               board={board}
               onChange={patchStyle}
               maskImage={selectedImages[0]}
-              onMask={mask => run(b => setStyleField(b, selected, 'mask', mask))}
+              onMask={mask =>
+                run(b => {
+                  const next = setStyleField(b, selected, 'mask', mask);
+                  if (mask !== 'circle') return next;
+                  // The circle crop squares the image first, so the result is a true circle (decision Q13).
+                  const changed = new Set(next.items.filter((i, k) => i !== b.items[k]).map(i => i.id));
+                  return {
+                    ...next,
+                    items: next.items.map(i =>
+                      changed.has(i.id) && i.assetId && assets[i.assetId] ? squareForCircle(i, assets[i.assetId]) : i,
+                    ),
+                  };
+                })
+              }
             />
           )}
           {selectedItem &&
@@ -186,7 +200,16 @@ export function SelectionBars() {
                 item={selectedItem}
                 compact={selectedItem.type === 'note'}
                 board={board}
-                onChange={format => patch({ format })}
+                onChange={format => {
+                  const weight = (f: Item['format']) => f?.fontWeight ?? (f?.bold ? 700 : 400);
+                  // Turning the object's Bold off also clears bold on single words (decision R6a-Q3).
+                  if (!(weight(selectedItem.format) >= 600 && weight(format) < 600)) return patch({ format });
+                  const ids = new Set(editableIds(boardRef.current, selected));
+                  run(b => ({
+                    ...b,
+                    items: b.items.map(i => (ids.has(i.id) ? withoutWordBold({ ...i, format }) : i)),
+                  }));
+                }}
               />
             )}
           {selectedItem && selected.length === 1 && isCallout(selectedItem) && selectedItem.tail && (

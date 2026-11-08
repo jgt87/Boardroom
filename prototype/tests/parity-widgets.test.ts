@@ -230,3 +230,24 @@ test('library spaces and stars are kept on save and listed', async () => {
   lib = setBoardMeta(kv, lib, lib.activeId, { space: null, starred: false });
   assert.ok(!('space' in lib.boards[0]!) && !('starred' in lib.boards[0]!));
 });
+
+test('the command palette finds recent boards by title or space, newest first, without the open or trashed ones (R1-Q3)', async () => {
+  const { matchCommands: match, recentBoardCommands } = await import('../src/commands.ts');
+  const boards = [
+    { id: 'a', title: 'Roadmap', updatedAt: '2026-11-01T00:00:00Z', space: 'Product' },
+    { id: 'b', title: 'Retro', updatedAt: '2026-11-07T00:00:00Z' },
+    { id: 'c', title: 'Open now', updatedAt: '2026-11-08T00:00:00Z' },
+    { id: 'd', title: 'Old', updatedAt: '2026-11-06T00:00:00Z', deletedAt: '2026-11-06T00:00:00Z' },
+  ];
+  const cmds = recentBoardCommands(boards, 'c');
+  assert.deepEqual(
+    cmds.map(c => c.label),
+    ['Open board: Retro', 'Open board: Roadmap'],
+  );
+  assert.deepEqual(
+    match(cmds, 'product').map(c => c.id),
+    ['board:a'],
+  );
+  assert.equal(match(cmds, 'board retro')[0].id, 'board:b');
+  assert.equal(recentBoardCommands(boards, 'c', 1).length, 1);
+});

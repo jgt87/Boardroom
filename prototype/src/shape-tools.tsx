@@ -33,6 +33,7 @@ import { imageMasks, maskLabels } from './image-masks';
 import type { ImageMask } from './image-masks';
 import { loadCustomShapes, removeCustomShape, storeCustomShapes } from './custom-shapes';
 import type { CustomShape } from './custom-shapes';
+import { onMenuKeys } from './popup';
 import './r5-canvas.css';
 
 export const DEFAULT_BORDER = {
@@ -359,7 +360,7 @@ export function CompactShapesMenu({
       </>
     );
   const row = (label: string, icon: React.ReactNode, onClick: () => void, key?: string) => (
-    <button key={label} className="shape-menu-row" onClick={onClick}>
+    <button key={label} role="menuitem" className="shape-menu-row" onClick={onClick}>
       <span className="shape-menu-icon" aria-hidden="true">
         {icon}
       </span>
@@ -369,7 +370,8 @@ export function CompactShapesMenu({
   );
   const glyph = (kind: ShapeKind) => <ShapeGlyph kind={kind} size={16} />;
   return (
-    <div className="shape-menu-compact" role="group" aria-label="Shapes and lines choices">
+    // Item 144: a menu with arrow keys (wrapping), Home and End; the rail pop-out handles Esc and outside presses.
+    <div className="shape-menu-compact" role="menu" aria-label="Shapes and lines choices" onKeyDown={onMenuKeys}>
       {row('Line', <Minus size={16} style={{ transform: 'rotate(-45deg)' }} />, () => onLine('line'), 'L')}
       {row('Arrow', <MoveUpRight size={16} />, () => onLine('arrow'))}
       {row('Elbow arrow', <CornerUpRight size={16} />, () => onLine('elbow'))}
@@ -380,7 +382,7 @@ export function CompactShapesMenu({
       {row('Rhombus', glyph('diamond'), () => onShape('diamond'), 'D')}
       {row('Triangle', glyph('triangle'), () => onShape('triangle'))}
       {row('Divider', <Minus size={16} />, () => onKind('divider'))}
-      <button className="shape-menu-row shape-menu-more" onClick={() => setMore(true)}>
+      <button role="menuitem" className="shape-menu-row shape-menu-more" onClick={() => setMore(true)}>
         <span className="shape-menu-icon" aria-hidden="true" />
         <span>More shapes</span>
         <span aria-hidden="true">›</span>
@@ -397,7 +399,7 @@ export function CompactShapesMenu({
             {mine.length ? (
               mine.map(s => (
                 <span key={s.id} className="shape-menu-mine-row">
-                  <button className="shape-menu-row" onClick={() => onCustom(s)}>
+                  <button role="menuitem" className="shape-menu-row" onClick={() => onCustom(s)}>
                     <span className="shape-menu-icon" aria-hidden="true">
                       <Shapes size={16} />
                     </span>

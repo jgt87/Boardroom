@@ -41,7 +41,7 @@ export type WidgetCtx = {
   /** Apply a board change as one undo step. */
   update: (change: (b: Board) => Board) => void;
   /** Show a transient status message. */
-  display: (message: string) => void;
+  display: import('./notices.ts').Display;
   preview?: PreviewState;
   /** Open this item's focus editor (the card panel for cards). */
   openEditor?: () => void;

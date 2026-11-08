@@ -21,3 +21,22 @@ export function matchCommands<T extends Command>(commands: T[], query: string, l
     .slice(0, limit)
     .map(x => x.c);
 }
+
+/** The board details the palette needs (a subset of `BoardMeta` in board-library.ts). */
+export type PaletteBoard = { id: string; title: string; updatedAt: string; space?: string; deletedAt?: string };
+/**
+ * "Open board" commands for the most recently edited live boards, except the open one (decision R1-Q3,
+ * 2026-11-08). They match on the title, the space and the words "board", "open", "recent" and "switch".
+ */
+export function recentBoardCommands(boards: PaletteBoard[], activeId: string, limit = 20): Command[] {
+  return boards
+    .filter(b => b.id !== activeId && !b.deletedAt)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, limit)
+    .map(b => ({
+      id: `board:${b.id}`,
+      label: `Open board: ${b.title || 'Untitled board'}`,
+      group: 'Boards',
+      keywords: `recent switch ${b.space ?? ''}`.trim(),
+    }));
+}

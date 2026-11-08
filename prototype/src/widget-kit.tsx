@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import type { ImageAsset, Item } from './model';
 import { decodeDataUrl, originalFileName } from './images';
 import type { WidgetCtx } from './widget-types';
+import { trapTab } from './focus-view';
 
 export const data = <T,>(i: Item) => (i.data ?? {}) as T;
 export const patchItem = (ctx: WidgetCtx, id: string, change: (i: Item) => Item) =>
@@ -90,6 +91,8 @@ export function Dialog({
       className="format-overlay"
       onKeyDown={e => {
         e.stopPropagation();
+        // Item 146: a modal dialog keeps Tab and Shift+Tab inside it.
+        trapTab(e, box.current);
         if (e.key === 'Escape') onClose();
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !applyDisabled) {
           e.preventDefault();

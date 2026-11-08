@@ -206,7 +206,7 @@ export function CanvasSurface() {
               update(applyChip(boardRef.current, [target.id], chip).board);
               setSelected([target.id]);
             } catch (error) {
-              display((error as Error).message);
+              display((error as Error).message, undefined, 'error');
             }
             return;
           }
@@ -638,7 +638,7 @@ export function CanvasSurface() {
                             setSelected([next.item.id]);
                             setEditing(next.item.id);
                           } catch (error) {
-                            display((error as Error).message);
+                            display((error as Error).message, undefined, 'error');
                           }
                         }}
                       >

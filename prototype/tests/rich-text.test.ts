@@ -229,3 +229,19 @@ test('Doc Markdown: highlight, colour and mention render safely and strip to pla
   );
   assert.equal(mentionMarkdown(' Ada [x]\nLee '), '@[Ada x Lee]');
 });
+
+test('turning the object Bold off clears per-word bold and keeps other word styles and links (R6a-Q3)', async () => {
+  const { withoutWordBold, withRichText: rich, activeSpans: active } = await import('../src/rich-text.ts');
+  const base = { ...createItem('text', 0, 0), text: 'one two three' };
+  const styled = rich(base, base.text, [
+    { start: 0, end: 3, bold: true, italic: true },
+    { start: 4, end: 7, bold: true, href: 'https://example.com/' },
+  ]);
+  assert.deepEqual(active(withoutWordBold(styled)), [
+    { start: 0, end: 3, italic: true },
+    { start: 4, end: 7, href: 'https://example.com/' },
+  ]);
+  // Nothing to clear: the same object comes back; spans that were only bold disappear entirely.
+  assert.equal(withoutWordBold(base), base);
+  assert.equal(withoutWordBold(rich(base, base.text, [{ start: 0, end: 3, bold: true }])).spans, undefined);
+});

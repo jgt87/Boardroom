@@ -74,7 +74,7 @@ function commitData<T>(ctx: WidgetCtx, item: Item, change: (d: T) => T): boolean
     }));
     return true;
   } catch (error) {
-    ctx.display((error as Error).message);
+    ctx.display((error as Error).message, undefined, 'error');
     return false;
   }
 }

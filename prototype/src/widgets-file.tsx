@@ -51,7 +51,7 @@ function downloadFile(item: Item, ctx: WidgetCtx) {
     const { bytes } = decodeDataUrl(asset.data);
     saveBlobFile(new Blob([bytes as BlobPart], { type: FILE_ASSET_MIME }), safeFileName(nameOf(item, asset)));
   } catch (err) {
-    ctx.display((err as Error).message || 'The file could not be downloaded.');
+    ctx.display((err as Error).message || 'The file could not be downloaded.', undefined, 'error');
   }
 }
 

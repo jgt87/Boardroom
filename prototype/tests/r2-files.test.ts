@@ -475,6 +475,11 @@ test('Office Online and Power BI embed links are allowed; other links from those
   const csp = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
   for (const origin of ['https://onedrive.live.com', 'https://*.sharepoint.com', 'https://app.powerbi.com'])
     assert.ok(csp.includes(`'${origin}'`), `frame-src allows ${origin}`);
+  // Decision R2-Q1: fetches may reach https sites (dragged pictures); scripts and images stay limited.
+  assert.match(csp, /`connect-src 'self' data: blob: https:\$\{dev/);
+  assert.match(csp, /"script-src 'self'"/);
+  assert.match(csp, /"img-src 'self' data: blob:"/);
+  assert.doesNotMatch(csp, /connect-src[^`]*\bhttp:/);
 });
 
 // ---- Track J: duplicate layer -----------------------------------------------------------------------

@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import { useApp } from './board-app';
 import { catalog, formatTools } from './tool-catalog';
-import { matchCommands, type Command } from './commands';
+import { matchCommands, recentBoardCommands, type Command } from './commands';
 import { undo, redo } from './model';
 import { connectItems, pendingConnection } from './switch-type';
 
@@ -33,6 +33,8 @@ export function CommandPalette() {
     update,
     setSelected,
     display,
+    library,
+    boardActions,
   } = app;
   const [query, setQuery] = useState(''),
     [active, setActive] = useState(0);
@@ -147,8 +149,15 @@ export function CommandPalette() {
         },
       },
     ];
-    return [...actions, ...unique];
+    // Recent boards (decision R1-Q3): found by typing a board's title or "board".
+    const boards: Runnable[] = recentBoardCommands(library.boards, library.activeId).map(c => ({
+      ...c,
+      run: () => boardActions.open(c.id.slice('board:'.length)),
+    }));
+    return [...actions, ...unique, ...boards];
   }, [
+    library,
+    boardActions,
     chooseFormat,
     setHistory,
     setSearchOpen,

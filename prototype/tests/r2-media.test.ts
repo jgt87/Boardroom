@@ -21,7 +21,7 @@ import {
 } from '../src/media-playback.ts';
 import { mediaSpecs } from '../src/specs-media.ts';
 import { gifFrameCount, gifLoops, gifPlayOnce, gifDataUrl, dataUrlBytes } from '../src/gif.ts';
-import { setGifOptions } from '../src/images.ts';
+import { setGifOptions, squareForCircle } from '../src/images.ts';
 import { imageMasks, isImageMask, maskPath } from '../src/image-masks.ts';
 import { setStyleField } from '../src/inspector-model.ts';
 import {
@@ -222,6 +222,21 @@ test('a crop mask applies to every selected unlocked image in one change', () =>
   for (const mask of imageMasks) assert.doesNotThrow(() => parseBoard(setStyleField(b, ids, 'mask', mask)));
   const cleared = setStyleField(starred, ids, 'mask', undefined);
   assert.equal(cleared.items[0].style, undefined);
+});
+
+test('the circle mask squares the image: centred square crop and a square box with the same centre (Q13)', () => {
+  const asset = { mime: 'image/png', data: 'data:image/png;base64,AA', width: 400, height: 200, name: 'wide' };
+  const wide = { ...createItem('image', 0, 0), assetId: 'a1', w: 400, h: 200 };
+  const sq = squareForCircle(wide, asset);
+  assert.deepEqual([sq.x, sq.y, sq.w, sq.h], [100, 0, 200, 200]);
+  assert.deepEqual(sq.crop, { x: 0.25, y: 0, w: 0.5, h: 1 });
+  // Inside an existing crop (the left half, 200 x 200 px, already square): only the box changes.
+  const cropped = squareForCircle({ ...wide, crop: { x: 0, y: 0, w: 0.5, h: 1 }, w: 300, h: 300 }, asset);
+  assert.deepEqual(cropped.crop, { x: 0, y: 0, w: 0.5, h: 1 });
+  // An already square image keeps no crop.
+  const square = squareForCircle({ ...wide, w: 100, h: 100 }, { ...asset, height: 400 });
+  assert.equal(square.crop, undefined);
+  assert.doesNotThrow(() => parseBoard({ version: 1, title: 't', items: [sq] }));
 });
 
 // ---- Pinned comments --------------------------------------------------------------------------------

@@ -59,7 +59,7 @@ test('a selection saved as a shape is placed again from My shapes as one group',
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Shapes and lines', exact: true }).click();
   const mine = page.getByRole('group', { name: 'My shapes' });
-  await mine.getByRole('button', { name: 'Custom shape', exact: true }).click();
+  await mine.getByRole('menuitem', { name: 'Custom shape', exact: true }).click();
   await waitForSave(page, x => x.items.length === 4, 'shape placed');
   const placed = (await savedBoard(page)).items.filter(i => !['a', 'b'].includes(i.id));
   expect(placed.map(i => i.type).sort()).toEqual(['ellipse', 'rectangle']);
@@ -68,7 +68,7 @@ test('a selection saved as a shape is placed again from My shapes as one group',
 
   // The entity table is in the same menu and the saved shape can be removed.
   await page.getByRole('button', { name: 'Shapes and lines', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Entity table' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Entity table' })).toBeVisible();
   await mine.getByRole('button', { name: 'Remove shape Custom shape' }).click();
   await expect(mine.getByText('Right-click a selection')).toBeVisible();
 });

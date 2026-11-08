@@ -113,7 +113,7 @@ export function GridRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
         }),
       }));
     } catch (e) {
-      ctx.display((e as Error).message);
+      ctx.display((e as Error).message, undefined, 'error');
     }
   };
   // Large grids (track J, up to 2,500 cells) draw cells as text and keep one live field, on the current

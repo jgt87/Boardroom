@@ -25,7 +25,9 @@ function contentSecurityPolicy(dev: boolean, editorOrigin: string): string {
     "img-src 'self' data: blob:",
     "media-src 'self' data: blob:",
     "font-src 'self' data:",
-    `connect-src 'self' data: blob:${dev ? ' ws: wss:' : ''}`,
+    // https: lets a picture dragged from another site be downloaded into the board (decision R2-Q1, 2026-11-08).
+    // The fetch sends no cookies or referrer; sites that refuse cross-origin reads still give a bookmark.
+    `connect-src 'self' data: blob: https:${dev ? ' ws: wss:' : ''}`,
     "worker-src 'self' blob:",
     `frame-src ${[editorOrigin, ...embedOrigins].join(' ')}`,
     "object-src 'none'",

@@ -153,6 +153,12 @@
   padding: 6px;
   display: flex;
   flex-direction: column;
+  /* Item 147: the max height comes from fitMenu; the rows scroll inside on short windows. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.context-menu > * {
+  flex-shrink: 0;
 }
 .context-menu button {
   justify-content: space-between;

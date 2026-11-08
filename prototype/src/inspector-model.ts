@@ -38,15 +38,22 @@ const anyLocked = (items: Item[]) => items.some(i => i.locked);
 
 /** Items whose geometry the inspector edits: non-connectors. */
 export const geometryItems = (board: Board, ids: string[]) => selectedItems(board, ids).filter(i => i.type !== 'arrow');
-/** Bounds of the selection (single item: its own box). */
+/** A single rotated object: W and H are its own width and height, not its outer bounds (decision C-Q5). */
+const singleRotated = (items: Item[]): Item | undefined =>
+  items.length === 1 && (items[0].rotation ?? 0) % 360 !== 0 ? items[0] : undefined;
+/**
+ * Bounds of the selection: X and Y are the top-left of the outer bounds. For one rotated object W and H are the
+ * object's own size, along its own axes (decision C-Q5, 2026-11-08).
+ */
 export function geometryOf(board: Board, ids: string[]): Bounds | null {
   const items = geometryItems(board, ids);
-  return items.length
-    ? selectionBounds(
-        board.items,
-        items.map(i => i.id),
-      )
-    : null;
+  if (!items.length) return null;
+  const outer = selectionBounds(
+    board.items,
+    items.map(i => i.id),
+  )!;
+  const rotated = singleRotated(items);
+  return rotated ? { ...outer, w: rotated.w, h: rotated.h } : outer;
 }
 
 /**
@@ -71,6 +78,16 @@ export function setGeometry(board: Board, ids: string[], field: GeometryField, v
     );
   }
   const size = Math.max(field === 'w' ? MIN_W : MIN_H, value);
+  const rotated = singleRotated(items);
+  if (rotated) {
+    // Resize along the object's own axes around its centre, so the rotation does not skew it.
+    if (size === rotated[field]) return board;
+    const next =
+      field === 'w'
+        ? { x: rotated.x + (rotated.w - size) / 2, w: size }
+        : { y: rotated.y + (rotated.h - size) / 2, h: size };
+    return { ...board, items: board.items.map(i => (i === rotated ? { ...i, ...next } : i)) };
+  }
   if (size === before[field]) return board;
   const after = { ...before, [field]: size };
   return resizeItems(

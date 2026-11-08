@@ -223,7 +223,7 @@ export function RichDocEditor({
   locked: boolean;
   zoom: number;
   board: Board;
-  display: (message: string) => void;
+  display: import('./notices').Display;
   onSave: (markdown: string) => void;
   title: React.ReactNode;
   templates: DocTemplateOption[];

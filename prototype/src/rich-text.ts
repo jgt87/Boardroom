@@ -301,6 +301,16 @@ export function replaceRange(
   return { text: next, spans: normalizeSpans(out, next.length) };
 }
 
+/**
+ * The item without per-word bold (decision R6a-Q3, 2026-11-08): turning the whole object's Bold off means no bold
+ * anywhere in it. Other word styles, links and mentions stay. Returns the same item when nothing changes.
+ */
+export function withoutWordBold<T extends Item>(item: T): T {
+  const spans = activeSpans(item);
+  if (!spans.some(s => s.bold)) return item;
+  return withRichText(item, item.text, applyStyle(item.text, spans, 0, item.text.length, { bold: undefined }));
+}
+
 /** Item with new text and spans in one change; spans are dropped when there are none. */
 export function withRichText<T extends Item>(item: T, text: string, spans: readonly TextSpan[]): T {
   const next = { ...item, text };

@@ -26,9 +26,25 @@ export const test = base.extend<{ pageErrors: string[] }>({
 });
 export { expect };
 
+/**
+ * Wait for the board. The dev server sends ~150 module files per load; on the GitHub Windows runner one load in
+ * hundreds fails at the network layer (net::ERR_NO_BUFFER_SPACE, 2026-11-08) and the app shows its "could not
+ * finish loading" screen. Only that screen gets one reload, with a warning; every other failure still fails.
+ */
+async function waitForCanvas(page: Page) {
+  const canvas = page.locator('svg.canvas'),
+    startupError = page.getByRole('heading', { name: 'Boardroom could not finish loading' });
+  await expect(canvas.or(startupError)).toBeVisible();
+  if (await startupError.isVisible()) {
+    console.warn('[e2e] the app failed to load a script; reloading once');
+    await page.reload();
+  }
+  await expect(canvas).toBeVisible();
+}
+
 export async function openApp(page: Page) {
   await page.goto('/');
-  await expect(page.locator('svg.canvas')).toBeVisible();
+  await waitForCanvas(page);
 }
 
 /**
@@ -50,7 +66,7 @@ export async function seed(page: Page, body: string) {
   ) as (arg: { key: string }) => Promise<void>;
   await page.evaluate(fn, { key: STORAGE_KEY });
   await page.reload();
-  await expect(page.locator('svg.canvas')).toBeVisible();
+  await waitForCanvas(page);
 }
 
 /** Saved board (the app saves 350 ms after a change). */

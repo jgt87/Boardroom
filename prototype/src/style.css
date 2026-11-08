@@ -685,6 +685,10 @@ kbd {
   font-size: 10px;
   color: #595964;
 }
+/* Item 148: the always-mounted live regions add no box of their own; the notice inside is the visible part. */
+.notice-region {
+  display: contents;
+}
 .notice {
   position: absolute;
   bottom: 90px;
@@ -1408,6 +1412,10 @@ html[data-input='keyboard'] .canvas:focus-visible {
   right: auto;
   left: -8px;
   top: calc(100% + 10px);
+  /* Item 142: never taller than the window; the rows scroll inside, so every row stays reachable. */
+  max-height: calc(100dvh - 84px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 /* Zoom menu (item 114): a short menu like the reference, with exact view entry below. */
 .zoom-menu {

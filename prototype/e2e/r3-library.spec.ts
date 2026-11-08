@@ -156,7 +156,7 @@ test('templates: picker after New board, previews, rename, export and import', a
      return {...m.newBoard(),title:'Kickoff',items:[a,b]};`,
   );
   await page.getByRole('button', { name: 'Export', exact: true }).click();
-  await page.getByRole('button', { name: /^Save board as template/ }).click();
+  await page.getByRole('menuitem', { name: /^Save board as template/ }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Saved "Kickoff"' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Collaborate and review' }).click();

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { createItem, newBoard, parseBoard } from '../src/model.ts';
 import type { Board, Item } from '../src/model.ts';
 import {
+  pdfFrames,
   presentationFrames,
   slideFrames,
   frameNotes,
@@ -73,6 +74,15 @@ test('presenter notes and hidden frames are stored on the frame and survive vali
     slideFrames(parsed).map(f => f.id),
     ['a', 'c'],
     'presenting skips hidden frames',
+  );
+  // PDF export keeps hidden frames (decision Q7); a selection of frames still wins.
+  assert.deepEqual(
+    pdfFrames(parsed, []).map(f => f.id),
+    ['a', 'b', 'c'],
+  );
+  assert.deepEqual(
+    pdfFrames(parsed, ['c', 'x']).map(f => f.id),
+    ['c'],
   );
   // Clearing removes the keys and the empty data object.
   doc = setHiddenSlide(setFrameNotes(doc, 'a', '   '), 'b', false);

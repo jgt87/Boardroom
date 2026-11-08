@@ -1,6 +1,7 @@
 // A small awaitable in-app choice (P2-Q4), used instead of browser confirm dialogs. `askChoice` resolves with the
 // chosen option's id, or null on cancel. <ChoicePromptHost /> is mounted once in board-chrome.tsx.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { trapTab } from './focus-view';
 import type { ReactNode } from 'react';
 
 export type ChoiceOption = { id: string; label: string; detail?: string; icon?: ReactNode };
@@ -32,6 +33,19 @@ export function ChoicePromptHost() {
     };
   }, []);
   const req = queue[0];
+  // Item 146: remember what had focus when the question opened and give it back when it closes.
+  const prior = useRef<HTMLElement | null>(null),
+    box = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!req) return;
+    // A queued follow-up question keeps the first opener, so focus goes back there at the end.
+    prior.current ??= document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }, [req]);
+  useEffect(() => {
+    if (req || !prior.current) return;
+    if (prior.current.isConnected) prior.current.focus();
+    prior.current = null;
+  }, [req]);
   if (!req) return null;
   const finish = (choice: string | null) => {
     req.resolve(choice);
@@ -42,6 +56,7 @@ export function ChoicePromptHost() {
       className="format-overlay"
       onKeyDown={e => {
         e.stopPropagation();
+        trapTab(e, box.current);
         if (e.key === 'Escape') finish(null);
       }}
       onPointerDown={e => {
@@ -50,6 +65,7 @@ export function ChoicePromptHost() {
     >
       <section
         key={req.id}
+        ref={box}
         className="format-editor sheet-picker choice-prompt"
         role="dialog"
         aria-modal="true"

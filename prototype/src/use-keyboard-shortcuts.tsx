@@ -15,6 +15,7 @@ import {
   selectionSummary,
 } from './access-tools';
 import { announce, lastAnnouncement } from './announce';
+import { stepThread } from './board-tools';
 import type { Kind } from './model';
 import type { BoardCore } from './board-app';
 import { tools } from './board-app';
@@ -75,6 +76,7 @@ export function useKeyboardShortcuts(core: BoardCore, gestures: { cancelGesture:
     finishPlacedItem,
     setCodeId,
     setThread,
+    thread,
     setBoardOutline,
     setDashboard,
     notesOpen,
@@ -302,6 +304,21 @@ export function useKeyboardShortcuts(core: BoardCore, gestures: { cancelGesture:
         const text =
           key === 'r' && lastAnnouncement() ? lastAnnouncement() : selectionSummary(boardRef.current, selected);
         announce(text);
+        return;
+      }
+      if (e.altKey && !mod && !e.shiftKey && (key === 'arrowdown' || key === 'arrowup')) {
+        // Alt+Down / Alt+Up: next or previous open comment thread (decision R1-Q1); Alt+Left/Right stay the
+        // browser's back and forward.
+        e.preventDefault();
+        const step = stepThread(boardRef.current, thread && 'id' in thread ? thread.id : undefined, key === 'arrowup');
+        if (!step) return announce('No open comments on this board.');
+        const t = step.thread;
+        setThread({ id: t.id });
+        const sx = t.x * camera.z + camera.x,
+          sy = t.y * camera.z + camera.y;
+        if (sx < 60 || sy < 60 || sx > size.w - 60 || sy > size.h - 60)
+          setCamera(c => ({ ...c, x: size.w / 2 - t.x * c.z, y: size.h / 2 - t.y * c.z }));
+        announce(`Comment ${step.index} of ${step.count}: ${t.messages[0]?.text.slice(0, 120) ?? ''}`);
         return;
       }
       if (e.altKey && !mod && !e.shiftKey && key === 'c' && selected.length) {

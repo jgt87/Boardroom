@@ -125,11 +125,12 @@ test('B2/B6/B7/B8: plain-text paste is classified and turned into valid objects'
   ];
   assert.deepEqual(
     all.map(i => i.type),
-    ['grid', 'embed', 'bookmark', 'mermaid', 'note', 'note', 'note', 'text'],
+    ['grid', 'embed', 'bookmark', 'mermaid', 'note', 'note', 'note', 'note'],
   );
+  // A single line becomes one sticky note too (decision Q3).
   assert.deepEqual(
     all.filter(i => i.type === 'note').map(i => i.text),
-    ['first', 'second', 'third'],
+    ['first', 'second', 'third', 'hello'],
   );
   assert.equal(all[2].data!.title, 'example.com');
   parseBoard({ version: 1, title: 'Paste', items: all });
@@ -144,7 +145,9 @@ test('B2/B6: paste limits are enforced and reported', () => {
   const n = notesFromLines(Array.from({ length: 150 }, (_, i) => `line ${i}`).join('\n'), { x: 0, y: 0 });
   assert.deepEqual([n.items.length, n.truncated], [100, true]);
   assert.throws(() => linkItem('javascript:alert(1)', { x: 0, y: 0 }));
-  assert.equal(itemsFromText('javascript:alert(1)', { x: 0, y: 0 })!.items[0].type, 'text');
+  // A script address is never a link: it arrives as plain words on a sticky note.
+  const unsafe = itemsFromText('javascript:alert(1)', { x: 0, y: 0 })!.items[0];
+  assert.deepEqual([unsafe.type, unsafe.link, unsafe.data?.url], ['note', undefined, undefined]);
 });
 
 test('D3: switch type converts notes, text, shapes and cards both ways, keeping ids and text', () => {

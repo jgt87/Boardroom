@@ -279,14 +279,18 @@ export function groupA11yIssues(issues: A11yIssue[]): { section: A11ySection; is
 // ---- Deep links ----------------------------------------------------------------------------------------------
 export type DeepLink = { board?: string; item?: string; frame?: string };
 const ID = /^[A-Za-z0-9_-]{1,100}$/;
-/** Hash for a link to an object (`#board=<id>&item=<id>`, or `frame=` for frames). */
+/**
+ * Hash for a link to an object or frame. One format for every link the app writes (decision R4-Q6, 2026-11-08):
+ * `#board=<id>&object=<id>`, the same as deep-link.ts, which opens it. Older `item=` / `frame=` links still open
+ * through `parseDeepLink` below.
+ */
 export function deepLinkHash(item: Item, boardId?: string): string {
   const params = new URLSearchParams();
   if (boardId) params.set('board', boardId);
-  params.set(item.type === 'frame' ? 'frame' : 'item', item.id);
+  params.set('object', item.id);
   return '#' + params.toString();
 }
-/** Parse a location hash; unknown keys and malformed ids are ignored. */
+/** Parse an older `item=` / `frame=` link (kept so links copied before R4-Q6 open); malformed ids are ignored. */
 export function parseDeepLink(hash: string): DeepLink | undefined {
   const params = new URLSearchParams(hash.replace(/^#/, ''));
   const out: DeepLink = {};

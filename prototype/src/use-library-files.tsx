@@ -72,7 +72,7 @@ export function useLibraryFiles() {
           (extras.length ? ` with ${extras.join(' and ')}.` : '.'),
       );
     } catch (err) {
-      display((err as Error).message || 'The library backup could not be created.');
+      display((err as Error).message || 'The library backup could not be created.', undefined, 'error');
     }
   };
   /**
@@ -106,7 +106,7 @@ export function useLibraryFiles() {
           (made.media ? ` with ${plural(made.media, 'media file')}.` : '.'),
       );
     } catch (err) {
-      display((err as Error).message || 'The backup could not be created.');
+      display((err as Error).message || 'The backup could not be created.', undefined, 'error');
     }
   };
   /**
@@ -133,7 +133,7 @@ export function useLibraryFiles() {
         );
       } else if (boardActions.createFrom(contents.board)) display('Backup imported as a new board.');
     } catch (err) {
-      display((err as Error).message || 'Unable to import this file.');
+      display((err as Error).message || 'Unable to import this file.', undefined, 'error');
     }
   };
   /** Save templates (one or all) as a .json templates file. */
@@ -162,7 +162,7 @@ export function useLibraryFiles() {
       );
       return merged.list;
     } catch (err) {
-      display((err as Error).message || 'Unable to import this file.');
+      display((err as Error).message || 'Unable to import this file.', undefined, 'error');
       return null;
     }
   };

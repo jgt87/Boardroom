@@ -259,7 +259,7 @@ export function BoardOverlays() {
                   setSelected([item.id]);
                   display('Created a Mermaid diagram from the selection. The shapes are kept.');
                 } catch (err) {
-                  display((err as Error).message);
+                  display((err as Error).message, undefined, 'error');
                 }
               },
             } as MenuEntry,

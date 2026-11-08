@@ -48,7 +48,29 @@ export function BoardChrome() {
     zoom,
     commandsOpen,
     setCommandsOpen,
+    noticeKind,
   } = useApp();
+  const noticeToast = (
+    <div className={`notice floating ${saveError || noticeKind === 'error' ? 'error' : ''}`}>
+      {notice}
+      {noticeAction?.message === notice &&
+        noticeAction.actions.map(action => (
+          <button
+            key={action.label}
+            className="text-button"
+            onClick={() => {
+              setNotice('');
+              action.run();
+            }}
+          >
+            {action.label}
+          </button>
+        ))}
+      <button className="icon-button" aria-label="Dismiss notification" onClick={() => setNotice('')}>
+        <X size={15} />
+      </button>
+    </div>
+  );
   return (
     <>
       {!board.items.length && (
@@ -258,6 +280,10 @@ export function BoardChrome() {
             <dd>
               <kbd>Alt C</kbd>
             </dd>
+            <dt>Next / previous comment</dt>
+            <dd>
+              <kbd>Alt ↓ / Alt ↑</kbd>
+            </dd>
             <dt>Board outline by frame</dt>
             <dd>
               <kbd>Alt O</kbd>
@@ -313,31 +339,19 @@ export function BoardChrome() {
           </button>
         </div>
       )}
-      {notice && (
-        <div className={`notice floating ${saveError ? 'error' : ''}`} role="status">
-          {notice}
-          {noticeAction?.message === notice &&
-            noticeAction.actions.map(action => (
-              <button
-                key={action.label}
-                className="text-button"
-                onClick={() => {
-                  setNotice('');
-                  action.run();
-                }}
-              >
-                {action.label}
-              </button>
-            ))}
-          <button className="icon-button" aria-label="Dismiss notification" onClick={() => setNotice('')}>
-            <X size={15} />
-          </button>
-        </div>
-      )}
+      {/* Item 148: both live regions are mounted from the start, so the first notice is announced too. Errors go
+          to the alert region and stay longer (notices.ts). */}
+      <div className="notice-region" role="status">
+        {notice && noticeKind !== 'error' && noticeToast}
+      </div>
+      <div className="notice-region" role="alert">
+        {notice && noticeKind === 'error' && noticeToast}
+      </div>
     </>
   );
 }
 
+/** Help menu in the bottom bar (item 114), like the reference's question-mark button. */
 /** Help menu in the bottom bar (item 114), like the reference's question-mark button. */
 function HelpMenu({ onShortcuts, onCommands }: { onShortcuts: () => void; onCommands: () => void }) {
   const [open, setOpen] = useState(false);

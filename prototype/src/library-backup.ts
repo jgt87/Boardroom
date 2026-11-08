@@ -61,9 +61,10 @@ export type BackupContents =
   | { kind: 'board'; board: Board; assets: Record<string, ImageAsset> };
 
 /**
- * Bundle every stored board (trash included), the index details, saved templates, saved blueprints and all
- * referenced media. With `only` (track R2-I: back up one or selected boards), just those boards, the spaces they
- * are filed under and the media they use are bundled, in the same format.
+ * Bundle every stored board, the index details, saved templates, saved blueprints and all referenced media.
+ * Boards in the trash are left out (decision Q5, 2026-11-08), with their media unless a kept board uses it too.
+ * With `only` (track R2-I: back up one or selected boards), just those boards, the spaces they are filed under and
+ * the media they use are bundled, in the same format.
  */
 export function encodeLibrary(
   kv: KeyValueStore,
@@ -76,7 +77,10 @@ export function encodeLibrary(
 ): { bytes: Uint8Array; boards: number; media: number; templates: number; blueprints: number } {
   const files: Zippable = {};
   const wanted = only ? new Set(only) : null;
-  const lib: Library = wanted ? { ...library, boards: library.boards.filter(b => wanted.has(b.id)) } : library;
+  const lib: Library = {
+    ...library,
+    boards: library.boards.filter(b => !b.deletedAt && (!wanted || wanted.has(b.id))),
+  };
   const used = new Set(lib.boards.map(b => b.space).filter(Boolean));
   const manifest: LibraryManifest = {
     format: LIBRARY_FORMAT,

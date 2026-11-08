@@ -168,7 +168,7 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
     try {
       change(next());
     } catch (error) {
-      ctx.display((error as Error).message);
+      ctx.display((error as Error).message, undefined, 'error');
     }
   };
   const toggleCollapsed = (id: string) =>
@@ -233,7 +233,7 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
       const at = index < 0 ? rest.length : index;
       change([...rest.slice(0, at), moved, ...rest.slice(at)]);
     } catch (error) {
-      ctx.display((error as Error).message);
+      ctx.display((error as Error).message, undefined, 'error');
     }
   };
   const table = (
@@ -535,7 +535,7 @@ export function CanvasRecords({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
           try {
             change(duplicateRecords(rows, selected));
           } catch (error) {
-            ctx.display((error as Error).message);
+            ctx.display((error as Error).message, undefined, 'error');
           }
         }}
         onDelete={() => {

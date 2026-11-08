@@ -145,26 +145,29 @@ test('C3 library backup round trip adds boards with new ids on conflict, keeping
   lib = createSpace(kv, lib, 'Empty space');
   const img = { ...createItem('image', 0, 0), assetId: 'asset-1' };
   lib = createBoard(kv, lib, board('With image', img)).library;
-  lib = trashBoards(kv, lib, [a], parseBoard, newBoard).library;
+  // A trashed board is left out of the backup (decision Q5).
+  const beta = lib.boards.find(x => x.title === 'Beta')!.id;
+  lib = trashBoards(kv, lib, [beta], parseBoard, newBoard).library;
   const made = encodeLibrary(kv, lib, {
     'asset-1': { mime: 'image/png', data: PNG, width: 1, height: 1, name: 'dot.png' },
     unused: { mime: 'image/png', data: PNG, width: 1, height: 1, name: 'x.png' },
   });
-  assert.equal(made.boards, 4);
+  assert.equal(made.boards, 3);
   assert.equal(made.media, 1);
   assert.ok(isLibraryBackup(made.bytes));
   const decoded = decodeLibrary(made.bytes, parseBoard);
-  assert.equal(decoded.entries.length, 4);
+  assert.equal(decoded.entries.length, 3);
+  assert.ok(!decoded.entries.some(e => e.board.title === 'Beta'));
   assert.equal(decoded.skipped, 0);
   assert.deepEqual(Object.keys(decoded.assets), ['asset-1']);
   assert.deepEqual(decoded.spaces, ['Empty space']);
   // Restoring into the same library: every id is taken, so all boards are added under new ids.
   const before = lib.boards.length;
   const added = addBoards(kv, lib, decoded.entries);
-  assert.equal(added.library.boards.length, before + 4);
+  assert.equal(added.library.boards.length, before + 3);
   assert.ok(added.ids.every(id => !lib.boards.some(b => b.id === id)));
   const alpha = added.library.boards.find(b => added.ids.includes(b.id) && b.title === 'Alpha')!;
-  assert.deepEqual([alpha.space, alpha.starred, !!alpha.deletedAt], ['Plans', true, true]);
+  assert.deepEqual([alpha.space, alpha.starred, !!alpha.deletedAt], ['Plans', true, false]);
   assert.equal(added.library.activeId, lib.activeId, 'restoring never switches boards');
   // Into an empty library the original ids are kept.
   const fresh = new MemoryStore();

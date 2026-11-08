@@ -218,7 +218,7 @@ export function FloatingPanels() {
                 setPanel(null);
                 display('Note converted. Undo restores the note.');
               } catch (err) {
-                display((err as Error).message);
+                display((err as Error).message, undefined, 'error');
               }
             }}
             onClose={() => setPanel(null)}
@@ -276,7 +276,7 @@ export function FloatingPanels() {
                   setSelected([made.item.id]);
                   display('Voting results added as a Table beside the voted objects.');
                 } catch (err) {
-                  display((err as Error).message);
+                  display((err as Error).message, undefined, 'error');
                 }
               });
             }}
@@ -286,7 +286,7 @@ export function FloatingPanels() {
                 update(r.board);
                 display('Voting ended. Results are saved with the board.');
               } catch (err) {
-                display((err as Error).message);
+                display((err as Error).message, undefined, 'error');
               }
             }}
             onClose={() => setFacil(null)}
@@ -490,7 +490,7 @@ export function FloatingPanels() {
                       update(r.board);
                       setThread({ id: r.thread.id });
                     } catch (err) {
-                      display((err as Error).message);
+                      display((err as Error).message, undefined, 'error');
                     }
                   }}
                   onClose={() => setThread(null)}
@@ -605,7 +605,7 @@ export function FloatingPanels() {
               update(startVoting(boardRef.current, ids, 3));
               display('Voting started on this slide: 3 votes. Use + and − on each object.');
             } catch (err) {
-              display((err as Error).message);
+              display((err as Error).message, undefined, 'error');
             }
           }}
           onEndVote={() => {
@@ -613,14 +613,14 @@ export function FloatingPanels() {
               update(endVoting(boardRef.current, voteLabel).board);
               display('Voting ended. Results are saved with the board.');
             } catch (err) {
-              display((err as Error).message);
+              display((err as Error).message, undefined, 'error');
             }
           }}
           onVote={(id, delta) => {
             try {
               update(castVote(boardRef.current, id, delta));
             } catch (err) {
-              display((err as Error).message);
+              display((err as Error).message, undefined, 'error');
             }
           }}
         />

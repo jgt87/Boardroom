@@ -139,3 +139,20 @@ test('board summary counts objects, frames and connectors', () => {
     connectors: 1,
   });
 });
+
+test('a rotated object shows and resizes its own width and height around its centre (C-Q5)', () => {
+  const box = { ...createItem('rectangle', 0, 0), id: 'r', x: 0, y: 0, w: 200, h: 100, rotation: 90 };
+  const b = board(box);
+  const geo = geometryOf(b, ['r'])!;
+  assert.deepEqual([geo.w, geo.h], [200, 100]);
+  // The outer bounds of a quarter turn are 100 x 200; X and Y still name their top-left corner.
+  assert.deepEqual([Math.round(geo.x), Math.round(geo.y)], [50, -50]);
+  const wider = setGeometry(b, ['r'], 'w', 300).items[0];
+  assert.deepEqual([wider.x, wider.y, wider.w, wider.h, wider.rotation], [-50, 0, 300, 100, 90]);
+  const taller = setGeometry(b, ['r'], 'h', 160).items[0];
+  assert.deepEqual([taller.y, taller.h], [-30, 160]);
+  assert.equal(setGeometry(b, ['r'], 'w', 200), b);
+  // Without rotation the outer bounds and the box are the same, as before.
+  const flat = board({ ...box, rotation: 0 });
+  assert.deepEqual(setGeometry(flat, ['r'], 'w', 300).items[0].w, 300);
+});

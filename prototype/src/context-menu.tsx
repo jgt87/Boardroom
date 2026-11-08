@@ -2,6 +2,8 @@
 // focus and popup behavior" module. Keyboard: arrows, Home/End, Enter, Esc; opened with
 // Shift+F10 or the Menu key for the current selection.
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { fitMenu } from './menu-fit';
+import { useLatest } from './use-latest';
 
 export type MenuEntry =
   { label: string; shortcut?: string; disabled?: boolean; danger?: boolean; run: () => void } | 'separator';
@@ -17,32 +19,40 @@ export function ContextMenu({
   entries: MenuEntry[];
   onClose: () => void;
 }) {
+  const latestClose = useLatest(onClose);
   const menu = useRef<HTMLDivElement>(null),
-    [pos, setPos] = useState({ left: x, top: y });
+    [pos, setPos] = useState<{ left: number; top: number; maxHeight?: number }>({ left: x, top: y });
   useLayoutEffect(() => {
     const el = menu.current;
     if (!el) return;
+    // Item 147: keep the whole menu on screen. A menu taller than the window gets a max height and scrolls inside
+    // (fitMenu), so every row stays reachable on short windows.
     const r = el.getBoundingClientRect();
-    setPos({
-      left: Math.max(8, Math.min(x, innerWidth - r.width - 8)),
-      top: Math.max(8, Math.min(y, innerHeight - r.height - 8)),
-    });
+    const fit = fitMenu({ x, y, w: r.width, h: el.scrollHeight }, null, { w: innerWidth, h: innerHeight }, true)!;
+    setPos({ left: fit.x, top: fit.y, maxHeight: fit.maxH });
     el.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
   }, [x, y]);
+  // Registered once; the current onClose is read through useLatest, so a re-render (the app re-renders on resize)
+  // never swaps the listeners out while an event is being handled.
   useEffect(() => {
     const close = (e: Event) => {
-      if (!menu.current?.contains(e.target as Node)) onClose();
+      if (!menu.current?.contains(e.target as Node)) latestClose.current();
     };
-    const blur = () => onClose();
+    const blur = () => latestClose.current();
     addEventListener('pointerdown', close, true);
     addEventListener('wheel', close, { capture: true, passive: true });
+    // Scrolling the page or a panel under it, or resizing the window, closes it (the rows scroll inside it).
+    addEventListener('scroll', close, true);
+    addEventListener('resize', blur);
     addEventListener('blur', blur);
     return () => {
       removeEventListener('pointerdown', close, true);
       removeEventListener('wheel', close, true);
+      removeEventListener('scroll', close, true);
+      removeEventListener('resize', blur);
       removeEventListener('blur', blur);
     };
-  }, [onClose]);
+  }, [latestClose]);
   const move = (delta: number | 'first' | 'last') => {
     const buttons = [...(menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
     if (!buttons.length) return;
@@ -57,7 +67,7 @@ export function ContextMenu({
       className="context-menu floating"
       role="menu"
       aria-label="Actions"
-      style={{ left: pos.left, top: pos.top }}
+      style={{ left: pos.left, top: pos.top, maxHeight: pos.maxHeight }}
       onContextMenu={e => e.preventDefault()}
       onKeyDown={e => {
         e.stopPropagation();
