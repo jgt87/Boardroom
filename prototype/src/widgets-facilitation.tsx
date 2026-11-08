@@ -126,7 +126,7 @@ export function PollRender({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
                 setData(ctx, item.id, votePoll(d, o.id));
               }}
             >
-              {!hidden && <span className="bar" style={{ width: `${o.share * 100}%` }} />}
+              {!hidden && <span className="bar" style={{ transform: `scaleX(${o.share})` }} />}
               <span className="label">{o.label}</span>{' '}
               {!hidden && (
                 <span className="count">
@@ -427,7 +427,7 @@ function ScaleRow({
               <span
                 className="w-scale-dist"
                 aria-hidden="true"
-                style={{ height: `${peak ? ((stats.shares[k] ?? 0) / peak) * 100 : 0}%` }}
+                style={{ transform: `scaleY(${peak ? (stats.shares[k] ?? 0) / peak : 0})` }}
               />
               <span className="w-scale-value">{v}</span>
             </button>

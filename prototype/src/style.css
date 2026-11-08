@@ -1,12 +1,26 @@
+/* Chrome colour tokens, mirroring DESIGN.md (colors). Components refer to these instead of hex values;
+   tests/design-rules.test.ts keeps the number of hex literals in CSS from growing. Note colours and other
+   object fills are content, not chrome, and stay literal. */
 :root {
+  color-scheme: light;
+  --primary: #4262ff;
+  --primary-hover: #334fd8;
+  --on-primary: #ffffff;
+  --selected: #edf0ff;
+  --canvas: #f4f4f6;
+  --surface: #ffffff;
+  --ink: #25252c;
+  --muted: #696973;
+  --border: #e5e5eb;
+  --border-strong: #c5c5ce;
+  --hover: #f1f1f5;
+  --danger: #ad2532;
+  --touch-target: 44px;
   font-family: Arial, Helvetica, sans-serif;
-  color: #25252c;
-  background: #f4f4f6;
+  color: var(--ink);
+  background: var(--canvas);
   font-synthesis: none;
   font-size: 14px;
-  --blue: #4262ff;
-  --border: #e5e5eb;
-  --muted: #696973;
 }
 * {
   box-sizing: border-box;
@@ -30,7 +44,7 @@ button:disabled {
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--primary);
   outline-offset: 3px;
 }
 button {
@@ -41,8 +55,10 @@ button {
   justify-content: center;
   gap: 8px;
 }
-button:hover:not(:disabled) {
-  background: #f1f1f5;
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    background: var(--hover);
+  }
 }
 h1,
 h2,
@@ -60,7 +76,7 @@ input {
   position: relative;
 }
 .floating {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
   box-shadow:
     0 3px 12px #2424420b,
@@ -105,13 +121,14 @@ input {
   align-items: center;
   gap: 9px;
   font-size: 21px;
+  /* type-scale: display (brand heading) */
   font-weight: 750;
   letter-spacing: -0.7px;
   white-space: nowrap;
 }
 .brand-mark {
   display: flex;
-  color: var(--blue);
+  color: var(--primary);
 }
 .divider {
   height: 22px;
@@ -163,14 +180,16 @@ input {
 .export-button {
   height: 48px;
   border-radius: 10px;
-  background: var(--blue);
+  background: var(--primary);
   color: white;
   padding: 0 15px;
   font-weight: 600;
-  box-shadow: 0 3px 8px #4262ff20;
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--primary) 12.5%, transparent);
 }
-.export-button:hover:not(:disabled) {
-  background: #334fd8;
+@media (hover: hover) {
+  .export-button:hover:not(:disabled) {
+    background: var(--primary-hover);
+  }
 }
 .menu-anchor {
   position: relative;
@@ -220,8 +239,8 @@ input {
 }
 .tool-buttons > button.active,
 .icon-button.active {
-  color: var(--blue);
-  background: #edf0ff;
+  color: var(--primary);
+  background: var(--selected);
 }
 .tool-tip {
   position: absolute;
@@ -237,8 +256,10 @@ input {
   align-items: center;
   z-index: 20;
 }
-.tool-buttons > button:hover .tool-tip {
-  display: flex;
+@media (hover: hover) {
+  .tool-buttons > button:hover .tool-tip {
+    display: flex;
+  }
 }
 .tool-tip kbd {
   border: 0;
@@ -281,7 +302,7 @@ input {
   border-radius: 4px;
 }
 .swatches button.chosen {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 .selection-bar {
@@ -318,8 +339,10 @@ input[type='color']::-webkit-color-swatch {
   border: 1px solid #00000022;
   border-radius: 50%;
 }
-.danger:hover {
-  color: #bb313d;
+@media (hover: hover) {
+  .danger:hover {
+    color: #bb313d;
+  }
 }
 .object-text {
   height: 100%;
@@ -344,14 +367,14 @@ input[type='color']::-webkit-color-swatch {
   width: 100%;
   height: 100%;
   resize: none;
-  border: 1px solid var(--blue);
+  border: 1px solid var(--primary);
   background: #ffffffea;
   border-radius: 3px;
   padding: 8px;
   text-align: center;
   font-size: 20px;
   line-height: 1.4;
-  color: #25252c;
+  color: var(--ink);
   outline: 0;
 }
 .empty-state {
@@ -378,6 +401,7 @@ input[type='color']::-webkit-color-swatch {
 }
 .empty-state h1 {
   font-size: 29px;
+  /* type-scale: display (brand heading) */
   font-weight: 600;
   letter-spacing: -0.9px;
 }
@@ -389,14 +413,16 @@ input[type='color']::-webkit-color-swatch {
 }
 .empty-state button {
   pointer-events: auto;
-  background: var(--blue);
+  background: var(--primary);
   color: white;
   padding: 12px 19px;
   border-radius: 8px;
   font-weight: 600;
 }
-.empty-state button:hover {
-  background: #334fd8;
+@media (hover: hover) {
+  .empty-state button:hover {
+    background: var(--primary-hover);
+  }
 }
 .empty-state .text-button {
   color: #52525f;
@@ -405,8 +431,10 @@ input[type='color']::-webkit-color-swatch {
   margin-top: 8px;
   font-weight: 400;
 }
-.empty-state .text-button:hover {
-  background: #ebebf0;
+@media (hover: hover) {
+  .empty-state .text-button:hover {
+    background: #ebebf0;
+  }
 }
 .outline {
   position: absolute;
@@ -459,7 +487,7 @@ input[type='color']::-webkit-color-swatch {
   margin-bottom: 3px;
 }
 .object-list button.selected {
-  background: #edf0ff;
+  background: var(--selected);
 }
 .object-list button > span:last-child {
   overflow: hidden;
@@ -541,11 +569,11 @@ input[type='color']::-webkit-color-swatch {
   max-height: calc(100dvh - 110px);
   overflow: auto;
   padding: 16px;
-  color: #25252c;
+  color: var(--ink);
 }
 .camera-controls h2 {
   margin: 0 0 16px;
-  font-size: 15px;
+  font-size: 16px;
 }
 .camera-controls form,
 .camera-controls label {
@@ -573,9 +601,9 @@ input[type='color']::-webkit-color-swatch {
   border-radius: 4px;
 }
 .camera-controls button[type='submit'] {
-  background: #4262ff;
+  background: var(--primary);
   color: white;
-  border-color: #4262ff;
+  border-color: var(--primary);
 }
 .camera-actions {
   display: flex;
@@ -595,8 +623,8 @@ input[type='color']::-webkit-color-swatch {
   font-variant-numeric: tabular-nums;
 }
 .zoom-presets button[aria-pressed='true'] {
-  border-color: #4262ff;
-  color: #4262ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .zoom-presets button:last-child {
   grid-column: 1 / -1;
@@ -619,7 +647,7 @@ input[type='color']::-webkit-color-swatch {
   padding: 0;
 }
 .dimension-label {
-  fill: #4262ff;
+  fill: var(--primary);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   paint-order: stroke;
@@ -650,7 +678,7 @@ input[type='color']::-webkit-color-swatch {
 }
 kbd {
   font-family: inherit;
-  background: #f4f4f6;
+  background: var(--canvas);
   border: 1px solid #e9e9ed;
   border-radius: 4px;
   padding: 3px 5px;
@@ -678,13 +706,15 @@ kbd {
   border: 0;
   border-radius: 6px;
   padding: 6px 10px;
-  background: #4262ff;
-  color: #ffffff;
+  background: var(--primary);
+  color: var(--on-primary);
   font-weight: 600;
   cursor: pointer;
 }
-.go-back-toast button:hover {
-  background: #334fd8;
+@media (hover: hover) {
+  .go-back-toast button:hover {
+    background: var(--primary-hover);
+  }
 }
 .rotate-handle {
   cursor: grab;
@@ -734,6 +764,7 @@ kbd {
   }
   .wordmark {
     font-size: 18px;
+    /* type-scale: display (brand heading) */
   }
   .board-header .save-state {
     display: none;
@@ -753,6 +784,7 @@ kbd {
   }
   .empty-state h1 {
     font-size: 26px;
+    /* type-scale: display (brand heading) */
   }
 }
 @media (max-width: 600px) {
@@ -806,6 +838,7 @@ kbd {
   }
   .empty-state h1 {
     font-size: 23px;
+    /* type-scale: display (brand heading) */
   }
   .empty-state p {
     font-size: 12px;
@@ -876,9 +909,36 @@ kbd {
     width: 45px;
   }
 }
+/* One global reduced-motion rule. Elements that define their own calmer reduced-motion animation (for
+   example the reaction fade) opt out with .motion-alt, otherwise this rule would flatten it too. */
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *:not(.motion-alt),
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+/* Touch screens (the app is opened from phones and tablets on the LAN): chrome buttons keep their visual size
+   but get an invisible hit area of at least 44px, so dense toolbars do not reflow. Canvas objects are excluded:
+   they are content and are scaled with the camera. */
+@media (pointer: coarse) {
+  /* :where() keeps specificity at zero so buttons positioned elsewhere (absolute close buttons) keep it. */
+  :where(.icon-button, .tool-buttons > button, .export-button):where(:not(.canvas *)) {
+    position: relative;
+  }
+  :where(.icon-button, .tool-buttons > button, .export-button):where(:not(.canvas *))::after {
+    content: '';
+    position: absolute;
+    inset: min(0px, calc((100% - var(--touch-target)) / 2));
+  }
+  /* iOS zooms the page when a focused field is smaller than 16px. */
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']):not(.canvas *),
+  textarea:not(.canvas *),
+  select:not(.canvas *) {
+    font-size: max(16px, 1em);
   }
 }
 /* The whole-board focus ring is for keyboard navigation only (input-modality.ts): after typing, browsers can
@@ -887,7 +947,7 @@ kbd {
   outline: none;
 }
 html[data-input='keyboard'] .canvas:focus-visible {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--primary);
   outline-offset: -3px;
 }
 
@@ -944,8 +1004,8 @@ html[data-input='keyboard'] .canvas:focus-visible {
   font-size: 12px;
 }
 .board-menu-row button[aria-checked='true'] {
-  border-color: #4262ff;
-  color: #4262ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .board-menu-row i {
   width: 8px;
@@ -964,7 +1024,7 @@ html[data-input='keyboard'] .canvas:focus-visible {
   border-radius: 6px;
 }
 .board-menu-swatches button[aria-checked='true'] {
-  outline: 2px solid #4262ff;
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 /* Item 104: Reduce motion preference (also honoured automatically by the OS setting where styles opt in). */
@@ -999,7 +1059,7 @@ html[data-input='keyboard'] .canvas:focus-visible {
   padding: 14px 16px;
   border: 0;
   border-bottom: 1px solid #ececf0;
-  font-size: 15px;
+  font-size: 16px;
   outline: none;
 }
 .command-palette ul {
@@ -1075,8 +1135,10 @@ html[data-input='keyboard'] .canvas:focus-visible {
   text-align: left;
   font-size: 12px;
 }
-.history-entry:not(:disabled):hover {
-  background: #f4f4f6;
+@media (hover: hover) {
+  .history-entry:not(:disabled):hover {
+    background: var(--canvas);
+  }
 }
 .history-entry em {
   color: #71717a;
@@ -1134,7 +1196,7 @@ html[data-input='keyboard'] .canvas:focus-visible {
 }
 .note-swatches button.chosen,
 .note-swatches button[aria-pressed='true'] {
-  outline: 2px solid #4262ff;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 .note-stack-button {
@@ -1144,12 +1206,12 @@ html[data-input='keyboard'] .canvas:focus-visible {
   justify-content: center;
   padding: 8px 10px;
   border-radius: 8px;
-  background: #f1f1f5;
+  background: var(--hover);
   font-size: 13px;
 }
 .note-stack-button[aria-pressed='true'] {
-  background: #edf0ff;
-  color: #4262ff;
+  background: var(--selected);
+  color: var(--primary);
 }
 /* Rail and undo/redo stack as one column so they never overlap (item 109). Phones and short screens keep
    their own layout (the wrapper is transparent there). */
@@ -1210,7 +1272,7 @@ html[data-input='keyboard'] .canvas:focus-visible {
   overflow: visible;
   padding: 6px;
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
   box-shadow:
     0 8px 28px #0000001f,
     0 0 0 1px #0000000d;
@@ -1239,13 +1301,18 @@ html[data-input='keyboard'] .canvas:focus-visible {
 .main-menu-sub > button > span {
   flex: 1;
 }
-.main-menu-list > button:hover,
 .main-menu-list > button:focus-visible,
-.main-menu-sub > button:hover,
 .main-menu-sub > button:focus-visible,
 .main-menu-sub > button.open {
-  background: #f1f1f5;
+  background: var(--hover);
   outline: none;
+}
+@media (hover: hover) {
+  .main-menu-list > button:hover,
+  .main-menu-sub > button:hover {
+    background: var(--hover);
+    outline: none;
+  }
 }
 .main-menu-list > button.danger {
   color: #d6455d;
@@ -1253,7 +1320,7 @@ html[data-input='keyboard'] .canvas:focus-visible {
 .main-menu-list kbd {
   border: 0;
   background: none;
-  color: #696973;
+  color: var(--muted);
   font: inherit;
   font-size: 12px;
 }
@@ -1296,8 +1363,8 @@ html[data-input='keyboard'] .canvas:focus-visible {
 }
 @media (min-width: 721px) and (min-height: 761px) {
   body:has(.board-side-panel) .tool-column {
-    left: 376px;
-    transition: left 0.15s ease;
+    transform: translate(356px, -50%);
+    transition: transform 0.15s ease-out;
   }
 }
 /* Top-right bar (item 114): one grouped toolbar, buttons without their own cards, ending in Present. */
@@ -1315,9 +1382,11 @@ html[data-input='keyboard'] .canvas:focus-visible {
   background: transparent;
   box-shadow: none;
 }
-.document-actions.floating > .icon-button:hover,
-.document-actions.floating > .menu-anchor > .icon-button:hover {
-  background: #f1f1f5;
+@media (hover: hover) {
+  .document-actions.floating > .icon-button:hover,
+  .document-actions.floating > .menu-anchor > .icon-button:hover {
+    background: var(--hover);
+  }
 }
 .present-button {
   display: grid;
@@ -1326,11 +1395,13 @@ html[data-input='keyboard'] .canvas:focus-visible {
   height: 40px;
   margin-left: 4px;
   border-radius: 8px;
-  background: #f1f1f5;
-  color: #25252c;
+  background: var(--hover);
+  color: var(--ink);
 }
-.present-button:hover {
-  background: #e4e4ea;
+@media (hover: hover) {
+  .present-button:hover {
+    background: #e4e4ea;
+  }
 }
 /* Export now sits in the header beside the main menu; its menu opens below, left-aligned. */
 .export-anchor .export-menu {
@@ -1358,15 +1429,17 @@ html[data-input='keyboard'] .canvas:focus-visible {
   font-size: 14px;
   text-align: left;
 }
-.zoom-menu > button:hover,
-.camera-controls .zoom-menu > label:hover {
-  background: #f1f1f5;
+@media (hover: hover) {
+  .zoom-menu > button:hover,
+  .camera-controls .zoom-menu > label:hover {
+    background: var(--hover);
+  }
 }
 .zoom-menu kbd {
   margin-left: auto;
   border: 0;
   background: none;
-  color: #696973;
+  color: var(--muted);
   font: inherit;
   font-size: 12px;
 }
@@ -1415,7 +1488,7 @@ html[data-input='keyboard'] .canvas:focus-visible {
   z-index: 100;
   padding: 8px 12px;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
   box-shadow: 0 3px 12px #2424421f;
 }

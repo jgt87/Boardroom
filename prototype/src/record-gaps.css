@@ -12,8 +12,8 @@
   flex: none;
 }
 .record-color option {
-  color: #25252c;
-  background: #ffffff;
+  color: var(--ink);
+  background: var(--surface);
 }
 .record-card[data-record-color] small {
   color: #3f3f46;
@@ -47,9 +47,9 @@
   padding: 0 6px;
   font-size: 11px;
   line-height: 18px;
-  border: 1px solid #4262ff;
+  border: 1px solid var(--primary);
   border-radius: 9px;
-  background: #ffffff;
+  background: var(--surface);
   color: #2a3fb3;
 }
 .timeline-jump-before {
@@ -129,13 +129,13 @@
   height: 8px;
   margin-right: 6px;
   border-radius: 4px;
-  background: #e5e5eb;
+  background: var(--border);
   overflow: hidden;
 }
 .record-progress > span {
   display: block;
   height: 100%;
-  background: #4262ff;
+  background: var(--primary);
 }
 .record-progress-field {
   display: flex;

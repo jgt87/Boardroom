@@ -76,7 +76,7 @@ export function ReactionLayer() {
         {bursts.map((b, k) => (
           <span
             key={b.id}
-            className="reaction-float"
+            className="reaction-float motion-alt"
             style={
               {
                 left: `${b.x}%`,

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Consistent styling, touch targets and automatic checks
+
+- Interface colours now come from one set of named colours, so buttons, borders and highlights match everywhere.
+  Text sizes follow a fixed scale; a few odd sizes (9, 15 and 17px) moved to the nearest step.
+- On phones and tablets, toolbar buttons are easier to hit (44px touch area, same look), text fields no longer make
+  iOS zoom in, and hover highlights no longer stick after a tap.
+- With "reduce motion" turned on in the operating system, all animations are now turned off, except the gentle
+  reaction fade. Poll and scale bars animate more smoothly.
+- New automatic checks keep it that way (colour literals, text sizes, animations, undefined colour names, private
+  files, product names, version number), and every push runs the full test suite on GitHub.
+
 ## 0.6.0 — 2026-11-05
 
 ### Import from other whiteboards: REST JSON

@@ -38,8 +38,8 @@
 }
 /* Selected Doc blocks (Esc while typing). */
 .canvas-doc .doc-block-selected {
-  background: #edf0ff;
-  box-shadow: 0 0 0 2px #4262ff;
+  background: var(--selected);
+  box-shadow: 0 0 0 2px var(--primary);
   border-radius: 4px;
 }
 .canvas-doc .doc-block-selected::selection,

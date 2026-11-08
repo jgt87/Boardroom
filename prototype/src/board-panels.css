@@ -14,7 +14,7 @@
   font-size: 12px;
 }
 .check-line select {
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   padding: 5px;
   font-size: 12px;
@@ -42,7 +42,7 @@
 }
 .facilitate-panel .field input,
 .panel-search {
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   padding: 8px;
   font-size: 13px;
@@ -85,8 +85,8 @@
   text-overflow: ellipsis;
 }
 .results li b {
-  background: #4262ff;
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 11px;
@@ -123,7 +123,7 @@
   font-size: 10px;
 }
 .thread-list button.selected {
-  background: #edf0ff;
+  background: var(--selected);
 }
 .board-outline h3 {
   margin: 10px 0 2px;
@@ -152,7 +152,7 @@
   font-weight: 600;
 }
 .board-outline button.selected {
-  background: #edf0ff;
+  background: var(--selected);
 }
 .board-outline .list-empty {
   font-size: 12px;
@@ -230,7 +230,7 @@
 .comment-thread textarea {
   width: 100%;
   min-height: 64px;
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   padding: 8px;
   font: 13px Arial;
@@ -269,11 +269,11 @@
 .board-timer.done .clock {
   color: #c2410c;
   font-family: Arial;
-  font-size: 15px;
+  font-size: 16px;
 }
 .board-timer select {
   border: 0;
-  background: #f4f4f6;
+  background: var(--canvas);
   border-radius: 6px;
   padding: 6px;
   font-size: 12px;
@@ -325,7 +325,7 @@
   padding-left: 14px;
 }
 .layer-row.selected {
-  background: #edf0ff;
+  background: var(--selected);
 }
 .layer-row.is-hidden .layer-name {
   opacity: 0.45;
@@ -346,9 +346,13 @@
   display: inline-flex;
   opacity: 0.55;
 }
-.layer-row:hover .layer-order,
 .layer-row:focus-within .layer-order {
   opacity: 1;
+}
+@media (hover: hover) {
+  .layer-row:hover .layer-order {
+    opacity: 1;
+  }
 }
 .layer-heading {
   font-size: 10px;
@@ -360,7 +364,7 @@
 .layer-rename {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--blue);
+  border: 1px solid var(--primary);
   border-radius: 5px;
   padding: 6px;
   font-size: 12px;
@@ -374,8 +378,8 @@
   white-space: nowrap;
 }
 .widget-action.active {
-  color: var(--blue);
-  background: #edf0ff;
+  color: var(--primary);
+  background: var(--selected);
 }
 .alt-input {
   border: 1px solid var(--border);
@@ -435,13 +439,16 @@
 .reaction-choices button {
   height: 44px;
   font-size: 24px;
+  /* type-scale: glyph (emoji size, not text) */
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
 }
-.reaction-choices button:hover {
-  background: #f1f1f5;
+@media (hover: hover) {
+  .reaction-choices button:hover {
+    background: var(--hover);
+  }
 }
 .reaction-layer {
   position: fixed;
@@ -454,6 +461,7 @@
   position: absolute;
   bottom: 12%;
   font-size: 40px;
+  /* type-scale: glyph (emoji size, not text) */
   opacity: 0;
   animation: reaction-rise 2.2s ease-out forwards;
 }
@@ -559,8 +567,8 @@
   border-radius: 50%;
 }
 .pen-presets button[aria-pressed='true'] {
-  border-color: #4262ff;
-  box-shadow: 0 0 0 2px #4262ff33;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 .pen-presets span {
   border-radius: 50%;
@@ -630,7 +638,7 @@
   padding: 1px 2px;
 }
 .named-layers li.active {
-  background: #edf0ff;
+  background: var(--selected);
 }
 .named-layers .icon-button {
   width: 26px;
@@ -666,15 +674,19 @@
   padding: 3px 8px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
 }
-.mention-list button:hover,
 .mention-list button:focus-visible {
-  background: #edf0ff;
+  background: var(--selected);
+}
+@media (hover: hover) {
+  .mention-list button:hover {
+    background: var(--selected);
+  }
 }
 mark.mention {
-  background: #edf0ff;
-  color: #334fd8;
+  background: var(--selected);
+  color: var(--primary-hover);
   border-radius: 4px;
   padding: 0 2px;
   font-weight: 600;
@@ -717,7 +729,7 @@ mark.mention {
   padding: 3px 8px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
   color: inherit;
   text-decoration: none;
 }

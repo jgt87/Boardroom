@@ -19,7 +19,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   padding: 0 8px;
   color: var(--muted);
@@ -31,15 +31,15 @@
   outline: none;
   padding: 8px 0;
   font-size: 13px;
-  color: #25252c;
+  color: var(--ink);
   background: transparent;
 }
 .ep-search:focus-within {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 .ep-tone {
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   padding: 7px 4px;
   font-size: 12px;
@@ -59,11 +59,12 @@
   height: 32px;
   border-radius: 6px;
   font-size: 17px;
+  /* type-scale: glyph (emoji size, not text) */
   font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
 }
 .ep-tabs button.active {
-  background: #edf0ff;
-  box-shadow: inset 0 -2px 0 var(--blue);
+  background: var(--selected);
+  box-shadow: inset 0 -2px 0 var(--primary);
 }
 .ep-heading {
   font-size: 11px;
@@ -86,12 +87,13 @@
   height: 36px;
   border-radius: 6px;
   font-size: 22px;
+  /* type-scale: glyph (emoji size, not text) */
   line-height: 1;
   font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
 }
 .ep-grid button.active {
-  background: #edf0ff;
-  box-shadow: inset 0 0 0 2px var(--blue);
+  background: var(--selected);
+  box-shadow: inset 0 0 0 2px var(--primary);
 }
 .ep-empty {
   font-size: 12px;
@@ -124,6 +126,7 @@
 }
 .w-stamp-emoji-choice .w-stamp-emoji-preview {
   font-size: 26px;
+  /* type-scale: glyph (emoji size, not text) */
   font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
 }
 @media (max-width: 600px) {

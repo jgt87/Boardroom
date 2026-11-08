@@ -17,14 +17,14 @@
   transform: translateX(-50%);
   padding: 8px 14px;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
   font-size: 13px;
   pointer-events: none;
 }
 .export-area-box {
   position: fixed;
-  border: 2px dashed var(--blue);
+  border: 2px dashed var(--primary);
   background: rgb(66 98 255 / 0.08);
   pointer-events: none;
 }
@@ -35,7 +35,7 @@
   align-items: center;
   padding: 4px;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
 }
 .export-area-bar button {
@@ -44,8 +44,10 @@
   border-radius: 6px;
   padding: 6px 10px;
 }
-.export-area-bar button:hover {
-  background: #f1f1f5;
+@media (hover: hover) {
+  .export-area-bar button:hover {
+    background: var(--hover);
+  }
 }
 /* Image adjustments (flip, brightness, contrast) panel in the selection bar. */
 .image-adjust {

@@ -27,7 +27,7 @@
   font:
     13px Arial,
     sans-serif;
-  color: #25252c;
+  color: var(--ink);
 }
 .rich-toolbar {
   display: flex;
@@ -37,10 +37,10 @@
   max-width: 260px;
   padding: 3px;
   transform: translate(-50%, calc(-100% - 8px));
-  background: #fff;
-  border: 1px solid var(--border, #e5e5eb);
+  background: var(--surface);
+  border: 1px solid var(--border, var(--border));
   border-radius: 8px;
-  box-shadow: 0 6px 20px #25252c26;
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--ink) 14.9%, transparent);
 }
 .rich-toolbar .icon-button {
   width: 28px;
@@ -49,7 +49,7 @@
 }
 .rich-toolbar .icon-button.active {
   background: #eef1ff;
-  color: var(--blue, #4262ff);
+  color: var(--primary);
 }
 .rich-swatches {
   display: flex;
@@ -62,17 +62,17 @@
   height: 20px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid #25252c33;
+  border: 1px solid color-mix(in srgb, var(--ink) 20%, transparent);
   line-height: 1;
 }
 .rich-swatch:focus-visible,
 .rich-toolbar .icon-button:focus-visible {
-  outline: 2px solid var(--blue, #4262ff);
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 .rich-swatch-none {
-  background: #fff;
-  color: #696973;
+  background: var(--surface);
+  color: var(--muted);
 }
 .rich-link-popover {
   display: flex;
@@ -81,10 +81,10 @@
   gap: 6px;
   width: 300px;
   padding: 8px;
-  background: #fff;
-  border: 1px solid var(--border, #e5e5eb);
+  background: var(--surface);
+  border: 1px solid var(--border, var(--border));
   border-radius: 8px;
-  box-shadow: 0 8px 24px #25252c26;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 14.9%, transparent);
 }
 .rich-link-popover input {
   flex: 1;
@@ -115,10 +115,10 @@
   margin: 0;
   padding: 4px;
   list-style: none;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid #dcdce3;
   border-radius: 8px;
-  box-shadow: 0 8px 24px #25252c26;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 14.9%, transparent);
 }
 .rich-mention-menu li {
   padding: 5px 8px;
@@ -164,8 +164,8 @@
   display: flex;
   gap: 4px;
   padding: 6px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid #dcdce3;
   border-radius: 8px;
-  box-shadow: 0 8px 24px #25252c26;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 14.9%, transparent);
 }

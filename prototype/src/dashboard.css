@@ -4,8 +4,10 @@
   padding: 4px 6px;
   margin-left: -6px;
 }
-.board-header .wordmark:hover {
-  background: #f1f1f5;
+@media (hover: hover) {
+  .board-header .wordmark:hover {
+    background: var(--hover);
+  }
 }
 
 .dashboard {
@@ -27,15 +29,15 @@
   flex-direction: column;
   width: 150px;
   height: 96px;
-  border: 1px dashed #c5c5ce;
+  border: 1px dashed var(--border-strong);
   border-radius: 10px;
   font-size: 13px;
-  color: #25252c;
+  color: var(--ink);
 }
 .new-board:first-child {
   border-style: solid;
-  border-color: var(--blue);
-  color: var(--blue);
+  border-color: var(--primary);
+  color: var(--primary);
   font-weight: 600;
 }
 .new-board.template {
@@ -70,12 +72,12 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
-  background: #fff;
+  background: var(--surface);
   display: flex;
   flex-direction: column;
 }
 .board-card.current {
-  box-shadow: 0 0 0 2px var(--blue);
+  box-shadow: 0 0 0 2px var(--primary);
 }
 .board-open {
   display: block;
@@ -128,12 +130,12 @@
   font-size: 12px;
 }
 .board-confirm .danger-button {
-  background: #ad2532;
-  border-color: #ad2532;
-  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-primary);
 }
 .board-rename {
-  border: 1px solid var(--blue);
+  border: 1px solid var(--primary);
   border-radius: 5px;
   padding: 5px;
   font-size: 13px;
@@ -161,10 +163,10 @@
 }
 .context-menu button:focus-visible {
   outline: none;
-  background: #edf0ff;
+  background: var(--selected);
 }
 .context-menu button.danger {
-  color: #ad2532;
+  color: var(--danger);
 }
 .context-menu kbd {
   font: 11px Arial;
@@ -211,16 +213,21 @@
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 12px;
-  color: #25252c;
+  color: var(--ink);
 }
-.dashboard .text-button:hover,
 .dashboard .text-button.active {
-  background: #edf0ff;
-  border-color: var(--blue);
+  background: var(--selected);
+  border-color: var(--primary);
+}
+@media (hover: hover) {
+  .dashboard .text-button:hover {
+    background: var(--selected);
+    border-color: var(--primary);
+  }
 }
 .dashboard .text-button.danger,
 .dashboard-bulk .danger {
-  color: #ad2532;
+  color: var(--danger);
 }
 .board-card {
   position: relative;
@@ -237,12 +244,16 @@
   margin: 0;
   z-index: 1;
   opacity: 0.35;
-  accent-color: var(--blue);
+  accent-color: var(--primary);
 }
-.board-card:hover .board-pick,
 .board-card.picked .board-pick,
 .board-pick:focus-visible {
   opacity: 1;
+}
+@media (hover: hover) {
+  .board-card:hover .board-pick {
+    opacity: 1;
+  }
 }
 .board-open.trashed {
   opacity: 0.6;
@@ -313,12 +324,12 @@
   border-radius: 6px;
   padding: 5px 9px;
   font-size: 12px;
-  background: #fff;
+  background: var(--surface);
 }
 .dashboard-space .primary-button {
-  background: var(--blue);
-  border-color: var(--blue);
-  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
 }
 .dashboard-space .primary-button:disabled {
   opacity: 0.5;

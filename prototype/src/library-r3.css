@@ -170,9 +170,13 @@
   padding: 7px 8px;
   border-radius: 6px;
 }
-.overview-list button:hover,
 .overview-list button:focus-visible {
-  background: #f1f1f5;
+  background: var(--hover);
+}
+@media (hover: hover) {
+  .overview-list button:hover {
+    background: var(--hover);
+  }
 }
 .overview-list strong {
   font-size: 13px;
@@ -206,9 +210,13 @@
   border-radius: 10px;
   text-align: left;
 }
-.template-tile:hover,
 .template-tile:focus-visible {
-  border-color: var(--blue);
+  border-color: var(--primary);
+}
+@media (hover: hover) {
+  .template-tile:hover {
+    border-color: var(--primary);
+  }
 }
 .template-tile strong {
   font-size: 13px;
@@ -226,7 +234,7 @@
   border-radius: 6px;
   overflow: hidden;
   background: #fafafb;
-  color: var(--blue);
+  color: var(--primary);
 }
 
 .template-previews li > button:first-child {
@@ -288,9 +296,9 @@
   font-size: 12px;
 }
 .template-edit .primary-button {
-  background: var(--blue);
-  border-color: var(--blue);
-  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
 }
 
 .details-actions {
@@ -308,12 +316,12 @@
   font-size: 12px;
 }
 .details-actions .danger {
-  color: #ad2532;
+  color: var(--danger);
 }
 .details-actions .danger-button {
-  background: #ad2532;
-  border-color: #ad2532;
-  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-primary);
 }
 
 .brand-swatches {
@@ -329,7 +337,7 @@
   border: 1px solid rgba(0, 0, 0, 0.2);
 }
 .brand-swatches button.chosen {
-  box-shadow: 0 0 0 2px var(--blue);
+  box-shadow: 0 0 0 2px var(--primary);
 }
 .brand-kit-colors {
   list-style: none;

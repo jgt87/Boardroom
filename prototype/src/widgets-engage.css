@@ -6,11 +6,11 @@
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid #dcdce3;
   border-radius: 10px;
   font-family: Arial;
-  color: #25252c;
+  color: var(--ink);
   overflow: hidden;
 }
 .eg-title {
@@ -25,7 +25,7 @@
 .eg-title span {
   font-weight: 400;
   font-size: 11px;
-  color: #696973;
+  color: var(--muted);
   white-space: nowrap;
 }
 .eg-journey {
@@ -42,8 +42,8 @@
   min-height: 0;
 }
 .eg-stage {
-  background: #4262ff;
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
   border-radius: 6px;
   padding: 6px 8px;
   font-size: 12px;
@@ -130,7 +130,7 @@
   right: 6px;
   bottom: 4px;
   font-size: 10px;
-  color: #696973;
+  color: var(--muted);
 }
 .eg-pl-card {
   position: absolute;
@@ -149,7 +149,7 @@
 }
 .eg-pl-card b {
   font-size: 10px;
-  background: #fff;
+  background: var(--surface);
   border-radius: 3px;
   padding: 0 4px;
 }
@@ -187,8 +187,8 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #4262ff;
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
   font-size: 11px;
   font-weight: 700;
   flex-shrink: 0;
@@ -218,17 +218,17 @@
   gap: 6px;
 }
 .eg-option {
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   padding: 5px 10px;
   font-size: 12px;
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
 }
 .eg-option.picked {
-  border-color: #4262ff;
-  background: #edf0ff;
-  color: #334fd8;
+  border-color: var(--primary);
+  background: var(--selected);
+  color: var(--primary-hover);
 }
 .eg-option.correct {
   border-color: #2f9e44;
@@ -239,7 +239,7 @@
 .eg-option.wrong {
   border-color: #e5484d;
   background: #fdecec;
-  color: #ad2532;
+  color: var(--danger);
   opacity: 1;
 }
 .eg-editor .widget-editor-body {
@@ -256,7 +256,7 @@
 .eg-editor input:not([type='radio']):not([type='checkbox']),
 .eg-editor textarea,
 .eg-editor select {
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   padding: 6px 8px;
   font: 13px Arial;
@@ -324,36 +324,36 @@
   outline-offset: 2px;
 }
 .eg-pl-chip.active {
-  box-shadow: 0 0 0 2px #4262ff;
+  box-shadow: 0 0 0 2px var(--primary);
 }
 .eg-pl-chip.late {
   box-shadow: inset 3px 0 0 #e5484d;
 }
 .eg-pl-chip:focus-visible {
-  outline: 2px solid #4262ff;
+  outline: 2px solid var(--primary);
 }
 .eg-add-chip {
   width: 100%;
-  border: 1px dashed #c5c5ce;
+  border: 1px dashed var(--border-strong);
   border-radius: 5px;
   padding: 3px;
-  color: #696973;
+  color: var(--muted);
 }
 .eg-cap {
   display: block;
   text-align: right;
   font-size: 10px;
-  color: #696973;
+  color: var(--muted);
   margin-top: 3px;
 }
 .eg-card-panel {
-  border-top: 1px solid #e5e5eb;
+  border-top: 1px solid var(--border);
   padding-top: 10px;
 }
 .eg-card-panel h3 {
   font-size: 11px;
   text-transform: uppercase;
-  color: #696973;
+  color: var(--muted);
   margin: 10px 0 6px;
 }
 .eg-deps {
@@ -371,7 +371,7 @@
   gap: 6px;
 }
 .eg-deps li.late {
-  color: #ad2532;
+  color: var(--danger);
 }
 .eg-deps .icon-button {
   width: 24px;
@@ -392,7 +392,7 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  background: #edf0ff;
+  background: var(--selected);
   border-radius: 5px;
   padding: 2px 2px 2px 8px;
   font-size: 12px;
@@ -422,13 +422,13 @@
   opacity: 0.4;
 }
 .eg-rank-list li:focus-visible {
-  outline: 2px solid #4262ff;
+  outline: 2px solid var(--primary);
 }
 .eg-rank-list b {
   width: 22px;
   text-align: center;
   font-size: 12px;
-  color: #4262ff;
+  color: var(--primary);
 }
 .eg-rank-list .icon-button {
   width: 28px;
@@ -443,7 +443,7 @@
   gap: 14px;
 }
 .eg-questions fieldset {
-  border: 1px solid #e5e5eb;
+  border: 1px solid var(--border);
   border-radius: 6px;
   margin-top: 6px;
   padding: 8px;
@@ -453,7 +453,7 @@
 }
 .eg-questions legend {
   font-size: 11px;
-  color: #696973;
+  color: var(--muted);
   padding: 0 4px;
 }
 .eg-opt-row {
@@ -468,7 +468,7 @@
 }
 .eg-questions fieldset > button,
 .eg-actions button {
-  border: 1px solid #e5e5eb;
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 12px;

@@ -7,14 +7,14 @@
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  border: 2px solid #4262ff;
+  border: 2px solid var(--primary);
   border-radius: 5px;
   padding: 0 8px;
   font:
     700 14px Arial,
     sans-serif;
-  background: #ffffff;
-  color: #25252c;
+  background: var(--surface);
+  color: var(--ink);
 }
 .swim-editor h3 {
   margin: 18px 0 8px;
@@ -42,7 +42,7 @@
 .swim-editor input:not([type='checkbox']),
 .swim-editor select {
   box-sizing: border-box;
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   padding: 7px 8px;
   font:

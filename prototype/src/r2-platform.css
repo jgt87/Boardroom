@@ -6,8 +6,8 @@
   color: #fff;
 }
 .board-status.comment-only {
-  background: #edf0ff;
-  color: #334fd8;
+  background: var(--selected);
+  color: var(--primary-hover);
 }
 .sensitivity-badge {
   max-width: 160px;
@@ -27,7 +27,7 @@
   padding: 2px;
   border: 1px solid var(--border);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   flex-shrink: 0;
 }
 
@@ -45,7 +45,7 @@
   padding: 10px 8px 10px 14px;
   font-size: 13px;
   line-height: 1.4;
-  color: var(--ink, #25252c);
+  color: var(--ink, var(--ink));
 }
 .browser-notice p {
   margin: 0;

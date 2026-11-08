@@ -5,10 +5,10 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid #dcdce3;
   border-radius: 8px;
-  color: #25252c;
+  color: var(--ink);
   font:
     12px Arial,
     sans-serif;
@@ -19,7 +19,7 @@
   height: 40px;
   box-sizing: border-box;
   padding: 6px 10px;
-  border-bottom: 1px solid #e5e5eb;
+  border-bottom: 1px solid var(--border);
 }
 .canvas-deck-tools {
   display: flex;
@@ -63,7 +63,7 @@
 }
 .canvas-deck-stage .slide-face {
   width: min(100cqw, 177.78cqh);
-  box-shadow: 0 1px 4px #25252c22;
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--ink) 13.3%, transparent);
 }
 .canvas-deck-strip {
   flex: none;
@@ -85,21 +85,21 @@
   padding: 3px 5px;
   border: 1px solid #d5d5dd;
   border-radius: 4px;
-  color: #25252c;
+  color: var(--ink);
   overflow: hidden;
   text-align: left;
 }
 .canvas-deck-strip button span {
   display: block;
   width: 100%;
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.2;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 .canvas-deck-strip button[aria-current='true'] {
-  outline: 2px solid #4262ff;
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 .canvas-deck-strip button.slide-dark {
@@ -116,7 +116,7 @@
   flex-direction: column;
   gap: 2cqw;
   padding: 5cqw 6cqw;
-  color: #25252c;
+  color: var(--ink);
   font-family: Arial, sans-serif;
   overflow: hidden;
   border-radius: 4px;
@@ -134,11 +134,13 @@
   padding: 0.1em 0.2em;
   resize: none;
 }
-.slide-face .canvas-field:hover {
-  border-color: #9a9aa566;
+@media (hover: hover) {
+  .slide-face .canvas-field:hover {
+    border-color: #9a9aa566;
+  }
 }
 .slide-face .canvas-field:focus {
-  border-color: #4262ff;
+  border-color: var(--primary);
   outline: none;
   background: #ffffff18;
 }
@@ -234,7 +236,7 @@ ul.slide-body {
 .slide-option-bar {
   position: absolute;
   inset: 0 auto 0 0;
-  background: #4262ff22;
+  background: color-mix(in srgb, var(--primary) 13.3%, transparent);
   pointer-events: none;
 }
 .slide-options li > span,
@@ -334,8 +336,8 @@ ul.slide-body {
   overflow: auto;
   padding: 12px 14px;
   border-radius: 8px;
-  background: #ffffff;
-  color: #25252c;
+  background: var(--surface);
+  color: var(--ink);
   font:
     15px/1.5 Arial,
     sans-serif;
@@ -420,8 +422,8 @@ ul.slide-body {
   border: 1px solid #c9c9d3;
   border-radius: 6px;
   font: inherit;
-  color: #25252c;
-  background: #fff;
+  color: var(--ink);
+  background: var(--surface);
 }
 .slide-scale {
   flex: 1;
@@ -454,7 +456,7 @@ ul.slide-body {
   width: 100%;
   min-height: 3px;
   border-radius: 4px 4px 0 0;
-  background: #4262ff;
+  background: var(--primary);
   opacity: 0.8;
 }
 .slide-scale-bars button,
@@ -486,7 +488,7 @@ ul.slide-body {
 .slide-cloud-word {
   font-weight: 700;
   line-height: 1.1;
-  color: #4262ff;
+  color: var(--primary);
 }
 .slide-dark .slide-cloud-word {
   color: #a8b8ff;
@@ -526,7 +528,7 @@ ul.slide-body {
   padding: 1cqw 1.2cqw;
   border-radius: 6px;
   background: #fff49b;
-  color: #25252c;
+  color: var(--ink);
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -553,8 +555,8 @@ ul.slide-body {
 .slide-sorter-grid-wrap {
   overflow: auto;
   padding: 20px 24px;
-  border-right: 1px solid #e5e5eb;
-  background: #f4f4f6;
+  border-right: 1px solid var(--border);
+  background: var(--canvas);
 }
 .slide-sorter-grid {
   display: grid;
@@ -568,7 +570,7 @@ ul.slide-body {
   border-radius: 8px;
 }
 .slide-sorter-grid li.slide-drop-target {
-  outline: 2px dashed #4262ff;
+  outline: 2px dashed var(--primary);
   outline-offset: 3px;
 }
 .format-overlay .format-editor .slide-thumb {
@@ -580,13 +582,13 @@ ul.slide-body {
   padding: 6px;
   border: 1px solid #d7d7df;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   text-align: left;
   cursor: grab;
 }
 .format-overlay .format-editor .slide-thumb[aria-current='true'] {
-  border-color: #4262ff;
-  box-shadow: 0 0 0 2px #4262ff;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary);
 }
 .slide-thumb-face {
   display: block;
@@ -627,7 +629,7 @@ ul.slide-body {
   }
   .slide-sorter-grid-wrap {
     border-right: 0;
-    border-bottom: 1px solid #e5e5eb;
+    border-bottom: 1px solid var(--border);
     padding: 12px;
   }
   .slide-sorter-grid {

@@ -4,16 +4,18 @@
 .board-emoji {
   flex-shrink: 0;
   font-size: 15px;
+  /* type-scale: glyph (emoji size, not text) */
   line-height: 1;
 }
 .board-title-emoji {
   margin-right: -4px;
   font-size: 18px;
+  /* type-scale: glyph (emoji size, not text) */
 }
 .main-menu-note {
   margin: 0;
   padding: 4px 10px;
-  color: #696973;
+  color: var(--muted);
   font-size: 12px;
 }
 /* Board settings shown read-only on a comment-only or view-only board (question P2-Q11). */
@@ -41,9 +43,13 @@
   font-size: 16px;
   cursor: pointer;
 }
-.main-menu-field .board-emoji-choices button:hover,
 .main-menu-field .board-emoji-choices button[aria-pressed='true'] {
-  background: #edf0ff;
+  background: var(--selected);
+}
+@media (hover: hover) {
+  .main-menu-field .board-emoji-choices button:hover {
+    background: var(--selected);
+  }
 }
 .main-menu-field .board-emoji-form input {
   width: 80px;
@@ -61,7 +67,7 @@
   margin: 0 0 8px;
   padding: 6px 8px;
   border-radius: 7px;
-  background: #f4f4f6;
+  background: var(--canvas);
   font-size: 12px;
 }
 .history-batch label {
@@ -92,7 +98,7 @@
 }
 .catchup-current small {
   display: block;
-  color: #696973;
+  color: var(--muted);
 }
 
 /* Saved views: drag or Alt+arrow reordering. */
@@ -109,9 +115,9 @@
   margin: 4px 0 0;
   padding: 4px;
   list-style: none;
-  border: 1px solid #e5e5eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--surface);
   box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
 }
 .record-view-order li button {
@@ -127,9 +133,13 @@
   text-align: left;
   cursor: grab;
 }
-.record-view-order li button:hover,
 .record-view-order li button:focus-visible {
-  background: #f1f1f5;
+  background: var(--hover);
+}
+@media (hover: hover) {
+  .record-view-order li button:hover {
+    background: var(--hover);
+  }
 }
 
 /* Timeline: free flags and bar warnings. */
@@ -144,9 +154,9 @@
   gap: 4px;
   width: 300px;
   padding: 6px;
-  border: 1px solid #e5e5eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--surface);
   box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
 }
 .timeline-flag-swatch {
@@ -168,7 +178,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  border-left: 2px dashed var(--flag-color, #4262ff);
+  border-left: 2px dashed var(--flag-color, var(--primary));
 }
 .timeline-flag-label {
   position: absolute;
@@ -181,7 +191,7 @@
   padding: 1px 6px 1px 4px;
   overflow: hidden;
   border-radius: 0 4px 4px 0;
-  background: var(--flag-color, #4262ff);
+  background: var(--flag-color, var(--primary));
   color: #ffffff;
   font-size: 10px;
   font-weight: 600;

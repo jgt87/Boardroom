@@ -35,7 +35,7 @@
 .chart-grid input {
   width: 100%;
   min-width: 70px;
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   padding: 5px 6px;
   font: 12px Arial;
@@ -48,9 +48,9 @@
 }
 .chart-grid-actions button,
 .w-form > button {
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
-  background: #ffffff;
+  background: var(--surface);
   color: #1f1f23;
   padding: 6px 10px;
   font: 13px Arial;
@@ -71,7 +71,7 @@
   padding: 1px 8px;
   border: 1px solid #d4d4d8;
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--surface);
   color: #27272a;
   font-size: 11px;
   font-weight: 600;
@@ -97,7 +97,7 @@
   margin-bottom: 10px;
 }
 .template-search input {
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   padding: 7px 9px;
   font: 13px Arial;
@@ -110,7 +110,7 @@
 .template-categories button {
   border: 1px solid #d4d4d8;
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--surface);
   color: #27272a;
   padding: 3px 10px;
   font-size: 12px;
@@ -118,7 +118,7 @@
 }
 .template-categories button[aria-pressed='true'] {
   background: #e3edff;
-  border-color: #4262ff;
+  border-color: var(--primary);
   color: #1a2f99;
 }
 .template-list-scroll {

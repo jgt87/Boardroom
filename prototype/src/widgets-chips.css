@@ -6,7 +6,7 @@
   height: 100%;
   padding: 12px 14px;
   overflow: hidden;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid #e4e4e7;
   border-radius: 12px;
   font:
@@ -40,7 +40,7 @@
   cursor: pointer;
 }
 .w-chips-switch button[aria-checked='true'] {
-  background: #fff;
+  background: var(--surface);
   color: #25252a;
   box-shadow: 0 1px 3px #24244214;
 }
@@ -57,16 +57,18 @@
   padding: 0 8px;
   border: 1px solid #d4d4da;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   font: 700 13px Arial;
   color: #25252a;
   cursor: grab;
 }
-.w-chip:hover {
-  border-color: #4262ff;
+@media (hover: hover) {
+  .w-chip:hover {
+    border-color: var(--primary);
+  }
 }
 .w-chip:focus-visible {
-  outline: 2px solid #4262ff;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 .w-chip:active {
@@ -93,9 +95,11 @@
   border-radius: 50%;
   box-shadow: 0 1px 3px #2424422e;
 }
-.w-dot:hover {
-  border-color: #ffffff;
-  transform: scale(1.1);
+@media (hover: hover) {
+  .w-dot:hover {
+    border-color: #ffffff;
+    transform: scale(1.1);
+  }
 }
 span.w-dot.used {
   box-sizing: border-box;
@@ -124,6 +128,8 @@ span.w-dot.used {
 .chip-remove {
   cursor: pointer;
 }
-.chip-remove:hover circle {
-  stroke: #4262ff;
+@media (hover: hover) {
+  .chip-remove:hover circle {
+    stroke: var(--primary);
+  }
 }

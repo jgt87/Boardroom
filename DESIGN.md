@@ -113,6 +113,8 @@ The palette combines cool neutral chrome, a clear blue interaction accent, and a
 
 **The Content Color Rule.** Keep object fill choices separate from blue selection and action states.
 
+**The Token Rule.** Chrome colours are CSS custom properties on `:root` in `style.css` (`--primary`, `--primary-hover`, `--on-primary`, `--selected`, `--canvas`, `--surface`, `--ink`, `--muted`, `--border`, `--border-strong`, `--hover`, `--danger`); tints are `color-mix()` of a token. Note and object colours stay literal because they are content. `tests/design-rules.test.ts` holds a ratchet on the remaining hex literals: it may only go down. The page declares `color-scheme: light`; a dark theme is not established.
+
 ## Typography
 
 **Body Font:** Arial, Helvetica, sans-serif.
@@ -128,6 +130,12 @@ The palette combines cool neutral chrome, a clear blue interaction accent, and a
 - **Object:** sticky-note text defaults to horizontal and vertical center alignment. Auto size measures the chosen typeface and wrapped lines to fit the available note area; adding text shrinks it live while typing. Choosing a numeric size fixes the size until Auto is selected again. Object-level bold, italic, underline, alignment, and list choices apply to rendering and editing.
 
 The empty-state heading is a surface-specific treatment (29px desktop, 26px below 900px, 23px below 600px), not a general display scale. The wordmark is likewise identity-specific.
+
+**The Fixed Scale Rule.** Text uses 10, 11, 12, 13, 14, 16, 18 or 20px. The only exceptions are emoji glyph sizes and the two identity headings above, each marked with a `/* type-scale: glyph */` or `/* type-scale: display */` comment after the declaration; the design-rules test rejects anything else. Fluid `cqw` sizes inside scalable widgets are content and are not checked.
+
+**The Touch Rule.** On a coarse pointer, chrome buttons keep their visual size but gain an invisible hit area of at least 44px (`--touch-target`), and form fields are at least 16px so iOS does not zoom on focus. Hover styles are written inside `@media (hover: hover)` so a tap never leaves a hover state behind. Canvas objects are excluded: they scale with the camera.
+
+**The Calm Motion Rule.** Transitions animate `transform`, `opacity` or colour, never width, height or position. One global `prefers-reduced-motion: reduce` rule in `style.css` removes animation; an element that ships its own calm reduced-motion variant opts out with the `motion-alt` class.
 
 ## Layout
 

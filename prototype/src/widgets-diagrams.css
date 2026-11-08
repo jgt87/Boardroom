@@ -36,17 +36,19 @@
   cursor: pointer;
   font-size: 13px;
 }
-.org-list li:hover {
-  background: #f4f4f6;
+@media (hover: hover) {
+  .org-list li:hover {
+    background: var(--canvas);
+  }
 }
 .org-list li.active {
-  background: #edf0ff;
+  background: var(--selected);
 }
 .org-list li.droppable {
   outline: 1px dashed #a1a1aa;
 }
 .org-list li:focus-visible {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--primary);
 }
 .org-list small {
   color: var(--muted);
@@ -54,7 +56,7 @@
 }
 .org-list em {
   font-size: 10px;
-  color: var(--blue);
+  color: var(--primary);
   font-style: normal;
 }
 .org-fields label {
@@ -65,7 +67,7 @@
   margin-bottom: 8px;
 }
 .org-fields input {
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   padding: 8px;
   font-size: 13px;
@@ -107,17 +109,17 @@
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 12px;
-  color: #25252c;
+  color: var(--ink);
 }
 .story-selected {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-left: auto;
-  color: #25252c;
+  color: var(--ink);
 }
 .story-selected input {
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   padding: 6px;
   font-size: 12px;
@@ -135,12 +137,12 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  background: #edf0ff;
+  background: var(--selected);
   border-radius: 6px;
   padding: 4px 6px;
 }
 .story-release {
-  background: #f4f4f6;
+  background: var(--canvas);
   flex-wrap: wrap;
 }
 .story-activity input,
@@ -182,13 +184,13 @@
   overflow-wrap: anywhere;
 }
 .story-card.active {
-  box-shadow: 0 0 0 2px var(--blue);
+  box-shadow: 0 0 0 2px var(--primary);
 }
 .story-card.dragging {
   opacity: 0.4;
 }
 .story-card:focus-visible {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--primary);
 }
 .story-placeholder {
   font-size: 11px;
@@ -214,7 +216,7 @@
   flex: 1;
 }
 .story-mini b {
-  background: #edf0ff;
+  background: var(--selected);
   border-radius: 4px;
   padding: 5px;
   overflow: hidden;
@@ -266,7 +268,7 @@
   font-size: 12px;
 }
 .mind-style-row select {
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   padding: 6px;
   font-size: 12px;
@@ -282,7 +284,7 @@
   height: 100%;
   background: #ffffffee;
   border-radius: 8px;
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--primary);
 }
 .mind-canvas-editor svg {
   display: block;
@@ -290,12 +292,12 @@
 .mind-canvas-input {
   position: absolute;
   box-sizing: border-box;
-  border: 2px solid #25252c;
+  border: 2px solid var(--ink);
   border-radius: 9px;
   padding: 0 10px;
   font-family: Arial;
-  background: #fff;
-  color: #25252c;
+  background: var(--surface);
+  color: var(--ink);
   outline: none;
 }
 .mind-canvas-hint {
@@ -305,7 +307,7 @@
   margin: 0;
   font-size: 11px;
   color: var(--muted);
-  background: #fff;
+  background: var(--surface);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -319,17 +321,22 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface);
   color: #52525b;
   cursor: grab;
   touch-action: none;
 }
-.mind-topic-handle:hover,
 .mind-topic-handle:focus-visible {
-  background: #edf0ff;
-  outline: 2px solid #4262ff;
+  background: var(--selected);
+  outline: 2px solid var(--primary);
+}
+@media (hover: hover) {
+  .mind-topic-handle:hover {
+    background: var(--selected);
+    outline: 2px solid var(--primary);
+  }
 }
 .mind-drag-status {
   position: absolute;
@@ -342,12 +349,12 @@
   margin: 0;
   padding: 3px 6px;
   font-size: 11px;
-  color: #334fd8;
-  background: #edf0ff;
+  color: var(--primary-hover);
+  background: var(--selected);
 }
 .kanban-points {
   margin-left: 6px;
-  background: #edf0ff;
+  background: var(--selected);
   color: #2a3fbf !important;
   border-radius: 4px;
   padding: 1px 5px;
@@ -379,16 +386,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface);
   color: #3f3f46;
   cursor: pointer;
 }
-.mind-collapse-toggle:hover,
 .mind-collapse-toggle:focus-visible {
-  background: #edf0ff;
-  outline: 2px solid #4262ff;
+  background: var(--selected);
+  outline: 2px solid var(--primary);
+}
+@media (hover: hover) {
+  .mind-collapse-toggle:hover {
+    background: var(--selected);
+    outline: 2px solid var(--primary);
+  }
 }
 .mind-color-row {
   position: absolute;
@@ -398,7 +410,7 @@
   gap: 4px;
   padding: 3px;
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 4px #0000001f;
 }
 .mind-color-row button {
@@ -409,12 +421,12 @@
   border-radius: 50%;
   font-size: 10px;
   line-height: 1;
-  background: #fff;
+  background: var(--surface);
   color: #3f3f46;
   cursor: pointer;
 }
 .mind-color-row button.active {
-  outline: 2px solid #25252c;
+  outline: 2px solid var(--ink);
   outline-offset: 1px;
 }
 /* Org chart team and location line (gap E8). */

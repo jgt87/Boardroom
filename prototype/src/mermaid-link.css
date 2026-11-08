@@ -59,7 +59,7 @@
   background: #8a5a00;
 }
 .link-sync-both .link-side.changed {
-  background: #ad2532;
+  background: var(--danger);
 }
 .link-message {
   flex-basis: 100%;
@@ -79,8 +79,8 @@
   background: #f0f0f4;
 }
 .link-actions button.primary {
-  background: var(--blue);
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
 }
 .link-actions button.primary:disabled {
   opacity: 0.45;
@@ -99,7 +99,7 @@
   resize: vertical;
   font: 13px/1.7 monospace;
   padding: 10px 12px;
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   box-sizing: border-box;
   width: 100%;
@@ -122,8 +122,8 @@
   cursor: pointer;
 }
 .mermaid-badge rect {
-  fill: #edf0ff;
-  stroke: #4262ff;
+  fill: var(--selected);
+  stroke: var(--primary);
 }
 .mermaid-badge text {
   fill: #2c46d6;
@@ -138,7 +138,7 @@
 }
 .mermaid-badge.both rect {
   fill: #fdeeee;
-  stroke: #ad2532;
+  stroke: var(--danger);
 }
 .mermaid-badge.both text {
   fill: #7a1d26;

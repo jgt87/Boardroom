@@ -26,10 +26,15 @@
   border-radius: 6px;
   font-size: 13px;
 }
-.insert-shape-menu button:hover,
 .insert-shape-menu button:focus-visible {
   outline: none;
-  background: #edf0ff;
+  background: var(--selected);
+}
+@media (hover: hover) {
+  .insert-shape-menu button:hover {
+    outline: none;
+    background: var(--selected);
+  }
 }
 .insert-shape-hint {
   margin-left: auto;

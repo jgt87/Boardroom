@@ -3,10 +3,10 @@
   height: calc(100dvh - 40px);
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border: 1px solid #e5e5eb;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 18px 60px #25252c26;
+  box-shadow: 0 18px 60px color-mix(in srgb, var(--ink) 14.9%, transparent);
   overflow: hidden;
 }
 .drawio-editor header,
@@ -18,7 +18,7 @@
   padding: 12px 18px;
 }
 .drawio-editor header {
-  border-bottom: 1px solid #e5e5eb;
+  border-bottom: 1px solid var(--border);
 }
 .drawio-editor h2 {
   margin: 0;
@@ -27,7 +27,7 @@
 .drawio-editor header p {
   margin-top: 4px;
   font-size: 12px;
-  color: #696973;
+  color: var(--muted);
 }
 .drawio-tools {
   display: flex;
@@ -44,7 +44,7 @@
   max-width: 420px;
 }
 .drawio-tools input:not([hidden]) {
-  border: 1px solid #c5c5ce;
+  border: 1px solid var(--border-strong);
   padding: 7px 9px;
   border-radius: 5px;
   font: inherit;
@@ -62,7 +62,7 @@
   position: relative;
   flex: 1;
   min-height: 100px;
-  background: #f4f4f6;
+  background: var(--canvas);
 }
 .drawio-frame-wrap iframe {
   display: block;
@@ -78,15 +78,15 @@
   inset: 0;
   display: grid;
   place-items: center;
-  background: #f4f4f6;
-  color: #696973;
+  background: var(--canvas);
+  color: var(--muted);
   font-size: 14px;
   pointer-events: none;
 }
 .drawio-editor footer {
-  border-top: 1px solid #e5e5eb;
+  border-top: 1px solid var(--border);
   font-size: 12px;
-  color: #696973;
+  color: var(--muted);
 }
 .drawio-editor footer > div {
   display: flex;
@@ -110,7 +110,7 @@
   padding: 24px;
   text-align: center;
   gap: 12px;
-  color: #25252c;
+  color: var(--ink);
 }
 .drawio-fallback h3 {
   font-size: 18px;
@@ -118,7 +118,7 @@
 }
 .drawio-fallback p {
   max-width: 42ch;
-  color: #696973;
+  color: var(--muted);
   font-size: 14px;
   line-height: 1.5;
 }
