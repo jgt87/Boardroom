@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Decided questions: large group
+
+- **Docs:**
+  - Date chips (toolbar or `/date`).
+  - Block selection: Shift+↑/↓ to extend, Alt+Shift+↑/↓ to move, Delete, copy and cut, with a bar of the same
+    actions.
+  - Comments on selected text, with replies and resolving; a thread whose text was removed stays listed.
+  - Drag a sticky note, text, shape or card onto a Doc to insert its text with a link back to the object.
+- **Slides and presenting:**
+  - Videos and recordings play while presenting frames or a deck: a Play button, K to start or stop, Esc stops the
+    video first.
+  - "PDF as Slides" turns each page into a slide.
+  - Frames can become image slides (Present panel, frame bar, right-click menu).
+  - PowerPoint import keeps pictures, positions and text styling.
+- **Visio:** "Visio as shapes" (or dropping a .vsdx file) opens Visio drawings as Boardroom shapes, text, connectors
+  and groups, one frame per page.
+- **Mermaid:** editing a converted sequence, class, state or ER diagram on the board now updates its code, as
+  flowcharts already did; code the shapes cannot show is kept.
+
 ### Templates panel opens beside the rail
 
 - The Templates button in the left tool rail now opens the templates panel right next to it, like Tools, media and
