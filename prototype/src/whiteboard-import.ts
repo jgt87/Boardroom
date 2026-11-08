@@ -26,6 +26,18 @@ import { BOARD_DESCRIPTION_MAX } from './board-settings.ts';
 import { LABEL_SIZE_MAX, LABEL_SIZE_MIN } from './diagram-extras.ts';
 import { MAX_IMAGE_BYTES } from './model-ext.ts';
 import type { ShapeKind } from './shapes.ts';
+import {
+  applyGroups,
+  byCreation,
+  layersPerFrame,
+  mindMapsFrom,
+  placeholderFor,
+  RECREATE_FORMAT,
+  recreateFrom,
+} from './whiteboard-extras.ts';
+import type { Box, Recreated } from './whiteboard-extras.ts';
+import type { RecordRow } from './model.ts';
+import type { RecordSchema } from './record-schema.ts';
 
 export const WHITEBOARD_FORMAT = 'whiteboard-rest-v2';
 export const WHITEBOARD_OBJECT_LIMIT = 2000;
@@ -425,6 +437,16 @@ export type WhiteboardImportReport = {
   unnamedAssignees: number;
   /** Connectors whose ends point at objects that were not imported. */
   danglingConnectors: number;
+  /** Objects the export holds without content, marked with a dashed placeholder, by source type. */
+  placeholders: Record<string, number>;
+  /** Objects rebuilt from recreate entries. */
+  recreated: number;
+  /** Recreate entries that could not be used (their object falls back to a placeholder). */
+  recreateFailed: string[];
+  /** Groups kept, mind maps built and named layers made. */
+  groups: number;
+  mindMaps: number;
+  layers: number;
 };
 const bump = (r: Record<string, number>, k: string, n = 1) => {
   r[k] = (r[k] ?? 0) + n;
@@ -441,6 +463,18 @@ export function whiteboardImportNote(r: WhiteboardImportReport): string {
   const parts = [
     `Imported ${plural(total, 'object', 'objects')} as a new board${total ? ` (${list(r.imported)})` : ''}.`,
   ];
+  if (r.recreated) parts.push(`${plural(r.recreated, 'object was', 'objects were')} recreated from the recreate file.`);
+  if (r.mindMaps) parts.push(`Built ${plural(r.mindMaps, 'mind map', 'mind maps')}.`);
+  if (r.groups) parts.push(`Kept ${plural(r.groups, 'group', 'groups')}.`);
+  if (r.layers) parts.push(`Made ${plural(r.layers, 'layer', 'layers')}, one per frame.`);
+  if (Object.keys(r.placeholders).length)
+    parts.push(
+      `Placeholders mark ${list(r.placeholders)} that could not be exported; fill them in with the recreate file.`,
+    );
+  if (r.recreateFailed.length)
+    parts.push(
+      `${plural(r.recreateFailed.length, 'recreate entry was', 'recreate entries were')} not used: ${r.recreateFailed.slice(0, 3).join(' ')}`,
+    );
   if (Object.keys(r.skipped).length) parts.push(`Skipped ${list(r.skipped)}.`);
   if (r.overLimit)
     parts.push(
@@ -500,7 +534,30 @@ function tagsFor(src: Source, json: Json, tagTitles: Map<string, string>): strin
  * A new Boardroom board from a REST export. Throws a readable error when the file is not an export; malformed
  * entries inside it are skipped and counted. The result always passes `parseBoard`.
  */
-export function importWhiteboardRest(json: unknown, limit = WHITEBOARD_OBJECT_LIMIT): WhiteboardImport {
+export type WhiteboardImportOptions = {
+  /** Put each top-level frame (and everything inside it) on a named layer of its own. */
+  layersPerFrame?: boolean;
+};
+/** Frames without a parent frame: when there are two or more, the app offers one layer per frame. */
+export function topLevelFrameCount(json: unknown): number {
+  if (!isObj(json) || !Array.isArray(json.items)) return 0;
+  return json.items.filter(i => isObj(i) && i.type === 'frame' && !(isObj(i.parent) && str(i.parent.id))).length;
+}
+/** Recreate entries carried by the export (merged in by scripts/merge-recreate.mjs), with their content. */
+function recreateEntries(root: Json): Json[] {
+  const list = Array.isArray(root.recreate)
+    ? root.recreate
+    : isObj(root.recreate) && root.recreate.format === RECREATE_FORMAT && Array.isArray(root.recreate.entries)
+      ? root.recreate.entries
+      : [];
+  return list.slice(0, 5000).filter((e): e is Json => isObj(e) && isObj(e.content));
+}
+
+export function importWhiteboardRest(
+  json: unknown,
+  limit = WHITEBOARD_OBJECT_LIMIT,
+  options: WhiteboardImportOptions = {},
+): WhiteboardImport {
   if (!isWhiteboardRestExport(json)) throw new Error('This file is not a whiteboard JSON export.');
   const root = json as Json;
   const report: WhiteboardImportReport = {
@@ -511,6 +568,12 @@ export function importWhiteboardRest(json: unknown, limit = WHITEBOARD_OBJECT_LI
     imageLinks: 0,
     unnamedAssignees: 0,
     danglingConnectors: 0,
+    placeholders: {},
+    recreated: 0,
+    recreateFailed: [],
+    groups: 0,
+    mindMaps: 0,
+    layers: 0,
   };
   const assets: Record<string, ImageAsset> = {};
   const boardInfo = isObj(root.board) ? root.board : {};
@@ -581,18 +644,34 @@ export function importWhiteboardRest(json: unknown, limit = WHITEBOARD_OBJECT_LI
       d++;
     return d;
   };
-  // Paint order: frames first (outer before inner), then the rest in export order.
+  // Paint order: frames first (outer before inner), then the rest in creation order (the API reports no
+  // stacking order). Mind map nodes are built into mind maps after the loop.
   const ordered = [
     ...sources
       .filter(s => s.type === 'frame')
       .map((s, k) => ({ s, k, d: depthOf(s) }))
       .sort((a, b) => a.d - b.d || a.k - b.k)
       .map(x => x.s),
-    ...sources.filter(s => s.type !== 'frame'),
+    ...byCreation(sources.filter(s => s.type !== 'frame' && s.type !== 'mindmap_node')),
   ];
+  /** The outermost frame a source sits in (a top-level frame maps to itself). */
+  const topFrame = (s: Source): string | undefined => {
+    let top = s.type === 'frame' ? s.id : undefined;
+    for (
+      let p = s.parent ? byId.get(s.parent) : undefined, d = 0;
+      p && d < 20;
+      p = p.parent ? byId.get(p.parent) : undefined, d++
+    )
+      if (p.type === 'frame') top = p.id;
+    return top;
+  };
 
   const items: Item[] = [];
   const idMap = new Map<string, Item>();
+  const datasets: Record<string, RecordRow[]> = {},
+    recordSchemas: Record<string, RecordSchema> = {};
+  /** Recreated objects beyond the first per source (the first is in idMap). */
+  const extraMade = new Map<string, Item[]>();
   /** Accept an item only when it would load on its own (guards against odd values slipping through). */
   const accept = (src: Source, item: Item): boolean => {
     try {
@@ -610,6 +689,60 @@ export function importWhiteboardRest(json: unknown, limit = WHITEBOARD_OBJECT_LI
     idMap.set(src.id, item);
     bump(report.imported, src.type);
     return true;
+  };
+  /** Keep recreated objects when they load together with their records; false leaves the source to the loop. */
+  const acceptRecreated = (src: Source, made: Recreated): boolean => {
+    if (!made.items.length || items.length + made.items.length > limit) return false;
+    parseBoard({
+      version: 1,
+      title: 'check',
+      items: made.items,
+      datasets: made.datasets,
+      recordSchemas: made.recordSchemas,
+    });
+    items.push(...made.items);
+    idMap.set(src.id, made.items[0]);
+    Object.assign(datasets, made.datasets);
+    Object.assign(recordSchemas, made.recordSchemas);
+    Object.assign(assets, made.assets);
+    extraMade.set(src.id, made.items.slice(1));
+    bump(report.imported, src.type, made.items.length);
+    report.recreated += made.items.length;
+    return true;
+  };
+  const recreateById = new Map<string, Json>(),
+    looseEntries: Json[] = [];
+  for (const e of recreateEntries(root)) {
+    const id = str(e.sourceId);
+    if (id && byId.has(id)) recreateById.set(id, e);
+    else looseEntries.push(e);
+  }
+  const boxOf = (src: Source, fallback: [number, number] = [400, 300]): Box => {
+    const c = centreOf(src),
+      w = src.w ?? fallback[0],
+      h = src.h ?? fallback[1];
+    return { x: clamp(c.x - w / 2, -MAX_COORD, MAX_COORD), y: clamp(c.y - h / 2, -MAX_COORD, MAX_COORD), w, h };
+  };
+  /** An object returned without content (Docs, Tables, Kanban and other newer objects): keep its place visibly. */
+  const markMissing = (src: Source) => {
+    if (src.w === undefined || src.h === undefined) return bump(report.skipped, src.type);
+    const item = placeholderFor(typeLabel(src.type, 1), boxOf(src));
+    try {
+      parseBoard({ version: 1, title: 'check', items: [item] });
+    } catch {
+      return bump(report.skipped, src.type);
+    }
+    items.push(item);
+    idMap.set(src.id, item);
+    bump(report.placeholders, src.type);
+  };
+  const tryRecreate = (src: Source, entry: Json): boolean => {
+    try {
+      return acceptRecreated(src, recreateFrom(entry.content, boxOf(src)));
+    } catch (error) {
+      report.recreateFailed.push(`${typeLabel(src.type, 1)}: ${(error as Error).message}`);
+      return false;
+    }
   };
   const place = (src: Source, kind: Kind, fill?: string): Item => {
     const [w, h] = sizeOf(src, kind),
@@ -682,6 +815,8 @@ export function importWhiteboardRest(json: unknown, limit = WHITEBOARD_OBJECT_LI
       report.overLimit++;
       continue;
     }
+    const entry = recreateById.get(src.id);
+    if (entry && tryRecreate(src, entry)) continue;
     const d = src.data,
       s = src.style;
     switch (src.type) {
@@ -831,7 +966,7 @@ export function importWhiteboardRest(json: unknown, limit = WHITEBOARD_OBJECT_LI
         break;
       }
       default:
-        bump(report.skipped, src.type);
+        markMissing(src);
     }
   }
 
@@ -913,11 +1048,74 @@ export function importWhiteboardRest(json: unknown, limit = WHITEBOARD_OBJECT_LI
     accept({ raw, id: str(raw.id) || crypto.randomUUID(), type: 'connector' } as Source, line);
   }
 
-  const board: Board = { version: 1, title, items };
+  // Mind maps: from the experimental mind map export when present, else from the nodes in the items list.
+  const nodeList = Array.isArray(root.mindmapNodes) && root.mindmapNodes.length ? root.mindmapNodes : [];
+  const minds = mindMapsFrom(
+    nodeList.length ? nodeList : sources.filter(s => s.type === 'mindmap_node').map(s => s.raw),
+    htmlToPlain,
+  );
+  minds.items.forEach((item, k) => {
+    if (items.length >= limit) {
+      report.overLimit += minds.sourceIds[k].length;
+      return;
+    }
+    items.push(item);
+    report.mindMaps++;
+    bump(report.imported, 'mindmap_node', minds.sourceIds[k].length);
+  });
+  if (minds.dropped) bump(report.skipped, 'mindmap_node', minds.dropped);
+  for (const id of minds.blank) {
+    const src = byId.get(id);
+    if (src && items.length < limit) markMissing(src);
+    else if (src) report.overLimit++;
+    else bump(report.skipped, 'mindmap_node');
+  }
+
+  // Recreate entries for objects that are not in the export: placed by their own position (canvas centre).
+  looseEntries.forEach((e, k) => {
+    const pos = isObj(e.position) ? e.position : {},
+      geo = isObj(e.geometry) ? e.geometry : isObj(e.size) ? e.size : {};
+    const src: Source = {
+      raw: e,
+      id: `recreate-${k}`,
+      type: str(e.type) || 'unsupported',
+      data: {},
+      style: {},
+      relative: false,
+      cx: numOf(pos.x) ?? 0,
+      cy: numOf(pos.y) ?? 0,
+      w: numOf(geo.width ?? geo.w),
+      h: numOf(geo.height ?? geo.h),
+      rotation: 0,
+    };
+    if (items.length >= limit) report.overLimit++;
+    else tryRecreate(src, e);
+  });
+
+  report.groups = (root.groups ? applyGroups(root.groups, idMap) : []).length;
+  let board: Board = { version: 1, title, items };
+  const groupIds = [...new Set(items.map(i => i.group).filter((g): g is string => !!g))];
+  if (groupIds.length) board.groups = groupIds.map(id => ({ id, parent: null }));
+  if (Object.keys(datasets).length) {
+    board.datasets = datasets;
+    board.recordSchemas = recordSchemas;
+  }
   const description = htmlToPlain(boardInfo.description, BOARD_DESCRIPTION_MAX).trim();
   if (description) board.description = description;
   const usedTags = new Set(items.flatMap(i => i.tags ?? []));
   const colours = Object.fromEntries(Object.entries(tagColors).filter(([t]) => usedTags.has(t)));
   if (Object.keys(colours).length) board.tagColors = colours;
+  if (options.layersPerFrame) {
+    const topFrameOf = new Map<string, string>();
+    for (const src of sources) {
+      const top = topFrame(src),
+        frameItem = top ? idMap.get(top) : undefined;
+      if (!frameItem) continue;
+      for (const item of [idMap.get(src.id), ...(extraMade.get(src.id) ?? [])])
+        if (item) topFrameOf.set(item.id, frameItem.id);
+    }
+    board = layersPerFrame(board, topFrameOf);
+    report.layers = board.layers ? board.layers.length - 1 : 0;
+  }
   return { board: parseBoard(board), report, assets };
 }

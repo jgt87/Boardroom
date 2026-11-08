@@ -66,9 +66,15 @@ async function mockApi(options: { status?: number } = {}): Promise<Mock> {
       return send({
         data: [
           { id: 'n2', type: 'sticky_note', data: { content: 'Two' }, position: { x: 400, y: 0, origin: 'center' } },
+          {
+            id: 'd1',
+            type: 'doc_format',
+            position: { x: 0, y: 500, origin: 'center' },
+            geometry: { width: 300, height: 400 },
+          },
         ],
-        total: 3,
-        size: 1,
+        total: 4,
+        size: 2,
         limit: 50,
       });
     }
@@ -77,6 +83,8 @@ async function mockApi(options: { status?: number } = {}): Promise<Mock> {
         data: [{ id: 'c1', startItem: { id: 'n1' }, endItem: { id: 'n2' }, shape: 'straight' }],
         limit: 50,
       });
+    if (url.pathname === `${base}/groups`)
+      return send({ data: [{ id: 'g1', type: 'group', data: { items: ['n1', 'n2'] } }] });
     if (url.pathname === `${base}/tags`)
       return send({
         data: [{ id: 't1', title: 'Idea', fillColor: 'yellow', type: 'tag' }],
@@ -124,7 +132,16 @@ test('exports board, all item pages, connectors, tags and images; retries 429; k
     assert.equal(json.board.name, 'Mock board');
     assert.deepEqual(
       json.items.map((i: { id: string }) => i.id),
-      ['n1', 'i1', 'n2'],
+      ['n1', 'i1', 'n2', 'd1'],
+    );
+    assert.equal(json.groups.length, 1);
+    // The experimental mind map endpoint is missing on the mock: an empty list, not a failure.
+    assert.deepEqual(json.mindmapNodes, []);
+    assert.match(r.out, /out\.recreate\.json: 1 objects came without content/);
+    const template = JSON.parse(await readFile(path.join(dir, 'out.recreate.json'), 'utf8'));
+    assert.deepEqual(
+      template.entries.map((e: { sourceId: string; content: unknown }) => [e.sourceId, e.content]),
+      [['d1', null]],
     );
     assert.equal(json.connectors.length, 1);
     assert.deepEqual(json.itemTags, { n1: ['t1'] });
@@ -136,8 +153,11 @@ test('exports board, all item pages, connectors, tags and images; retries 429; k
     assert.equal(board.title, 'Mock board');
     assert.deepEqual(
       board.items.map(i => i.type),
-      ['note', 'image', 'note', 'arrow'],
+      ['note', 'image', 'note', 'rectangle', 'arrow'],
     );
+    assert.equal(board.items[0].group, board.items[2].group);
+    assert.ok(board.items[0].group);
+    assert.equal(board.items[3].name, 'Doc placeholder');
     assert.deepEqual(board.items[0].tags, ['Idea']);
     assert.equal(Object.keys(assets).length, 1);
   } finally {

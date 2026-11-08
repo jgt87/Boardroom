@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Imports from other whiteboards keep more of the board
+
+- Objects now stack front to back in the order they were created on the original board, as closely as the
+  export allows (it reports no stacking order of its own).
+- Groups come over as Boardroom groups, and mind maps come over as Boardroom mind maps with their topics.
+- Objects the export cannot read (Docs, Tables, Kanban, story maps and others) are no longer dropped: a dashed
+  placeholder with the object's name keeps their place, and lines to them stay attached.
+- The export also writes a "recreate" file listing those objects. Fill in a table (from a CSV file), a doc, a mind
+  map, a story map, a note or a picture, run `scripts/merge-recreate.mjs`, and the import rebuilds them as real
+  Boardroom objects in the same place.
+- A board with two or more frames can be imported with one layer per frame, so each frame can be hidden or locked
+  on its own.
+- The export and import guide (`prototype/scripts/README-export-whiteboard.md`) is rewritten as step-by-step
+  instructions with a checklist and a troubleshooting table.
+
 ### Consistent styling, touch targets and automatic checks
 
 - Interface colours now come from one set of named colours, so buttons, borders and highlights match everywhere.

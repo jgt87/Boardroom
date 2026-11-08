@@ -139,3 +139,45 @@ test('a JSON file that is not an export is reported from the upload menu', async
   await expect(page.getByRole('status')).toContainText('not a whiteboard JSON export');
   expect((await savedBoard(page)).title).toBe('Before');
 });
+
+test('two top-level frames: the import asks about layers and puts each frame on its own layer', async ({ page }) => {
+  await seed(page, `return {version:1,title:'Before',items:[]};`);
+  const twoFrames = {
+    ...EXPORT,
+    board: { id: 'b2', name: 'Two frames', description: '' },
+    items: [
+      { id: 'f1', type: 'frame', data: { title: 'Ideas' }, position: at(0, 0), geometry: { width: 600, height: 400 } },
+      { id: 'f2', type: 'frame', data: { title: 'Plan' }, position: at(900, 0), geometry: { width: 600, height: 400 } },
+      {
+        id: 'n1',
+        type: 'sticky_note',
+        data: { content: 'Inside' },
+        position: at(100, 100, true),
+        geometry: { width: 120, height: 120 },
+        parent: { id: 'f2' },
+      },
+      { id: 't', type: 'data_table_format', position: at(0, 800), geometry: { width: 500, height: 300 } },
+    ],
+    connectors: [],
+  };
+  await page
+    .locator('input[type=file][accept=".json,application/json,.boardroom,application/zip"]')
+    .first()
+    .setInputFiles({ name: 'two.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(twoFrames)) });
+  const prompt = page.getByRole('dialog').filter({ hasText: 'Import layers' });
+  await expect(prompt).toContainText('2 top-level frames');
+  await prompt.getByRole('button', { name: /One layer per frame/ }).click();
+  await expect
+    .poll(async () => {
+      const b = await savedBoard(page);
+      return b?.title === 'Two frames' ? (b.layers ?? []).map((l: { name: string }) => l.name).join(',') : '';
+    })
+    .toBe('Ideas,Plan,Outside frames');
+  const board: BoardJson = await savedBoard(page);
+  const plan = board.layers.find((l: { name: string }) => l.name === 'Plan');
+  expect(board.items.find(i => i.text === 'Inside')!.layer).toBe(plan.id);
+  expect(board.items.find(i => i.name === 'Table placeholder')!.layer).toBeUndefined();
+  await expect(page.getByRole('status').filter({ hasText: 'as a new board' })).toContainText(
+    'Made 2 layers, one per frame. Placeholders mark 1 table',
+  );
+});

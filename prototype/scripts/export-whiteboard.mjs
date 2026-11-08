@@ -12,6 +12,20 @@ import { pathToFileURL } from 'node:url';
 
 export const DEFAULT_API = 'https://api.miro.com';
 export const FORMAT = 'whiteboard-rest-v2';
+export const RECREATE_FORMAT = 'boardroom-recreate-v1';
+/** Item types the import maps with their content; every other type goes into the recreate template. */
+export const MAPPED_TYPES = [
+  'sticky_note',
+  'shape',
+  'text',
+  'frame',
+  'card',
+  'app_card',
+  'image',
+  'embed',
+  'preview',
+  'document',
+];
 const PAGE_LIMIT = 50;
 const MAX_PAGES = 5000;
 const MAX_ATTEMPTS = 6;
@@ -82,12 +96,13 @@ export async function apiGet(ctx, pathOrUrl, what = 'the board', { allowMissing 
 }
 
 /** Every entry of a cursor-paged collection (`cursor` or `links.next`), `limit` 50 per page. */
-export async function getAllPages(ctx, path, what) {
+export async function getAllPages(ctx, path, what, { allowMissing = false } = {}) {
   const all = [];
   const seen = new Set();
   let next = `${path}${path.includes('?') ? '&' : '?'}limit=${PAGE_LIMIT}`;
   for (let page = 0; next && page < MAX_PAGES; page++) {
-    const body = await apiGet(ctx, next, what);
+    const body = await apiGet(ctx, next, what, { allowMissing });
+    if (body === null) break;
     const data = Array.isArray(body?.data) ? body.data : [];
     all.push(...data);
     ctx.log(`Fetched ${all.length}${Number.isFinite(body?.total) ? ` of ${body.total}` : ''} ${what}.`);
@@ -101,6 +116,52 @@ export async function getAllPages(ctx, path, what) {
     } else next = link;
   }
   return all;
+}
+
+/**
+ * A collection the export can do without (groups, the experimental mind map nodes): a missing or refused
+ * endpoint gives an empty list with a note. A refused token (401) still stops the export.
+ */
+async function optionalPages(ctx, path, what) {
+  try {
+    return await getAllPages(ctx, path, what, { allowMissing: true });
+  } catch (err) {
+    if (err instanceof ExportError && /401/.test(err.message)) throw err;
+    ctx.log(`Could not read ${what}; continuing without them. (${err?.message ?? err})`);
+    return [];
+  }
+}
+
+/**
+ * The recreate template: one entry per object the API returned without content, with its place and an empty
+ * `content` to fill in (see README-export-whiteboard.md). Null when every object is mapped.
+ */
+export function recreateTemplate(result) {
+  const nodesExported = result.mindmapNodes.length > 0;
+  const entries = result.items
+    .filter(i => i && !MAPPED_TYPES.includes(i.type) && !(nodesExported && i.type === 'mindmap_node'))
+    .map(i => ({
+      sourceId: i.id,
+      type: i.type,
+      position: i.position,
+      geometry: i.geometry,
+      ...(i.parent ? { parent: i.parent } : {}),
+      content: null,
+    }));
+  if (!entries.length) return null;
+  return {
+    format: RECREATE_FORMAT,
+    board: result.board,
+    help: [
+      'Fill "content" for the objects you want rebuilt; leave it null to keep a placeholder.',
+      'Kinds: table, kanban, timeline ({ kind, title, csv } or { kind, title, csvFile } or rows),',
+      'doc ({ kind, markdown }), mindmap ({ kind, nodes: [{ id, parent, text }] }),',
+      'storymap ({ kind, activities, releases, cards: [{ title, activity, release }] }),',
+      'note or text ({ kind, text }), image ({ kind, file }), items ({ kind, items: [Boardroom objects] }).',
+      'Then run: node scripts/merge-recreate.mjs <export.json> <this file>',
+    ],
+    entries,
+  };
 }
 
 /** Board tags (offset paged); null when the board has no tag endpoint. */
@@ -152,6 +213,12 @@ export async function exportBoard(ctx, boardId, { images = false, itemTags = tru
   const items = await getAllPages(ctx, `${boardPath}/items`, 'items');
   const connectors = await getAllPages(ctx, `${boardPath}/connectors`, 'connectors');
   const tags = await getBoardTags(ctx, boardPath);
+  const groups = await optionalPages(ctx, `${boardPath}/groups`, 'groups');
+  const mindmapNodes = await optionalPages(
+    ctx,
+    `/v2-experimental/boards/${encodeURIComponent(boardId)}/mindmap_nodes`,
+    'mind map nodes',
+  );
   const byItem = {};
   if (itemTags && tags.length) {
     for (const item of items.filter(i => i?.type === 'sticky_note' || i?.type === 'card')) {
@@ -180,6 +247,8 @@ export async function exportBoard(ctx, boardId, { images = false, itemTags = tru
     board: { id: board?.id, name: board?.name, description: board?.description },
     items,
     connectors,
+    groups,
+    mindmapNodes,
     tags: tags.map(t => ({ id: t?.id, title: t?.title, fillColor: t?.fillColor })),
     itemTags: byItem,
     exportedAt: new Date().toISOString(),
@@ -231,8 +300,16 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     });
     await writeFile(out, JSON.stringify(result));
     console.error(
-      `Wrote ${out}: ${result.items.length} items and ${result.connectors.length} connectors. Import it in Boardroom with "Whiteboard JSON (REST export)".`,
+      `Wrote ${out}: ${result.items.length} items, ${result.connectors.length} connectors, ${result.groups.length} groups and ${result.mindmapNodes.length} mind map nodes. Import it in Boardroom with "Whiteboard JSON (REST export)".`,
     );
+    const template = recreateTemplate(result);
+    if (template) {
+      const recreateOut = out.replace(/(\.json)?$/i, '.recreate.json');
+      await writeFile(recreateOut, JSON.stringify(template, null, 2));
+      console.error(
+        `Wrote ${recreateOut}: ${template.entries.length} objects came without content and import as placeholders. Fill in that file and run scripts/merge-recreate.mjs to rebuild them.`,
+      );
+    }
     return 0;
   } catch (err) {
     console.error(err instanceof ExportError ? err.message : `Export failed: ${err?.message ?? err}`);

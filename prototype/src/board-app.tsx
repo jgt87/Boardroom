@@ -989,8 +989,23 @@ function useBoardCore() {
    */
   async function importWhiteboardData(raw: unknown) {
     try {
-      const { importWhiteboardRest, whiteboardImportNote } = await import('./whiteboard-import');
-      const made = importWhiteboardRest(raw);
+      const { importWhiteboardRest, whiteboardImportNote, topLevelFrameCount, WHITEBOARD_OBJECT_LIMIT } =
+        await import('./whiteboard-import');
+      const frames = topLevelFrameCount(raw);
+      let layersPerFrame = false;
+      if (frames >= 2) {
+        const how = await askChoice(
+          'Import layers',
+          `This board has ${frames} top-level frames. Put each frame and its contents on a layer of its own?`,
+          [
+            { id: 'frames', label: 'One layer per frame', detail: 'Hide or lock each frame on its own' },
+            { id: 'one', label: 'One layer', detail: 'Everything on Layer 1' },
+          ],
+        );
+        if (!how) return;
+        layersPerFrame = how === 'frames';
+      }
+      const made = importWhiteboardRest(raw, WHITEBOARD_OBJECT_LIMIT, { layersPerFrame });
       for (const [id, asset] of Object.entries(made.assets))
         await saveAsset(id, asset).catch(() => {
           throw new Error('Images in this export could not be stored in this browser.');
