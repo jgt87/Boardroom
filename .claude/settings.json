@@ -1,0 +1,43 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node C:/Files/Apps/__CommonShared/agent/hooks/shared-lessons.mjs",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "node C:/Files/Apps/__CommonShared/agent/hooks/worktree-lessons.mjs",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node C:/Files/Apps/__CommonShared/agent/hooks/no-shell-edits.mjs",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node C:/Files/Apps/__CommonShared/agent/hooks/lessons-reminder.mjs",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -39,3 +39,6 @@ prototype/e2e/.tmp/
 /WASM-VALIDATION-AND-BINDINGS.md
 # Craft Anything desktop-app projects (captured third-party pages): never commit
 /CraftAnything/
+
+# Agent lessons: machine-local (C:\Files\Apps\__CommonShared\agent)
+tasks/lessons.md
