@@ -101,6 +101,7 @@ export function FloatingPanels() {
     detailsId,
     display,
     facil,
+    templatesFrom,
     insertCaptured,
     insertImages,
     fit,
@@ -308,7 +309,13 @@ export function FloatingPanels() {
         </AnchoredPanel>
       )}
       {facil === 'templates' && (
-        <AnchoredPanel anchor="facilitate" placement="below">
+        // Beside the Templates rail button when opened from the rail, gallery or palette (closing on a press
+        // outside, like the other rail pop-outs); below Collaborate and review when opened from that menu.
+        <AnchoredPanel
+          anchor={templatesFrom === 'rail' ? 'templates' : 'facilitate'}
+          placement={templatesFrom === 'rail' ? 'right' : 'below'}
+          onDismiss={templatesFrom === 'rail' ? () => setFacil(null) : undefined}
+        >
           <TemplatesPanel
             userTemplates={userTemplates}
             onDeleteUser={id => {

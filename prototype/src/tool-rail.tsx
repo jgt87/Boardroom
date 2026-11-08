@@ -77,6 +77,9 @@ export function ToolRail() {
     pendingPlacement,
     setPendingPlacement,
     setFacil,
+    facil,
+    templatesFrom,
+    setTemplatesFrom,
     penMode,
     setPenMode,
     penPresetList,
@@ -161,7 +164,12 @@ export function ToolRail() {
             </button>
             <button
               aria-label="Templates"
+              data-tool-anchor="templates"
+              aria-expanded={facil === 'templates' && templatesFrom === 'rail'}
               onClick={() => {
+                // A second press closes it, like the other rail pop-outs.
+                if (facil === 'templates' && templatesFrom === 'rail') return setFacil(null);
+                setTemplatesFrom('rail');
                 setFacil('templates');
                 setGallery(null);
                 setShapes(false);

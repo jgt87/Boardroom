@@ -58,6 +58,7 @@ export function TopBar() {
     searchOpen,
     selected,
     setFacil,
+    setTemplatesFrom,
     setFacilitate,
     setMenu,
     setOutline,
@@ -412,6 +413,7 @@ export function TopBar() {
               <button
                 role="menuitem"
                 onClick={() => {
+                  setTemplatesFrom('menu');
                   setFacil('templates');
                   setFacilitate(false);
                 }}

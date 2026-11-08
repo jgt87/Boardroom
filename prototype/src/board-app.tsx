@@ -281,6 +281,11 @@ function useBoardCore() {
     [penColor, setPenColor] = useState('#25252a');
   const stackLast = useRef<string | null>(null);
   const eraseLast = useRef<Point | null>(null);
+  /**
+   * Where the Templates panel was opened from: beside the Templates rail button (the rail, the tools gallery, the
+   * command palette), or below the Collaborate and review menu (DESIGN.md: panels open beside what opened them).
+   */
+  const [templatesFrom, setTemplatesFrom] = useState<'rail' | 'menu'>('rail');
   const [facilitate, setFacilitate] = useState(false),
     [facil, setFacil] = useState<
       | 'voting'
@@ -1450,6 +1455,7 @@ function useBoardCore() {
     setPendingPlacement(null);
     if (choice === 'templates') {
       setTool('select');
+      setTemplatesFrom('rail');
       setFacil('templates');
       return;
     }
@@ -1983,6 +1989,8 @@ function useBoardCore() {
     eraseLast,
     eraser,
     facil,
+    templatesFrom,
+    setTemplatesFrom,
     facilitate,
     file,
     fill,

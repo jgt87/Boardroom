@@ -145,6 +145,36 @@ test('rail pop-outs close on an outside press and on Esc, which keeps the select
   await expect(gallery).toHaveCount(0);
 });
 
+test('Templates opens beside its rail button, or below Collaborate when chosen there', async ({ page }) => {
+  const railButton = page.getByRole('button', { name: 'Templates', exact: true });
+  const panel = page.getByRole('complementary', { name: 'Templates' });
+  await railButton.click();
+  await expect(panel).toBeVisible();
+  await expect(railButton).toHaveAttribute('aria-expanded', 'true');
+  const rail = (await railButton.boundingBox())!,
+    beside = (await panel.boundingBox())!;
+  // DESIGN.md: rail panels open 10px to the right of their button.
+  expect(Math.round(beside.x - (rail.x + rail.width))).toBe(10);
+  // A press outside closes it; a second press on the rail button too.
+  await page.mouse.click(900, 500);
+  await expect(panel).toHaveCount(0);
+  await railButton.click();
+  await expect(panel).toBeVisible();
+  await railButton.click();
+  await expect(panel).toHaveCount(0);
+  // From the Collaborate and review menu it opens below that button, as before.
+  const collaborate = page.getByRole('button', { name: 'Collaborate and review' });
+  await collaborate.click();
+  await page
+    .getByRole('menu', { name: 'Collaborate and review' })
+    .getByRole('menuitem', { name: /^Templates/ })
+    .click();
+  await expect(panel).toBeVisible();
+  const below = (await panel.boundingBox())!,
+    top = (await collaborate.boundingBox())!;
+  expect(below.y).toBeGreaterThan(top.y + top.height);
+});
+
 test('notice live regions exist before the first notice; info goes to status, errors to alert (item 148)', async ({
   page,
 }) => {

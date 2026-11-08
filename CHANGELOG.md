@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Templates panel opens beside the rail
+
+- The Templates button in the left tool rail now opens the templates panel right next to it, like Tools, media and
+  integrations, and a click outside or a second press closes it. Templates chosen from Collaborate and review still
+  opens below that button.
+
 ### Decided questions: medium group
 
 - Kanban boards whose columns come from a single-choice field can now give each column a colour and a card limit
