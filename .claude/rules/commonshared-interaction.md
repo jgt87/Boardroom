@@ -2,7 +2,7 @@
 paths:
   - "**/*.{tsx,jsx,ts,js,vue,svelte}"
 ---
-<!-- managed by __CommonShared/rules/interaction.md; sha256:fdf9bc5daacfacfc; edit it there, put project rules in project-*.md -->
+<!-- managed by __CommonShared/rules/interaction.md; sha256:250ade2b0c7cc032; edit it there, put project rules in project-*.md -->
 # Interaction rules
 
 Shared defaults from CommonShared. The project's own `.claude/rules/project-*.md`, AGENTS.md,
@@ -10,7 +10,7 @@ DESIGN.md and PRODUCT.md win on conflict.
 
 ## Cursors
 - Set a cursor only when it says what will happen; no custom cursor images; spinner on the control instead of `wait`. (docs/02 §1)
-- `pointer` on clickable controls, rows and cards; `not-allowed` on disabled or locked items unless the project chose `default`. (docs/02 §1)
+- Web: `pointer` on clickable controls, rows and cards (native desktop apps keep the arrow); `not-allowed` on disabled. (docs/02 §1, docs/19 §7)
 - `grab` → `grabbing` for pannable or draggable things, `move` for a selected movable object, `crosshair` for drawing tools. (docs/02 §1)
 - Resize cursors match the axis: `ew/ns-resize` on axes and 1-D handles, `col/row-resize` on splitters, `nwse/nesw` on corners. (docs/02 §1)
 - Transient canvas cursors go inline on the container and reset to `''` so the tool class sets the base; pair enter with leave. (docs/02 §1)

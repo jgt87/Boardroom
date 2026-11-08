@@ -4,7 +4,7 @@ paths:
   - "DESIGN.md"
   - "PRODUCT.md"
 ---
-<!-- managed by __CommonShared/rules/ui.md; sha256:80d4a7c41022ab53; edit it there, put project rules in project-*.md -->
+<!-- managed by __CommonShared/rules/ui.md; sha256:f079cc48c6e434e7; edit it there, put project rules in project-*.md -->
 # UI rules
 
 Shared defaults from CommonShared. The project's own `.claude/rules/project-*.md`, AGENTS.md,
@@ -48,14 +48,14 @@ DESIGN.md and PRODUCT.md win on conflict.
 - Composite inputs ring the wrapper with `:focus-within`; canvases use an inset ring, keyboard modality only. (docs/01 §7, docs/17 §8)
 - Clickable things are `button`s (`aria-pressed` for toggles); icon-only buttons get `aria-label`, not just `title`. (docs/17 §8)
 - Generated controls get names with row context; status lines `role="status"`, error boxes `role="alert"`. (docs/01 §6)
-- Disabled = opacity .4–.5 + `cursor:not-allowed`, out of the focus walk; disable unavailable controls, don't hide them. (docs/01 §5, docs/17 §4)
+- Disabled = opacity .4–.5 + `not-allowed`, out of the focus walk (focusable `aria-disabled` if it must explain why). (docs/01 §5, docs/19 §7)
 - One primary button per view, on the forward path; Save-style actions stay secondary and disabled until a change. (docs/01 §5, §6)
 
 ## States and overlays
 - Every list, table and chart has empty, loading and error states; errors are specific and offer a recovery action. (docs/01 §6, L-UI)
 - Loading = 14–16px spinner (`role="status"`) or skeleton; busy buttons keep width; empty charts keep a min height. (docs/01 §5, docs/17 §10a)
 - Never show optimistic or old data as confirmed; announce state changes that are otherwise silent. (docs/03 §3)
-- Tooltips: short, on hover and focus, `aria-describedby`, `kbd` badge for shortcuts, `pointer-events:none`. (docs/01 §6)
+- Tooltips: short, `aria-describedby`, `kbd` badge; 500–800ms first hover, 0 on focus, instant on neighbours. (docs/01 §6, docs/19 §7)
 - One shared menu component: rows 32–36px, keyboard navigable, closes on outside pointerdown, Esc, Tab, scroll and wheel. (docs/01 §6)
 - Clamp popovers and menus to the viewport with 4px margin and flip; max height = measured space left, with a floor. (docs/17 §5, §6)
 - Popovers inside a scroll container portal to `body` with fixed coordinates, re-anchored on resize and scroll. (docs/17 §5)
@@ -75,7 +75,7 @@ DESIGN.md and PRODUCT.md win on conflict.
 
 ## Motion, scrollbars, icons
 - 120–150ms ease-out for state changes, ≤ 200ms `cubic-bezier(.22,1,.36,1)` for popover/dialog entry; no bounce. (docs/01 §9)
-- Animate only transform, opacity and colour; collapse with `grid-template-rows: 0fr↔1fr`, never `max-height`. (docs/17 §3, §4)
+- Animate transform, opacity, colour; collapse via `grid-template-rows: 0fr↔1fr`; never width, height, `max-height`. (docs/17 §3, docs/19 §7)
 - One global `prefers-reduced-motion` rule with a `.motion-alt` opt-out; gate JS smooth scrolling on it too. (docs/01 §9, docs/10 §5)
 - Thin 8px scrollbars, transparent track, pill thumb at ink 18%; icons from one SVG set, 14–16px in controls, 20px in rails. (docs/01 §8, §10)
 - Review against the UI review checklist in light and dark, keyboard only and with touch emulation. (docs/17 §12)
