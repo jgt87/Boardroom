@@ -5,7 +5,10 @@
 
 const markTags = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'STRIKE', 'CODE', 'MARK', 'FONT']);
 
-const isMention = (el: Element) => el instanceof HTMLElement && el.dataset.mention !== undefined;
+// Chips (mentions and dates) are never split or cleared; text a comment is anchored to keeps its marker (R4-Q4).
+const isMention = (el: Element) =>
+  el instanceof HTMLElement &&
+  (el.dataset.mention !== undefined || el.dataset.date !== undefined || el.dataset.comment !== undefined);
 /** An inline formatting element that clearing removes (code inside a code block is the block itself). */
 export function isInlineMark(el: Element): boolean {
   if (el.tagName === 'CODE') return el.parentElement?.tagName !== 'PRE';
@@ -21,7 +24,9 @@ const splittable = (el: Element) => isInlineMark(el) || el.tagName === 'A';
  */
 function splitUp(root: HTMLElement, node: Node, offset: number, side: 'start' | 'end'): [Node, Node | null] {
   // A boundary inside a mention chip moves outside it; chips are never split.
-  const chip = (node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element))?.closest('[data-mention]');
+  const chip = (node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element))?.closest(
+    '[data-mention], [data-date]',
+  );
   if (chip && root.contains(chip)) {
     node = chip.parentNode!;
     offset = Array.prototype.indexOf.call(node.childNodes, chip) + (side === 'end' ? 1 : 0);
@@ -72,12 +77,12 @@ export function clearInlineFormatting(root: HTMLElement, range: Range): Range | 
   span.setStartAfter(startMarker);
   span.setEndBefore(endMarker);
   const marks = Array.from(root.querySelectorAll('*')).filter(
-    el => isInlineMark(el) && span.intersectsNode(el) && !el.closest('[data-mention]'),
+    el => isInlineMark(el) && span.intersectsNode(el) && !el.closest('[data-mention], [data-date]'),
   );
   for (const el of marks) el.replaceWith(...Array.from(el.childNodes));
   // Drop marks left empty by the splits.
   for (const el of Array.from(root.querySelectorAll('*')))
-    if (isInlineMark(el) && !el.textContent && !el.querySelector('br,[data-mention]')) el.remove();
+    if (isInlineMark(el) && !el.textContent && !el.querySelector('br, [data-mention], [data-date]')) el.remove();
   const out = document.createRange();
   out.setStartAfter(startMarker);
   out.setEndBefore(endMarker);

@@ -66,9 +66,11 @@ test('Doc blocks: Esc selects a block, Shift+Down extends, Alt+Up moves and Dele
 
   await page.keyboard.press('Shift+ArrowDown');
   await expect(item(page, 'doc').locator('.doc-block-selected')).toHaveCount(2);
-  // Printable keys never replace selected blocks.
+  // Typing leaves block selection (R4-Q4): the key goes in at the end of the focused block, never over the blocks.
   await page.keyboard.press('x');
-  await expect(item(page, 'doc').locator('.canvas-doc')).toContainText('First');
+  await expect(item(page, 'doc').locator('.doc-block-selected')).toHaveCount(0);
+  await expect(item(page, 'doc').locator('.canvas-doc')).toContainText('Firstx');
+  await expect(item(page, 'doc').locator('.canvas-doc')).toContainText('Third');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect(item(page, 'doc').locator('.canvas-doc')).not.toBeFocused();
@@ -83,7 +85,7 @@ test('Doc blocks: Esc selects a block, Shift+Down extends, Alt+Up moves and Dele
   await page.keyboard.press('Control+Z');
   await waitForSave(
     page,
-    b => b.items[0].data.markdown === '# Plan\n\nSecond\n\nFirst\n\nThird',
+    b => b.items[0].data.markdown === '# Plan\n\nSecond\n\nFirstx\n\nThird',
     'undo restores blocks',
   );
 });

@@ -23,8 +23,23 @@ import { loadEmojiGroups, searchEmojis } from './emoji-data';
 import type { EmojiEntry, EmojiGroup } from './emoji-data';
 import { StatusChip } from './status-chip';
 import { clearInlineFormatting } from './doc-clear';
-import { RemoveFormatting } from 'lucide-react';
+import { CalendarDays, MessageSquarePlus, MessagesSquare, RemoveFormatting, TextSelect } from 'lucide-react';
 import type { SlashCommand, CalloutKind } from './doc-tools';
+import {
+  COMMENT_ID,
+  commentIds,
+  dateMarkdown,
+  escapeInline,
+  isIsoDate,
+  isObjectLinkHref,
+  newDocThread,
+  readableDate,
+  replyDocThread,
+  resolveDocThread,
+  unwrapComment,
+  type DocThread,
+} from './doc-rich';
+import { BlockBar, CommentComposer, DatePopover, DocCommentsPanel, ownAuthor } from './doc-editor-parts';
 
 /** `#rrggbb` for a CSS colour value (`rgb()` or hex), or null. */
 export function hexColor(css: string | null | undefined): string | null {
@@ -41,12 +56,7 @@ const wrapInline = (open: string, close: string, inner: string) => {
 };
 /** Serialize only supported rich-text elements. Pasted HTML is never persisted. */
 export function markdownFrom(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE)
-    return (node.textContent ?? '')
-      .replace(/([\\`*_[\]~])/g, '\\$1')
-      .replace(/\+(?=\+)/g, '\\+')
-      .replace(/=(?==)/g, '\\=')
-      .replace(/\{(?=\/?(color|mark))/g, '\\{');
+  if (node.nodeType === Node.TEXT_NODE) return escapeInline(node.textContent ?? '');
   if (!(node instanceof HTMLElement)) return '';
   if (node.classList.contains('doc-callout-title')) return '';
   const children = () => Array.from(node.childNodes).map(markdownFrom).join('');
@@ -54,6 +64,13 @@ export function markdownFrom(node: Node): string {
     const name = cleanMentionName(node.dataset.mention);
     return name ? mentionMarkdown(name) : '';
   }
+  // Date chips (R4-Q4): only a real date is kept.
+  if (node.dataset.date !== undefined) return dateMarkdown(node.dataset.date);
+  // Text a comment thread is anchored to (R4-Q4). Emptied text drops the marker, which detaches the thread.
+  if (node.dataset.comment !== undefined)
+    return COMMENT_ID.test(node.dataset.comment)
+      ? wrapInline(`{comment:${node.dataset.comment}}`, '{/comment}', children())
+      : children();
   switch (node.tagName) {
     case 'MARK': {
       // The default yellow stays `==text==`; any other highlight colour is `{mark:#rrggbb}text{/mark}` (R6a-Q2).
@@ -125,6 +142,7 @@ export function markdownFrom(node: Node): string {
     case 'A': {
       const href = node.getAttribute('href') ?? '';
       const body = children();
+      if (isObjectLinkHref(href)) return `[${body}](${href})`;
       return /^(https?:|mailto:)/i.test(href) ? `[${body}](${href.replace(/[()\s]/g, encodeURIComponent)})` : body;
     }
     case 'SCRIPT':
@@ -182,22 +200,79 @@ function normalizeBlocks(root: HTMLElement) {
 const SELECTED_BLOCK = 'doc-block-selected';
 
 export type DocTemplateOption = { id: string; label: string; markdown: string };
-/** The canvas Doc object: the rich document editor bound to the item's Markdown. */
+/** Comment threads of a Doc (R4-Q4). Each call is one undo step; the string results are error messages. */
+export type DocCommentsApi = {
+  threads: DocThread[];
+  /** Save the editor's Markdown (holding the new marker) together with the new thread. */
+  add: (markdown: string, thread: DocThread) => void;
+  reply: (id: string, text: string) => string | void;
+  resolve: (id: string, resolved: boolean) => void;
+  /** Delete a thread and its marker (the text stays). */
+  remove: (id: string) => void;
+};
+const docThreads = (i: Item | undefined): DocThread[] => (Array.isArray(i?.data?.comments) ? i.data.comments : []);
+/** The canvas Doc object: the rich document editor bound to the item's Markdown and comment threads. */
 export function CanvasDoc({ item, ctx }: { item: Item; ctx: WidgetCtx }) {
+  const md = String(item.data?.markdown ?? ''),
+    threads = docThreads(item);
+  /** One undo step on this Doc's data. */
+  const change = (fn: (data: Record<string, unknown>) => Record<string, unknown>) =>
+    ctx.update(b => ({ ...b, items: b.items.map(i => (i.id === item.id ? { ...i, data: fn({ ...i.data }) } : i)) }));
+  const withThreads = (data: Record<string, unknown>, next: DocThread[]) => {
+    if (next.length) data.comments = next;
+    else delete data.comments;
+    return data;
+  };
+  const comments: DocCommentsApi = {
+    threads,
+    add: (markdown, thread) =>
+      change(d => withThreads({ ...d, markdown }, [...docThreads({ ...item, data: d }), thread])),
+    reply: (id, text) => {
+      try {
+        const next = replyDocThread(threads, id, text, { messageId: crypto.randomUUID(), author: ownAuthor() });
+        change(d => withThreads(d, next));
+      } catch (e) {
+        return (e as Error).message;
+      }
+    },
+    resolve: (id, resolved) => {
+      change(d => withThreads(d, resolveDocThread(docThreads({ ...item, data: d }), id, resolved)));
+      announce(resolved ? 'Comment resolved.' : 'Comment reopened.');
+    },
+    remove: id => {
+      change(d =>
+        withThreads(
+          { ...d, markdown: unwrapComment(String(d.markdown ?? ''), id) },
+          docThreads({ ...item, data: d }).filter(t => t.id !== id),
+        ),
+      );
+      ctx.display('Comment deleted. Undo brings it back.');
+    },
+  };
   return (
     <RichDocEditor
-      markdown={String(item.data?.markdown ?? '')}
+      markdown={md}
       locked={!!item.locked}
       zoom={ctx.zoom}
       board={ctx.board}
       display={ctx.display}
       templates={docTemplates}
-      onSave={next =>
+      dropId={item.id}
+      comments={comments}
+      onSave={next => {
+        // Removing commented text never drops a thread silently: it stays listed under "Text removed".
+        const before = new Set(commentIds(md)),
+          live = new Set(commentIds(next)),
+          lost = threads.filter(t => before.has(t.id) && !live.has(t.id)).length;
         ctx.update(b => ({
           ...b,
           items: b.items.map(i => (i.id === item.id ? { ...i, data: { ...i.data, markdown: next } } : i)),
-        }))
-      }
+        }));
+        if (lost)
+          ctx.display(
+            `The text of ${lost} comment${lost === 1 ? ' was' : 's were'} removed. Open Comments to see ${lost === 1 ? 'it' : 'them'} under "Text removed".`,
+          );
+      }}
       title={
         <>
           <span>{item.text || 'Doc'}</span>
@@ -225,7 +300,13 @@ export function RichDocEditor({
   label = 'Document content. Type / on an empty line for blocks, @ to mention someone. Esc selects the block.',
   placeholder,
   className = 'canvas-doc-object',
+  dropId,
+  comments,
 }: {
+  /** The Doc's id: board objects dragged onto the editor are inserted there (R4-Q4). */
+  dropId?: string;
+  /** Comment threads anchored to the text (Docs only, R4-Q4). */
+  comments?: DocCommentsApi;
   markdown: string;
   locked: boolean;
   zoom: number;
@@ -264,24 +345,32 @@ export function RichDocEditor({
     pendingBlocks = useRef<BlockRange | null>(null),
     // Template insertion (P2-Q13a): the template menu, and the blocks and caret spot when the editor left for it.
     templateMenu = useRef<HTMLSelectElement>(null),
-    templateSpot = useRef<{ blocks: string[]; spot: BlockSpot | null } | null>(null);
+    templateSpot = useRef<{ blocks: string[]; spot: BlockSpot | null } | null>(null),
+    // R4-Q4: the date picker, the comment composer, the comment list and the number of selected blocks.
+    [dateBox, setDateBox] = useState<{ top: number } | null>(null),
+    [composer, setComposer] = useState<{ top: number; quote: string } | null>(null),
+    [panel, setPanel] = useState(false),
+    [activeThread, setActiveThread] = useState<string | null>(null),
+    [blockCount, setBlockCount] = useState(0);
   /** Save new Markdown; false when nothing changed (or the Doc is locked). */
   const save = (next: string) => {
     if (locked || next === md.trim()) return false;
     onSave(next.slice(0, DOC_MAX));
     return true;
   };
-  const commit = () => {
-    if (!editor.current) return false;
+  /** The editor's content as Markdown. */
+  const serialize = () => {
     // Line breaks between rendered blocks are layout only; typing never makes such top-level text nodes.
-    const nodes = Array.from(editor.current.childNodes).filter(
+    const nodes = Array.from(editor.current?.childNodes ?? []).filter(
       n => !(n.nodeType === Node.TEXT_NODE && /^\s*\n\s*$/.test(n.textContent ?? '')),
     );
-    return save(nodes.map(markdownFrom).join('').trim().slice(0, DOC_MAX));
+    return nodes.map(markdownFrom).join('').trim().slice(0, DOC_MAX);
   };
+  const commit = () => (editor.current ? save(serialize()) : false);
   const blockEls = () => Array.from(editor.current?.children ?? []) as HTMLElement[];
   const clearBlocks = () => {
     blockSel.current = null;
+    setBlockCount(0);
     editor.current?.querySelectorAll(`.${SELECTED_BLOCK}`).forEach(el => el.classList.remove(SELECTED_BLOCK));
   };
   /** Mark blocks as selected and select their whole content, so the selection is visible and copyable. */
@@ -293,6 +382,7 @@ export function RichDocEditor({
       [start, end] = blockSpan(range);
     clearBlocks();
     blockSel.current = range;
+    setBlockCount(end - start + 1);
     els.slice(start, end + 1).forEach(el => el.classList.add(SELECTED_BLOCK));
     const dom = document.createRange();
     dom.setStartBefore(els[start]);
@@ -304,7 +394,7 @@ export function RichDocEditor({
     if (speak) {
       const count = end - start + 1;
       announce(
-        `${count} block${count === 1 ? '' : 's'} selected. Shift+Up or Down extends, Alt+Up or Down moves, Delete removes, Enter edits.`,
+        `${count} block${count === 1 ? '' : 's'} selected. Shift+Up or Down extends, Alt+Shift+Up or Down moves, Delete removes, Ctrl+C copies, Enter edits.`,
       );
     }
   };
@@ -369,6 +459,16 @@ export function RichDocEditor({
     // Only a new saved text re-renders the editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [md]);
+  // Comment highlights (R4-Q4): resolved threads fade, and the thread open in the list is marked in the text.
+  const threadList = comments?.threads;
+  useLayoutEffect(() => {
+    const resolved = new Set((threadList ?? []).filter(t => t.resolved).map(t => t.id));
+    editor.current?.querySelectorAll<HTMLElement>('[data-comment]').forEach(el => {
+      const id = el.dataset.comment ?? '';
+      el.classList.toggle('doc-comment-resolved', resolved.has(id));
+      el.classList.toggle('doc-comment-active', panel && id === activeThread);
+    });
+  }, [md, threadList, panel, activeThread]);
   const selectedMarkdown = () => {
     const r = blockSel.current;
     if (!r) return '';
@@ -414,17 +514,8 @@ export function RichDocEditor({
       return true;
     }
     if (key === 'Enter' && !mod) {
-      // Back to typing, at the end of the focused block.
       e.preventDefault();
-      const el = blockEls()[r.focus];
-      clearBlocks();
-      if (el) {
-        const caret = document.createRange();
-        caret.selectNodeContents(el);
-        caret.collapse(false);
-        getSelection()?.removeAllRanges();
-        getSelection()?.addRange(caret);
-      }
+      leaveBlocks();
       return true;
     }
     if ((key === 'ArrowUp' || key === 'ArrowDown') && !mod) {
@@ -446,13 +537,48 @@ export function RichDocEditor({
     }
     // Copy and cut run through the clipboard events below; modifier presses keep the selection.
     if (mod || ['Shift', 'Control', 'Alt', 'Meta'].includes(key)) return true;
-    // Any other key returns to typing; printable keys are swallowed so they never replace whole blocks.
+    // Any other key returns to typing at the end of the focused block, so it never replaces whole blocks.
+    leaveBlocks();
+    return key.length === 1;
+  };
+  /** Back to typing, with the caret at the end of the focused block. */
+  const leaveBlocks = () => {
+    const r = blockSel.current,
+      el = r ? blockEls()[r.focus] : null;
     clearBlocks();
-    if (key.length === 1) {
-      e.preventDefault();
-      return true;
+    if (!el) return;
+    const caret = document.createRange();
+    caret.selectNodeContents(el);
+    caret.collapse(false);
+    getSelection()?.removeAllRanges();
+    getSelection()?.addRange(caret);
+  };
+  /** The "Select block" button: like Esc while typing; without a caret the first block is selected. */
+  const selectBlockButton = () => {
+    const root = editor.current;
+    if (!root || locked) return;
+    root.focus();
+    if (blockSel.current) return;
+    if (!currentRange()) {
+      const caret = document.createRange();
+      caret.setStart(root, 0);
+      caret.collapse(true);
+      getSelection()?.removeAllRanges();
+      getSelection()?.addRange(caret);
     }
-    return false;
+    if (!enterBlocks()) display('This doc has no blocks to select yet.');
+  };
+  /** The block bar's Copy and Cut: run the browser's own command, which the clipboard handler below answers. */
+  const clipboardBlocks = (cut: boolean) => {
+    editor.current?.focus();
+    let ok: boolean;
+    try {
+      ok = document.execCommand(cut ? 'cut' : 'copy');
+    } catch {
+      ok = false;
+    }
+    if (!ok)
+      display(`This browser blocked ${cut ? 'cutting' : 'copying'}. Press ${cut ? 'Ctrl+X' : 'Ctrl+C'} instead.`);
   };
   const command = (name: string, value?: string) => {
     editor.current?.focus();
@@ -508,6 +634,7 @@ export function RichDocEditor({
         `<div class="doc-callout doc-callout-${c.callout}" data-callout="${c.callout}"><p class="doc-callout-title" contenteditable="false">${label}</p><p>${label} text</p></div><p><br></p>`,
       );
     } else if (c.divider) document.execCommand('insertHTML', false, '<hr><p><br></p>');
+    else if (c.date) openDate();
   };
   /** Ctrl+E: wrap the selected text in inline code, or unwrap the code span the caret is in. */
   const toggleCode = () => {
@@ -753,6 +880,132 @@ export function RichDocEditor({
     sel!.addRange(range);
     document.execCommand('insertText', false, entry.emoji);
   };
+  /** Put an inline chip (non-editable) at the range, followed by a space, and the caret after it. */
+  const insertChip = (r: Range, chip: HTMLElement) => {
+    const space = document.createTextNode(' ');
+    r.deleteContents();
+    r.insertNode(space);
+    r.insertNode(chip);
+    r.setStartAfter(space);
+    r.collapse(true);
+    const sel = getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(r);
+  };
+  const closePopovers = () => {
+    setSlash(null);
+    setEmoji(null);
+    setMention(null);
+    setPalette(false);
+    setHighlightPalette(false);
+  };
+  /** The Date button or "/date": pick a date for a chip at the caret (R4-Q4). */
+  const openDate = () => {
+    if (locked) return;
+    const r = currentRange();
+    if (!r) return display('Place the cursor in the document to insert a date.');
+    savedRange.current = r.cloneRange();
+    popoverOpen.current = true;
+    closePopovers();
+    setDateBox({ top: below(r.getBoundingClientRect()) });
+  };
+  const closeDate = () => {
+    setDateBox(null);
+    popoverOpen.current = false;
+    restoreSelection();
+  };
+  const applyDate = (iso: string) => {
+    closeDate();
+    const r = currentRange();
+    if (!r || !isIsoDate(iso)) return;
+    r.collapse(false);
+    const chip = document.createElement('span');
+    chip.className = 'doc-date';
+    chip.contentEditable = 'false';
+    chip.dataset.date = iso;
+    chip.textContent = readableDate(iso);
+    insertChip(r, chip);
+    announce(`Date ${readableDate(iso)} inserted.`);
+  };
+  /**
+   * Why the selection cannot take a comment, or null: it must be text inside one paragraph, heading or list item,
+   * outside code, and must not overlap another comment (markers cannot nest).
+   */
+  const commentProblem = (r: Range | null): string | null => {
+    if (!r || r.collapsed || !r.toString().trim()) return 'Select some text to comment on it.';
+    const blockOf = (n: Node) =>
+      (n.nodeType === Node.TEXT_NODE ? n.parentElement : (n as Element))?.closest(
+        'p, li, h1, h2, h3, h4, h5, h6, td, th, pre',
+      );
+    const start = blockOf(r.startContainer),
+      end = blockOf(r.endContainer);
+    if (!start || start !== end || !inEditor(start)) return 'Select text within one paragraph to comment on it.';
+    const within = (n: Node) =>
+      (n.nodeType === Node.TEXT_NODE ? n.parentElement : (n as Element))?.closest('code, pre');
+    if (within(r.startContainer) || within(r.endContainer) || touching(r, 'code').length)
+      return 'Comments cannot be added inside code.';
+    const inComment = (n: Node) =>
+      (n.nodeType === Node.TEXT_NODE ? n.parentElement : (n as Element))?.closest('.doc-comment');
+    if (inComment(r.startContainer) || inComment(r.endContainer) || touching(r, '.doc-comment').length)
+      return 'That text already has a comment. Reply to it in Comments.';
+    return null;
+  };
+  /** The Comment button: write the first message for a thread on the selected text. */
+  const openComment = () => {
+    if (locked || !comments) return;
+    const r = currentRange(),
+      problem = commentProblem(r);
+    if (problem) return display(problem);
+    if (md.length + 60 > DOC_MAX) return display('This doc is full. Remove some text before adding a comment.');
+    savedRange.current = r!.cloneRange();
+    popoverOpen.current = true;
+    closePopovers();
+    setComposer({ top: below(r!.getBoundingClientRect()), quote: r!.toString().replace(/\s+/g, ' ').trim() });
+  };
+  const closeComposer = () => {
+    setComposer(null);
+    popoverOpen.current = false;
+    restoreSelection();
+  };
+  const addComment = (text: string): string | void => {
+    if (!comments || !editor.current) return;
+    let thread: DocThread;
+    try {
+      thread = newDocThread(composer?.quote ?? '', text, {
+        id: crypto.randomUUID(),
+        messageId: crypto.randomUUID(),
+        author: ownAuthor(),
+      });
+    } catch (e) {
+      return (e as Error).message;
+    }
+    closeComposer();
+    const r = currentRange(),
+      problem = commentProblem(r);
+    if (problem) return void display(problem);
+    const span = document.createElement('span');
+    span.className = 'doc-comment';
+    span.dataset.comment = thread.id;
+    span.append(r!.extractContents());
+    r!.insertNode(span);
+    // One save holds the marker and the thread, so one undo removes both.
+    comments.add(serialize(), thread);
+    setPanel(true);
+    setActiveThread(thread.id);
+    announce('Comment added.');
+  };
+  /** Scroll to and select a thread's text. */
+  const showThread = (id: string) => {
+    setActiveThread(id);
+    const el = editor.current?.querySelector<HTMLElement>(`[data-comment="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView?.({ block: 'nearest' });
+    editor.current!.focus();
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    getSelection()?.removeAllRanges();
+    getSelection()?.addRange(r);
+  };
   const matches = slash ? filterSlash(slash.query) : [];
   const keyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     e.stopPropagation();
@@ -867,11 +1120,15 @@ export function RichDocEditor({
       else announce('Blocks copied.');
     },
     click: (e: React.MouseEvent) => {
+      const commented = (e.target as Element).closest?.<HTMLElement>('[data-comment]');
+      if (commented && comments) setActiveThread(commented.dataset.comment ?? null);
       const a = (e.target as Element).closest?.('a[href]');
-      if (!a || !(e.ctrlKey || e.metaKey)) return;
+      if (!a || !(e.ctrlKey || e.metaKey || locked)) return;
       e.preventDefault();
       const href = a.getAttribute('href');
-      if (isSafeHref(href)) window.open(href, '_blank', 'noopener,noreferrer');
+      // A link to a board object (dropped in from the canvas) shows that object, like any deep link.
+      if (href && isObjectLinkHref(href)) location.hash = href;
+      else if (isSafeHref(href)) window.open(href, '_blank', 'noopener,noreferrer');
     },
   });
   // The editable element only re-renders when its saved content or lock changes, so menu state
@@ -912,7 +1169,11 @@ export function RichDocEditor({
     [md, locked],
   );
   return (
-    <div className={`rich-object canvas-interactive ${className}`} onDoubleClick={e => e.stopPropagation()}>
+    <div
+      className={`rich-object canvas-interactive ${className}${panel && comments ? ' doc-with-comments' : ''}`}
+      data-doc-drop={dropId && !locked ? dropId : undefined}
+      onDoubleClick={e => e.stopPropagation()}
+    >
       <div className="rich-title canvas-widget-header">
         {title}
         <div {...canvasControl} onMouseDown={e => e.preventDefault()} className="canvas-doc-tools">
@@ -990,6 +1251,39 @@ export function RichDocEditor({
           <button disabled={locked} onClick={() => command('insertUnorderedList')}>
             List
           </button>
+          <button disabled={locked} aria-label="Insert date" title="Insert date (/date)" onClick={openDate}>
+            <CalendarDays size={14} aria-hidden="true" />
+          </button>
+          <button
+            disabled={locked}
+            aria-label="Select block"
+            title="Select block (Esc), then Shift+Up/Down to extend"
+            onClick={selectBlockButton}
+          >
+            <TextSelect size={14} aria-hidden="true" />
+          </button>
+          {comments && (
+            <>
+              <button
+                disabled={locked}
+                aria-label="Comment on selected text"
+                title="Comment on selected text"
+                onClick={openComment}
+              >
+                <MessageSquarePlus size={14} aria-hidden="true" />
+              </button>
+              <button
+                aria-label={`Comments (${comments.threads.length})`}
+                aria-pressed={panel}
+                title="Show comments"
+                className="doc-comments-toggle"
+                onClick={() => setPanel(p => !p)}
+              >
+                <MessagesSquare size={14} aria-hidden="true" />
+                {comments.threads.length > 0 && <span>{comments.threads.length}</span>}
+              </button>
+            </>
+          )}
           <select
             ref={templateMenu}
             aria-label="Apply a doc template"
@@ -1023,7 +1317,59 @@ export function RichDocEditor({
         </div>
       </div>
       <div className="canvas-doc-wrap">
+        {blockCount > 0 && (
+          <BlockBar
+            count={blockCount}
+            locked={locked}
+            onMove={moveSelectedBlocks}
+            onCopy={() => clipboardBlocks(false)}
+            onCut={() => clipboardBlocks(true)}
+            onDelete={deleteBlocks}
+            onDone={() => {
+              editor.current?.focus();
+              leaveBlocks();
+            }}
+          />
+        )}
         {editable}
+        {dateBox && (
+          <DatePopover
+            style={{ top: dateBox.top + 6 }}
+            onApply={applyDate}
+            onCancel={closeDate}
+            onLeave={to => {
+              setDateBox(null);
+              popoverOpen.current = false;
+              if (!to || !editor.current?.contains(to)) commit();
+            }}
+          />
+        )}
+        {composer && (
+          <CommentComposer
+            quote={composer.quote}
+            style={{ top: composer.top + 6 }}
+            onAdd={addComment}
+            onCancel={closeComposer}
+            onLeave={to => {
+              setComposer(null);
+              popoverOpen.current = false;
+              if (!to || !editor.current?.contains(to)) commit();
+            }}
+          />
+        )}
+        {comments && panel && (
+          <DocCommentsPanel
+            threads={comments.threads}
+            markdown={md}
+            active={activeThread}
+            locked={locked}
+            onShow={showThread}
+            onReply={comments.reply}
+            onResolve={comments.resolve}
+            onDelete={comments.remove}
+            onClose={() => setPanel(false)}
+          />
+        )}
         {link && (
           <LinkPopover
             initial={link.initial}

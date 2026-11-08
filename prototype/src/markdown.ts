@@ -6,6 +6,16 @@ import type { Token, Tokens } from 'marked';
 import type { Item, Point } from './model.ts';
 import { createItem } from './model.ts';
 import { calloutOf, calloutLabels } from './doc-tools.ts';
+import {
+  COMMENT_ID,
+  COMMENT_MARK,
+  DATE_CHIP,
+  isIsoDate,
+  isObjectLinkHref,
+  readableDate,
+  readableDates,
+  stripComments,
+} from './doc-rich.ts';
 
 export const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -18,7 +28,9 @@ export const mentionMarkdown = (name: string) =>
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80)}]`;
-const safeHref = (href: string) => (/^(https?:|mailto:)/i.test(href.trim()) ? href.trim() : '');
+/** Web and e-mail links, and links to an object on a board (`#board=<id>&object=<id>`, R4-Q4). */
+const safeHref = (href: string) =>
+  /^(https?:|mailto:)/i.test(href.trim()) || isObjectLinkHref(href.trim()) ? href.trim() : '';
 
 /** Render Markdown to sanitised HTML. Headings get ids `doc-h-<n>` in document order (matches docOutline). */
 export function renderMarkdown(md: string): string {
@@ -85,6 +97,36 @@ export function renderMarkdown(md: string): string {
           return `<span class="doc-color" style="color:${color}">${this.parser.parseInline(token.tokens)}</span>`;
         },
       },
+      // `@date[YYYY-MM-DD]` is a date chip (R4-Q4); only real calendar dates become chips.
+      {
+        name: 'dateChip',
+        level: 'inline',
+        start: (src: string) => src.indexOf('@date['),
+        tokenizer(src: string) {
+          const m = DATE_CHIP.exec(src);
+          return m && isIsoDate(m[1]) ? { type: 'dateChip', raw: m[0], date: m[1] } : undefined;
+        },
+        renderer(token: any) {
+          if (!isIsoDate(token.date)) return '';
+          return `<span class="doc-date" contenteditable="false" data-date="${token.date}">${escapeHtml(readableDate(token.date))}</span>`;
+        },
+      },
+      // `{comment:<id>}text{/comment}` anchors a Doc comment thread to `text` (R4-Q4).
+      {
+        name: 'docComment',
+        level: 'inline',
+        start: (src: string) => src.indexOf('{comment:'),
+        tokenizer(this: any, src: string) {
+          const m = COMMENT_MARK.exec(src);
+          return m ? { type: 'docComment', raw: m[0], id: m[1], tokens: this.lexer.inlineTokens(m[2]) } : undefined;
+        },
+        renderer(this: any, token: any) {
+          const inner = this.parser.parseInline(token.tokens);
+          return COMMENT_ID.test(token.id)
+            ? `<span class="doc-comment" data-comment="${token.id}">${inner}</span>`
+            : inner;
+        },
+      },
       // `@[Name]` is a mention chip.
       {
         name: 'mention',
@@ -111,7 +153,9 @@ export function renderMarkdown(md: string): string {
         const href = safeHref(token.href),
           inner = this.parser.parseInline(token.tokens);
         return href
-          ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer nofollow">${inner}</a>`
+          ? isObjectLinkHref(href)
+            ? `<a href="${escapeHtml(href)}" class="doc-object-link" title="Ctrl+click to show the object">${inner}</a>`
+            : `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer nofollow">${inner}</a>`
           : inner;
       },
       // Callouts (item 79): GitHub-style `> [!NOTE]` blocks become labelled note regions.
@@ -157,10 +201,11 @@ export function docOutline(md: string): { level: number; text: string; index: nu
 
 /** Strip inline Markdown to readable plain text (links keep their address). */
 export function plain(text: string): string {
-  return text
+  return readableDates(stripComments(text))
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, (_, label: string, url: string) =>
-      label === url ? url : `${label} (${url})`,
+      // A link to a board object only means something inside the app: keep its label.
+      label === url ? url : url.startsWith('#') ? label : `${label} (${url})`,
     )
     .replace(/`([^`]+)`/g, '$1')
     .replace(/(\*\*|__)(.+?)\1/g, '$2')
